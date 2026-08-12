@@ -1,0 +1,49 @@
+source_id: imea_fretes
+institution: IMEA
+domain: logistica
+priority: P0
+status: PRONTO_PARA_CLAUDE_CODE
+source:
+  method: authorized_login_or_manual_download
+  preserve_raw: true
+  credentials_in_git: false
+bigquery:
+  dataset: logistica
+  table: fretes_referencia
+  staging_table: stg_imea_fretes
+  partition:
+    field: data_referencia
+    type: DAY
+  clustering:
+    - produto
+    - origem
+    - destino
+load:
+  strategy: merge
+  idempotent: true
+  natural_key:
+    - data_referencia
+    - produto
+    - tipo_frete
+    - origem
+    - destino
+    - unidade
+required_temporal_fields:
+  - data_referencia
+  - data_publicacao
+  - data_coleta
+  - competencia
+evidence:
+  default_class: OBSERVADO
+  semantic_rule: referencia_de_frete_nao_e_frete_real_pago
+quality:
+  checks:
+    - origem_not_null
+    - destino_not_null
+    - frete_non_negative
+    - unidade_not_null
+    - no_duplicate_natural_key
+acceptance:
+  - staging_validated
+  - merge_idempotent
+  - sample_routes_match_source
