@@ -1,0 +1,35 @@
+{
+  "direct": [
+    {"id":"armazens","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/ArmazensCadastrados.txt","transform":"armazens","target":"logistica.armazens"},
+    {"id":"frete","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/Frete.txt","transform":"frete","target":"logistica.fretes_referencia"},
+    {"id":"estoques","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/Estoques.txt","transform":"estoques","target":"logistica.estoques_conab"},
+    {"id":"leilao","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/Leilao.txt","transform":"leilao","target":"mercado.leiloes"},
+    {"id":"venda_balcao","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/VendaBalcao.txt","transform":"venda_balcao","target":"mercado.venda_balcao"},
+    {"id":"custo_producao","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/CustoProducao.txt","transform":"custo_producao","target":"mercado.custo_producao"},
+    {"id":"levantamento_cana","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/LevantamentoCana.txt","transform":"cana_levantamento","target":"agro.safra_cana"},
+    {"id":"levantamento_graos","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/LevantamentoGraos.txt","transform":"graos_levantamento","target":"agro.safra_graos"},
+    {"id":"serie_cana","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/SerieHistoricaCana.txt","transform":"cana_serie","target":"agro.safra_cana"},
+    {"id":"serie_graos","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/SerieHistoricaGraos.txt","transform":"graos_serie","target":"agro.safra_graos"},
+    {"id":"levantamento_cafe","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/LevantamentoCafe.txt","transform":"cafe_levantamento","target":"agro.safra_cafe"},
+    {"id":"serie_cafe","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/SerieHistoricaCafe.txt","transform":"cafe_serie","target":"agro.safra_cafe"},
+    {"id":"oferta_demanda","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/OfertaDemanda.txt","transform":"oferta_demanda","target":"mercado.oferta_demanda"},
+    {"id":"preco_minimo","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/PrecoMinimo.txt","transform":"preco_minimo","target":"mercado.preco_minimo"},
+    {"id":"precos_mensal_uf","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/PrecosMensalUF.txt","transform":"precos_mensais_uf","target":"mercado.precos_mensais"},
+    {"id":"precos_mensal_municipio","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/PrecosMensalMunicipio.txt","transform":"precos_mensais_municipio","target":"mercado.precos_mensais"},
+    {"id":"precos_semanal_uf","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/PrecosSemanalUF.txt","transform":"precos_semanais_uf","target":"mercado.precos_semanais"},
+    {"id":"precos_semanal_municipio","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/PrecosSemanalMunicipio.txt","transform":"precos_semanais_municipio","target":"mercado.precos_semanais"},
+    {"id":"capacidade_estatica_historica","url":"https://portaldeinformacoes.conab.gov.br/downloads/arquivos/exportacao_capacidade_estatica.xls","transform":"raw_only","category":"logistica_historica"}
+  ],
+  "pages": [
+    {"id":"progresso_safra","url":"https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/progresso-de-safra","category":"progresso_safra","depth":2,"extensions":[".xlsx",".pdf",".xls"],"transform_rules":{"plantio":"progresso_safra_xlsx","fenologia":"raw_only_multimodal","monitoramento":"raw_only_document"}},
+    {"id":"boletim_safra_graos","url":"https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/boletim-da-safra-de-graos","category":"safra_graos_documental","depth":2,"extensions":[".xlsx",".pdf",".xls"],"transform_rules":{"site_previsao":"raw_only_redundant_txt","e-book":"raw_only_document","apresentacao":"raw_only_document"}},
+    {"id":"oferta_demanda_revisoes","url":"https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/analises-do-mercado-agropecuario-e-extrativista/analises-de-mercado/quadro-de-oferta-e-demanda/copy_of_alho/quadro-de-oferta-e-demanda-de-graos-{year}","category":"oferta_demanda_revisoes","depth":1,"extensions":[".xlsx",".xls"],"default_transform":"oferta_demanda_xlsx"},
+    {"id":"mapeamentos","url":"https://portaldeinformacoes.conab.gov.br/mapeamentos-agricolas-downloads.html","category":"mapeamentos_agricolas","depth":0,"extensions":[".zip"],"default_transform":"raw_only_geospatial"},
+    {"id":"conjuntura_soja","url":"https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/analises-do-mercado-agropecuario-e-extrativista/analises-de-mercado/historico-semanal/copy5_of_historico-semanal-do-algodao","category":"conjuntura_soja","depth":2,"extensions":[".pdf"],"default_transform":"raw_only_document"},
+    {"id":"conjuntura_milho","url":"https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/analises-do-mercado-agropecuario-e-extrativista/analises-de-mercado/historico-semanal/copy4_of_historico-semanal-do-algodao","category":"conjuntura_milho","depth":2,"extensions":[".pdf"],"default_transform":"raw_only_document"},
+    {"id":"conjuntura_algodao","url":"https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/analises-do-mercado-agropecuario-e-extrativista/analises-de-mercado/historico-semanal/historico-semanal-do-algodao","category":"conjuntura_algodao","depth":2,"extensions":[".pdf"],"default_transform":"raw_only_document"},
+    {"id":"desempenho_mercado","url":"https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/analises-do-mercado-agropecuario-e-extrativista/analises-de-mercado/historico-semanal/copy7_of_historico-semanal-do-algodao","category":"desempenho_mercado","depth":2,"extensions":[".pdf"],"default_transform":"raw_only_document"},
+    {"id":"boletim_logistico","url":"https://www.gov.br/conab/pt-br/atuacao/logistica/boletim-logistico","category":"boletim_logistico","depth":2,"extensions":[".pdf"],"default_transform":"raw_only_document"},
+    {"id":"anuario_agrologistico","url":"https://www.gov.br/conab/pt-br/atuacao/logistica/anuario-agrologistico","category":"anuario_agrologistico","depth":2,"extensions":[".pdf"],"default_transform":"raw_only_document"}
+  ]
+}
