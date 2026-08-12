@@ -1,0 +1,69 @@
+metadata:
+  name: AgroLog MT
+  version: '1.1'
+  cutoff_date: '2026-08-12'
+  authority_rule: later_explicit_decision_overrides_older_conflict
+  official_email: agrologmt@gmail.com
+sources_of_truth:
+  analytical_data: BigQuery
+  code_and_contracts: GitHub
+  human_documents: Google Drive
+  automated_raw: Google Cloud Storage
+  connected_knowledge: GitHub knowledge/ opened in Obsidian
+architecture:
+  warehouse: BigQuery
+  raw_storage: Google Cloud Storage
+  compute: Cloud Run Jobs
+  ai_access: AgroLog Gateway on Cloud Run
+  direct_database_access_for_ai: false
+  transactional_future: PostgreSQL only if needed
+required_date_fields:
+  - data_referencia
+  - data_publicacao
+  - data_coleta
+  - competencia
+evidence_classes:
+  - OBSERVADO
+  - DECLARADO
+  - INFERIDO
+  - ESTIMADO
+  - PROJETADO
+  - NEGOCIADO_CONFIRMADO
+bigquery:
+  create_tables_on_demand: true
+  partition_preference: data_referencia
+  clustering: domain_query_keys
+  loading: staging_then_merge_or_append
+  idempotent: true
+  preserve_history: true
+  raw_immutable: true
+reporting:
+  products:
+    - boletim_diario
+    - relatorio_semanal_geral
+    - panorama_mensal
+    - relatorio_semanal_por_produto
+    - alertas
+    - consulta_sob_demanda
+  cattle_in_main_report: false
+  technical_appendix: false
+  weekly_main_indicators_target: '12-15'
+priority:
+  - CONAB_ARMAZENS
+  - AGROLOG_GATEWAY_FIRST_QUERY
+  - IMEA
+  - COMEX
+  - PORTOS_LINEUP
+  - ANP
+  - NOAA_INMET_ANA
+  - IBGE_BCB_USDA_ARGENTINA
+  - PROPRIETARY_INDICATORS
+  - SCHEDULER_AFTER_STABILITY
+obsidian:
+  vault_path: knowledge/
+  canonical_storage: GitHub
+  duplicate_markdown_in_drive: false
+security:
+  secrets_in_git: false
+  use_secret_manager: true
+  destructive_changes_require_migration_and_rollback: true
