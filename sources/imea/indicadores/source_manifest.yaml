@@ -1,0 +1,52 @@
+source_id: imea_indicadores
+institution: IMEA
+domain: mercado_mt
+priority: P0
+status: PRONTO_PARA_CLAUDE_CODE
+source:
+  method: authorized_login_or_manual_download
+  preserve_raw: true
+  credentials_in_git: false
+  credentials_storage: Secret Manager or runtime secret
+library_assets:
+  - imea-1_atualizado_2026-08-10.xlsx
+bigquery:
+  dataset: mercado
+  table: imea_indicadores
+  staging_table: stg_imea_indicadores
+  partition:
+    field: data_referencia
+    type: DAY
+  clustering:
+    - produto
+    - indicador
+    - local
+load:
+  strategy: merge
+  idempotent: true
+  natural_key:
+    - data_referencia
+    - produto
+    - indicador
+    - local
+    - unidade
+required_temporal_fields:
+  - data_referencia
+  - data_publicacao
+  - data_coleta
+  - competencia
+evidence:
+  default_class: OBSERVADO
+quality:
+  checks:
+    - data_referencia_not_null
+    - produto_not_null
+    - indicador_not_null
+    - valor_numeric_when_expected
+    - no_duplicate_natural_key
+acceptance:
+  - raw_preserved
+  - staging_validated
+  - merge_idempotent
+  - counts_logged
+  - sample_queries_match_source
