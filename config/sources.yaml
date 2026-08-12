@@ -1,0 +1,142 @@
+sources:
+  - id: conab_armazens
+    institution: CONAB
+    domain: armazenagem
+    priority: P0
+    access: official_download
+    cadence: snapshot_irregular
+    status_data: ESTRUTURADA
+    status_pipeline: IMPLEMENTADA_A_VALIDAR_NO_BIGQUERY_REAL
+    target: logistica.armazens
+  - id: conab_safra
+    institution: CONAB
+    domain: safra
+    priority: P0
+    access: official_download
+    cadence: official_calendar
+    status_data: ESTRUTURADA
+    target: agro.safra
+  - id: imea_indicadores
+    institution: IMEA
+    domain: mercado_mt
+    priority: P0
+    access: authorized_login_or_manual_download
+    cadence: mixed
+    status_data: ESTRUTURADA
+    target: mercado.imea_indicadores
+  - id: imea_fretes
+    institution: IMEA
+    domain: logistica
+    priority: P0
+    access: authorized_login_or_manual_download
+    cadence: weekly
+    status_data: ESTRUTURADA
+    target: logistica.fretes_referencia
+  - id: comex_stat
+    institution: SECEX_Comex_Stat
+    domain: comercio_exterior
+    priority: P0
+    access: official_structured_download
+    cadence: monthly
+    status_data: ESTRUTURADA
+    target: comex.exportacoes_importacoes
+  - id: portos_lineup
+    institution: Portos_e_Terminais_Oficiais
+    domain: portos
+    priority: P0
+    access: official_query_download_snapshots
+    cadence: daily_or_event
+    status_data: ESTRUTURADA_PARCIAL
+    target: portos.lineup
+  - id: anp
+    institution: ANP
+    domain: energia_bioenergia_logistica
+    priority: P0
+    access: official_download
+    cadence: weekly_monthly_by_dataset
+    status_data: ESTRUTURADA
+    target: energia.*
+  - id: noaa
+    institution: NOAA
+    domain: clima
+    priority: P1
+    access: files_or_api
+    cadence: daily
+    status_data: ESTRUTURADA
+    target: clima.noaa_precipitacao
+  - id: inmet
+    institution: INMET
+    domain: clima
+    priority: P1
+    access: official_files
+    cadence: hourly_daily
+    status_data: PARCIAL
+    target: clima.inmet_observacoes
+  - id: ana
+    institution: ANA
+    domain: hidrologia
+    priority: P1
+    access: authorized_api_or_download
+    cadence: hourly_daily
+    status_data: PARCIAL
+    target: hidro.observacoes
+  - id: ibge
+    institution: IBGE
+    domain: estrutural_safra
+    priority: P1
+    access: SIDRA_API
+    cadence: annual_monthly_by_dataset
+    status_data: PACOTE_ESPECIFICADO
+    target: ibge.*
+  - id: bcb
+    institution: Banco_Central_do_Brasil
+    domain: macro
+    priority: P1
+    access: public_api
+    cadence: daily_weekly
+    status_data: PACOTE_ESPECIFICADO
+    target: macro.*
+  - id: usda
+    institution: USDA
+    domain: internacional
+    priority: P1
+    access: official_api_files
+    cadence: weekly_monthly
+    status_data: PARCIAL
+    target: global.usda_*
+  - id: argentina
+    institution: Fontes_Oficiais_Argentina
+    domain: internacional
+    priority: P1
+    access: official_download
+    cadence: publication_dependent
+    status_data: PARCIAL
+    target: global.argentina_*
+  - id: sipeagro
+    institution: MAPA_SIPEAGRO
+    domain: industria_cadastros
+    priority: P1
+    access: official_download
+    cadence: irregular
+    status_data: ESTRUTURADA_COMO_CADASTRO
+    target: cadastros.estabelecimentos_sipeagro
+  - id: rntrc
+    institution: ANTT
+    domain: transporte
+    priority: P1
+    access: official_ckan_files
+    cadence: monthly_or_irregular
+    status_data: PARCIAL
+    target: transporte.rntrc
+  - id: abiove
+    institution: ABIOVE
+    domain: esmagamento_soja
+    priority: P1
+    access: official_publication
+    cadence: monthly
+    status_data: RECEBIDA_PARCIAL
+    target: industria.esmagamento_soja
+rules:
+  no_public_data_claims_of_real_freight_or_individual_trading_volume: true
+  raw_files_go_to_gcs_not_git: true
+  tables_created_on_demand: true
