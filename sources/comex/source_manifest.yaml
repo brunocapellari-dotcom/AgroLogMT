@@ -1,0 +1,65 @@
+source_id: comex_stat
+institution: SECEX_Comex_Stat
+domain: comercio_exterior
+priority: P0
+status: PRONTO_PARA_PREPARAR_DADOS
+source:
+  method: official_structured_download
+  preserve_raw: true
+  preferred_raw_formats:
+    - csv.gz
+    - csv
+  known_library_asset: COMEX_Base_Tratada_AgroLog_MT360_Ajustada.xlsx
+  note: preferir arquivos integrais CSV/CSV.GZ ao Excel-resumo como fonte mestre
+bigquery:
+  datasets:
+    - comex
+  tables:
+    exportacoes: exportacoes
+    importacoes: importacoes
+  staging_tables:
+    exportacoes: stg_exportacoes
+    importacoes: stg_importacoes
+  partition:
+    field: data_referencia
+    granularity: MONTH
+  clustering_candidates:
+    - uf
+    - municipio_ibge
+    - produto_ncm
+    - urf
+    - via
+load:
+  strategy: append_or_merge_by_release_vintage
+  idempotent: true
+  preserve_revisions: true
+required_temporal_fields:
+  - data_referencia
+  - data_publicacao
+  - data_coleta
+  - competencia
+methodologies:
+  keep_separate:
+    - ncm_uf_via_urf
+    - municipio_sh4
+semantic_rules:
+  - urf_nao_e_automaticamente_porto_fisico
+  - uf_e_conceito_estatistico_da_mercadoria
+  - nao_inferir_trading_fazenda_transportador_sem_fonte
+  - frete_importacao_nao_e_frete_rodoviario_domestico
+  - separar_exportacao_e_importacao_explicitamente
+evidence:
+  default_class: OBSERVADO
+quality:
+  checks:
+    - fluxo_in_exportacao_importacao
+    - peso_liquido_non_negative
+    - valor_fob_non_negative
+    - periodo_valid
+    - no_duplicate_natural_key_within_release
+acceptance:
+  - full_raw_file_outside_git
+  - schema_detected_and_versioned
+  - methodologies_queryable_separately
+  - mt_queries_reproducible
+  - rerun_same_release_idempotent
