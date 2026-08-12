@@ -1,0 +1,32 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials*.json
+service-account*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Local/data outputs
+data/
+raw/
+current/
+core/
+historical/core/
+*.csv.gz
+*.parquet
+*.xlsx
+*.xls
+*.zip
+
+# IDE/OS
+.DS_Store
+.vscode/
+.idea/
