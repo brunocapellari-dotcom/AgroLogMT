@@ -1,0 +1,69 @@
+source_id: conab_armazens
+institution: CONAB
+domain: logistica
+entity: armazens
+priority: P0
+status: PRONTO_PARA_CLAUDE_CODE
+source:
+  method: official_download
+  raw_filename_pattern: ArmazensCadastrados*.txt
+  canonical_url: https://portaldeinformacoes.conab.gov.br/downloads/arquivos/ArmazensCadastrados.txt
+  preserve_raw: true
+  raw_destination: gcs
+bigquery:
+  dataset: logistica
+  table: armazens
+  staging_table: stg_armazens
+  snapshots_table: armazens_snapshots
+  snapshot_members_table: armazens_snapshot_membros
+  partition:
+    field: data_referencia
+    type: DAY
+  clustering:
+    - uf
+    - municipio_ibge
+    - armazenador
+load:
+  strategy: snapshot_plus_merge
+  idempotent: true
+  never_delete_on_snapshot_absence: true
+  natural_key_preference:
+    - cda
+  natural_key_fallback:
+    - armazenador
+    - municipio_ibge
+    - unidade_armazenadora
+required_temporal_fields:
+  - data_referencia
+  - data_publicacao
+  - data_coleta
+  - competencia
+snapshot_metrics:
+  - registros_recebidos
+  - registros_novos
+  - registros_alterados
+  - registros_inalterados
+  - ausentes_no_snapshot_atual
+  - erros
+evidence:
+  default_class: OBSERVADO
+quality:
+  required:
+    - armazenador
+    - municipio
+    - uf
+    - capacidade_estatica_t
+  checks:
+    - non_negative_capacity
+    - valid_uf
+    - valid_coordinates_when_present
+    - natural_key_not_null_after_fallback
+    - no_duplicate_natural_key_within_snapshot
+acceptance:
+  - raw_file_preserved_with_hash
+  - staging_load_successful
+  - snapshot_registered
+  - merge_is_idempotent
+  - movement_metrics_logged
+  - latest_valid_view_queryable
+  - rerun_same_file_creates_no_duplicate_business_rows
