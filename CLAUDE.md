@@ -15,5 +15,5 @@ Regras essenciais:
 - BigQuery é a fonte única de verdade analítica; GitHub guarda código, SQL, schemas, testes e documentação.
 - A prioridade atual é CONAB Armazéns ponta a ponta no BigQuery real; depois conectar a primeira consulta ao AgroLog Gateway e validar via OpenAI e Claude.
 
-## Bootstrap de código
-O pacote `bootstrap/agrolog_code_bootstrap.tar.gz` contém o código-fonte e a governança preparados por ChatGPT para CONAB e IMEA. Antes de implementar a próxima etapa, leia `bootstrap/README.md` e extraia o pacote em uma branch de trabalho, preservando os arquivos existentes do repositório e revisando conflitos antes do commit.
+## Trabalho compartilhado
+Este repositório é o ponto de sincronização entre ChatGPT/Codex e Claude Code. Claude deve trabalhar sempre a partir do repositório/branch atual e enviar mudanças por Pull Request. Não use ZIPs do repositório como fonte de verdade; o código deve existir como arquivos Git normais.
