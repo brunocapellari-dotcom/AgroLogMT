@@ -1,0 +1,69 @@
+source_id: portos
+institution: portos_e_terminais_oficiais
+domain: portos
+priority: P0
+status: PRONTO_PARA_PREPARAR_DADOS
+coverage:
+  priority_locations:
+    - Santos
+    - Paranagua
+    - Miritituba_Itaituba
+    - Santarem
+    - Vila_do_Conde_Barcarena
+    - Itaqui
+    - Novo_Remanso
+    - Porto_Velho
+source:
+  methods:
+    - official_download
+    - official_query
+    - timestamped_snapshots
+  preserve_raw: true
+bigquery:
+  dataset: portos
+  tables:
+    movimentacao: movimentacao
+    escalas: escalas
+    lineup: lineup
+  partition_preferences:
+    movimentacao: data_referencia
+    escalas: data_desatracacao
+    lineup: data_coleta
+  clustering_candidates:
+    - porto
+    - terminal
+    - produto
+    - sentido
+load:
+  idempotent: true
+  preserve_snapshots: true
+  scale_key_preference:
+    - duv
+    - imo_viagem_porto
+semantic_rules:
+  - separar_programacao_estimativa_realizado
+  - evitar_dupla_contagem_por_lote_operador_terminal_mercadoria
+  - operacao_concluida_semana_padrao_desatracacao
+  - registrar_chegada_atracacao_desatracacao_separadamente
+  - apresentar_escalas_navios_e_tonelagem
+  - nao_atribuir_volume_total_do_porto_a_mato_grosso_sem_metodo
+required_temporal_fields:
+  - data_referencia
+  - data_publicacao
+  - data_coleta
+  - competencia
+evidence:
+  realized: OBSERVADO
+  lineup: OBSERVADO_PROGRAMACAO
+quality:
+  checks:
+    - escala_deduplicada
+    - tonelagem_non_negative
+    - eventos_temporais_coerentes
+    - porto_not_null
+    - produto_normalizado
+acceptance:
+  - movement_and_lineup_separate
+  - historical_scale_count_reproducible
+  - predicted_vs_realized_distinguishable
+  - snapshot_rerun_idempotent
