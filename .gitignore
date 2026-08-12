@@ -1,0 +1,29 @@
+# Secrets / local config
+.env
+.env.*
+!.env.example
+*credentials*.json
+*service-account*.json
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Generated datasets / local operational exports
+**/core/*.csv
+**/core/*.csv.gz
+**/current/*.csv
+**/operacional/*.xlsx
+**/downloads/
+**/raw/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
