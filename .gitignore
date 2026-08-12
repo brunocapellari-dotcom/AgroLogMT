@@ -13,20 +13,39 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+.coverage
+htmlcov/
 
-# Local/data outputs
-data/
-raw/
-current/
-core/
-historical/core/
+# Local source data and generated artifacts
+# Real datasets live outside GitHub. Source names such as CONAB/IMEA in code
+# identify adapters/collectors; they do not mean raw datasets belong here.
+/data/
+/raw/
+/local-data/
+/downloads/
+/artifacts/
+/outputs/
+/tmp/
+/temp/
+/current/
+/core/
+/historical/core/
+
+# Known real-source artifacts
+ArmazensCadastrados*.txt
 *.csv.gz
 *.parquet
 *.xlsx
 *.xls
 *.zip
+*.7z
+
+# Local Google Cloud credentials/config exports
+application_default_credentials.json
+gcloud-service-key*.json
 
 # IDE/OS
 .DS_Store
+Thumbs.db
 .vscode/
 .idea/

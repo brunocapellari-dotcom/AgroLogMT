@@ -15,10 +15,14 @@ Regras essenciais:
 - Se houver duas definições concorrentes, pare e identifique a fonte canônica antes de continuar.
 - Preserve compatibilidade com BigQuery e Cloud Run.
 - Nunca versione credenciais, tokens ou arquivos brutos pesados.
+- Nomes de fontes como CONAB, IMEA, CEPEA, Comex Stat, ANTAQ, ANP e USDA identificam responsabilidades de código; não autorizam armazenar os datasets reais dessas fontes no GitHub.
+- Código, parsers, schemas, SQL, configurações sem segredo, testes e documentação pertencem ao GitHub; dados reais/RAW, planilhas, ZIPs, PDFs e históricos pesados ficam em armazenamento externo.
+- Testes que dependam de dados reais devem receber caminho externo/configurável. Não copie dados reais para dentro do repositório só para fazer o teste passar.
+- Fixtures pequenos e artificiais podem permanecer em `tests/fixtures/` quando necessários.
 - Diferencie dado observado, inferência, estimativa e informação negociada/autorizada.
 - Antes de remover ou renomear tabelas/campos, procure todas as referências no repositório.
 - BigQuery é a fonte única de verdade analítica; GitHub guarda código, SQL, schemas, testes e documentação.
-- A prioridade atual é CONAB Armazéns ponta a ponta no BigQuery real; depois conectar a primeira consulta ao AgroLog Gateway e validar via OpenAI e Claude.
+- A prioridade atual é consolidar no Git o código validado de CONAB Armazéns, mantendo os dados reais fora do repositório; depois executar a carga ponta a ponta no BigQuery real, conectar a primeira consulta ao AgroLog Gateway e validar via OpenAI e Claude.
 
 ## Método de trabalho
 
@@ -31,6 +35,13 @@ Para mudanças não triviais:
 6. só então considere a tarefa concluída.
 
 Esse método é obrigatório mesmo quando uma skill externa de planejamento/revisão estiver instalada. Skills complementam estas regras; não as substituem.
+
+## Organização por fonte
+
+- Não crie diretórios vazios apenas para antecipar fontes futuras.
+- Quando uma fonte entrar em produção, identifique-a claramente na estrutura do código sem misturar arquivos RAW.
+- Preserve componentes compartilhados quando a regra for comum a várias fontes; não replique a mesma lógica em `conab`, `imea` ou outros módulos apenas por organização visual.
+- Se a implementação existente já possuir uma estrutura funcional, adapte-a incrementalmente em vez de mover arquivos apenas para seguir um desenho teórico.
 
 ## Skills e ferramentas externas
 

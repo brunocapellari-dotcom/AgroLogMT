@@ -20,6 +20,32 @@ O GitHub é a fonte oficial para código, configurações, SQL, schemas, documen
 
 A regra canônica completa está em `docs/REPOSITORY_GOVERNANCE.md`.
 
+## Separação entre código e dados
+
+Nomes de fontes como **CONAB**, **IMEA**, **CEPEA**, **Comex Stat**, **ANTAQ**, **ANP** ou **USDA** podem aparecer na árvore do repositório para identificar qual origem um coletor, parser, schema, configuração ou teste atende. Isso não significa que os arquivos reais dessas fontes devam ser armazenados no GitHub.
+
+A separação oficial é:
+
+- **GitHub** — código, coletores, parsers, schemas, SQL, configurações sem segredo, testes e documentação;
+- **armazenamento externo/RAW** — arquivos originais e históricos das fontes, planilhas, ZIPs, PDFs e demais dados operacionais;
+- **BigQuery** — dados estruturados, históricos tratados e camada analítica oficial.
+
+Dados reais não devem ser copiados para o repositório apenas para permitir testes. Os testes que exigirem bases reais devem receber um caminho externo/configurável para esses dados. Fixtures pequenos e artificiais podem permanecer em `tests/fixtures/` quando necessários.
+
+## Organização por responsabilidade
+
+A árvore deve evoluir incrementalmente conforme os módulos reais forem incorporados. Não criar diretórios vazios apenas para antecipar fontes futuras.
+
+- `docs/` — arquitetura, governança, backlog e decisões;
+- `collector/` — motor de coleta/normalização e componentes específicos de fonte quando entrarem em produção;
+- `historical/` — reconstruções e cargas históricas;
+- `gateway/` — API/MCP AgroLog Gateway;
+- `sql/` — consultas, views e transformações SQL;
+- `tests/` — testes automatizados, validações e fixtures pequenos/artificiais;
+- `bootstrap/` — instruções de sincronização e implantação inicial.
+
+Quando uma fonte possuir implementação própria, o nome da fonte deve identificar claramente a responsabilidade do código, sem misturar dados brutos. A estrutura exata deve respeitar o código existente e evitar reorganizações artificiais que criem duplicação.
+
 ## Princípios de dados
 
 Toda informação deve preservar, quando aplicável:
@@ -38,19 +64,11 @@ E deve ser classificada explicitamente como:
 
 ## Prioridade atual
 
-1. Executar **CONAB Armazéns** ponta a ponta contra o BigQuery real.
-2. Validar carga, logs, deduplicação e consulta.
-3. Conectar o **AgroLog Gateway** à primeira tabela.
-4. Testar a mesma consulta via OpenAI e Claude.
-5. Expandir para novas fontes somente após essa validação.
+1. Consolidar no repositório oficial o código já validado de **CONAB Armazéns**, mantendo os dados reais fora do GitHub.
+2. Executar CONAB Armazéns ponta a ponta contra o BigQuery real.
+3. Validar carga, logs, deduplicação e consulta.
+4. Conectar o **AgroLog Gateway** à primeira tabela.
+5. Testar a mesma consulta via OpenAI e Claude.
+6. Expandir para novas fontes somente após essa validação, começando pelo IMEA.
 
-## Estrutura inicial
-
-- `docs/` — arquitetura, governança, backlog e decisões.
-- `collector/` — coletores, normalização e cargas.
-- `historical/` — componentes históricos e reconstruções.
-- `gateway/` — API/MCP AgroLog Gateway.
-- `sql/` — consultas, views e transformações SQL.
-- `tests/` — testes automatizados e validações.
-
-> A implementação deve evoluir incrementalmente a partir da V3, sem redesenho completo do projeto.
+> A implementação deve evoluir incrementalmente a partir do estado atual do projeto, sem redesenho completo e sem criar uma segunda fonte de verdade.
