@@ -14,6 +14,12 @@ Construir uma plataforma de inteligência em agronegócio e logística com foco 
 - **OpenAI/ChatGPT e Claude**: consumidores da mesma base central, sem bancos separados por IA.
 - **PostgreSQL**: reservado para eventual camada transacional futura.
 
+## Governança do repositório
+
+O GitHub é a fonte oficial para código, configurações, SQL, schemas, documentação e contratos do projeto. O mantenedor principal deve sempre analisar o que já existe antes de criar ou alterar arquivos, preferindo consolidar, atualizar e refatorar estruturas existentes em vez de gerar duplicatas ou fontes concorrentes.
+
+A regra canônica completa está em `docs/REPOSITORY_GOVERNANCE.md`.
+
 ## Princípios de dados
 
 Toda informação deve preservar, quando aplicável:
