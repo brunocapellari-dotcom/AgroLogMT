@@ -1,0 +1,54 @@
+source_id: anp
+institution: ANP
+domain: energia_bioenergia_logistica
+priority: P0
+status: PRONTO_PARA_PREPARAR_DADOS
+source:
+  method: official_download
+  preserve_raw: true
+  known_library_asset: AgroLog_Fonte_ANP.xlsx
+bigquery:
+  domain_tables:
+    precos_combustiveis: energia.precos_combustiveis
+    vendas_combustiveis: energia.vendas_combustiveis
+    tancagem: energia.tancagem
+    movimentacao: energia.movimentacao
+    producao_bioenergia: industria.bioenergia_producao
+    capacidade_bioenergia: industria.bioenergia_capacidade
+  partition_preference: data_referencia
+  clustering_candidates:
+    - produto
+    - uf
+    - municipio
+    - unidade_produtora
+load:
+  strategy: separate_jobs_by_dataset_and_cadence
+  idempotent: true
+  preserve_snapshots_where_applicable: true
+cadence:
+  diesel_prices: weekly
+  other_datasets: publication_dependent_often_monthly
+required_temporal_fields:
+  - data_referencia
+  - data_publicacao
+  - data_coleta
+  - competencia
+semantic_rules:
+  - separar_preco_vendas_producao_capacidade_tancagem_movimentacao
+  - snapshot_usa_data_interna_quando_disponivel
+  - nao_atribuir_producao_regional_integral_a_mt_sem_evidencia
+  - capacidade_nominal_nao_e_producao_observada
+evidence:
+  default_class: OBSERVADO
+quality:
+  checks:
+    - period_valid
+    - value_non_negative_where_applicable
+    - unit_consistent
+    - no_overlapping_price_windows_without_version_rule
+    - snapshot_date_consistent
+acceptance:
+  - datasets_loaded_separately
+  - weekly_diesel_pipeline_queryable
+  - monthly_datasets_preserve_reference_dates
+  - rerun_same_release_idempotent
