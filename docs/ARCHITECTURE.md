@@ -35,10 +35,22 @@ O AgroLog MT usa uma arquitetura analítica centralizada com camadas distintas p
 
 ## Fontes de verdade por responsabilidade
 
-- GitHub: código, SQL, schemas, testes, configuração sem segredo, contratos e documentação do sistema.
+- GitHub: código, SQL, schemas, testes, configuração sem segredo, contratos e documentação técnica do sistema.
 - BigQuery: dados estruturados e histórico analítico oficial.
 - RAW/Drive/Cloud Storage: arquivos originais e documentos de fonte.
-- Obsidian: conhecimento derivado, contexto, relações e memória histórica.
+- Obsidian: conhecimento derivado, contexto, relações, evidências e memória histórica.
+
+## Fluxos de dados e conhecimento
+
+**Dado estruturado**: fonte → coleta/validação → BigQuery → AgroLog Gateway/consulta → análise; somente sínteses duradouras seguem para o Obsidian.
+
+**Documento**: PDF/livro/artigo/manual/norma/relatório → Drive; dados estruturáveis podem seguir para BigQuery e conhecimento/metodologia/evidências podem seguir para Obsidian.
+
+Detalhes canônicos do Segundo Cérebro estão em `docs/OBSIDIAN.md`. O Obsidian não deve manter cópias manuais de séries recorrentes do BigQuery.
+
+## Catálogo de fontes e capacidades
+
+Toda nova API, dataset, repositório ou fonte estruturada deve passar pelo contrato de `docs/SOURCE_CAPABILITY_CATALOG.md` antes de integração. O catálogo não substitui manifests de implementação e não autoriza criação antecipada de tabelas.
 
 ## Regras estruturais
 
