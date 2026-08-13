@@ -54,7 +54,9 @@ Não manter duas implementações ativas para a mesma função sem motivo técni
 - `docs/ARCHITECTURE.md`: arquitetura técnica canônica.
 - `docs/DATA_GOVERNANCE.md`: governança e classificação de dados/evidências.
 - `docs/REPOSITORY_GOVERNANCE.md`: governança estrutural do GitHub e colaboração entre agentes.
-- `docs/BACKLOG.md`: prioridades executáveis e critérios de pronto.
+- `docs/SOURCE_CAPABILITY_CATALOG.md`: contrato do catálogo de fontes e capacidades.
+- `docs/OBSIDIAN.md`: arquitetura e escopo do Segundo Cérebro.
+- `docs/BACKLOG.md`: prioridades de alto nível; Issues controlam o trabalho rastreável.
 
 Novos documentos devem complementar essas fontes, não reescrevê-las.
 
@@ -62,45 +64,40 @@ Novos documentos devem complementar essas fontes, não reescrevê-las.
 
 1. Ler a árvore relevante do repositório.
 2. Ler os arquivos canônicos relacionados.
-3. Pesquisar nomes, funções, tabelas, schemas e regras semelhantes.
-4. Classificar a mudança como atualização, extensão, refatoração, migração ou novo componente.
+3. Pesquisar Issues, PRs, nomes, funções, tabelas, schemas e regras semelhantes.
+4. Classificar a mudança e vincular à Issue.
 5. Preferir atualização/refatoração a novo arquivo quando a responsabilidade já existir.
 6. Validar que não surgiram duas fontes de verdade.
-7. Registrar a mudança de forma clara no commit ou pull request.
+7. Registrar a mudança de forma clara no commit ou Pull Request.
 
 ## 7. Claude e outros agentes
 
 Claude Code e futuros agentes devem tratar o conteúdo atual do repositório como estado oficial do projeto.
 
-Ao propor alterações, devem:
-
-- reutilizar estruturas existentes;
-- evitar criar arquivos equivalentes com outro nome;
-- evitar redefinir schemas, contratos ou regras já canônicas;
-- apontar conflitos antes de implementar;
-- preferir alterações pequenas, rastreáveis e testáveis;
-- preservar compatibilidade quando tecnicamente apropriado.
+Ao propor alterações, devem reutilizar estruturas existentes, evitar redefinições concorrentes, apontar conflitos, preferir mudanças pequenas e preservar compatibilidade quando apropriado.
 
 ## 8. Conflitos de informação
 
-Se houver conflito entre arquivos:
-
-1. não escolher silenciosamente um deles;
-2. identificar qual é a fonte canônica pela responsabilidade definida neste documento;
-3. consolidar a informação válida na fonte canônica;
-4. atualizar referências dependentes;
-5. remover a ambiguidade antes de continuar o desenvolvimento.
-
-Nenhum processo automatizado deve depender de duas definições concorrentes para o mesmo conceito.
+Se houver conflito entre arquivos, não escolher silenciosamente. Identificar a fonte canônica, consolidar a informação válida, atualizar referências dependentes e remover a ambiguidade antes de continuar.
 
 ## 9. Dados brutos e artefatos grandes
 
-O GitHub não deve virar depósito de bases históricas, planilhas de operação ou arquivos grandes que pertencem ao armazenamento de dados.
-
 - BigQuery: dados estruturados e históricos analíticos.
-- armazenamento apropriado/Drive quando necessário: documentos-fonte e artefatos pesados.
-- GitHub: código, configuração, schemas, SQL, documentação, testes, metadados e pequenos fixtures necessários ao desenvolvimento.
+- armazenamento apropriado/Drive: documentos-fonte e artefatos pesados.
+- GitHub: código, configuração, schemas, SQL, documentação, testes, metadados e pequenos fixtures.
 
-## 10. Princípio final
+## 10. Governança obrigatória por Issue
+
+Toda tarefa de alteração do repositório deve ter uma classificação exata: **Correção**, **Melhoria** ou **Nova função**.
+
+Fluxo: **Issue → branch → alteração → testes/revisão → Pull Request → merge manual**.
+
+- Não escrever diretamente na `main`.
+- Antes de criar branch ou PR, pesquisar trabalho aberto equivalente.
+- Uma PR pode referenciar mais de uma Issue quando a mudança for coesa.
+- Achado fora do escopo deve virar nova Issue, não alteração silenciosa.
+- A PR deve informar Issues, alterações, validação, riscos, limitações e próximos passos.
+
+## 11. Princípio final
 
 Uma função, um contrato, um schema ou uma regra deve possuir uma única fonte canônica no repositório. Todo novo conteúdo deve melhorar, complementar ou referenciar o que já existe — nunca criar uma segunda verdade concorrente.
