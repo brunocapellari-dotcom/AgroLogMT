@@ -15,7 +15,13 @@ Antes de alterar qualquer arquivo, leia:
 
 ## Papel do Codex
 
-O Codex é revisor técnico independente e segundo agente de engenharia. Pode executar tarefas isoladas quando explicitamente designado, sem criar segunda fonte de verdade.
+O Codex é um componente permanente do projeto e atua prioritariamente como:
+- revisor técnico independente do trabalho do Claude Code;
+- segunda opinião para arquitetura, schemas, SQL, testes e segurança;
+- auditor de diffs, duplicação, regressões e contratos;
+- executor de tarefas isoladas quando explicitamente designado.
+
+O Codex não cria uma segunda fonte de verdade. GitHub continua canônico para código/documentação técnica e BigQuery para dados analíticos.
 
 ## Governança
 
@@ -29,17 +35,16 @@ O Codex é revisor técnico independente e segundo agente de engenharia. Pode ex
 ## Regras
 
 - Trabalhe sobre o estado atual; não redesenhe do zero sem necessidade.
+- Antes de criar arquivo, módulo, schema, SQL ou regra, pesquise responsabilidade equivalente.
 - Prefira atualizar/refatorar a fonte canônica existente.
 - Não versionar dados RAW, arquivos grandes, credenciais, tokens ou segredos.
-- Não executar operação destrutiva sem autorização explícita.
+- Não executar `DROP`, `TRUNCATE`, `DELETE`, force push ou operação destrutiva sem autorização explícita.
 - Preserve `competencia`, `data_referencia`, `data_publicacao`, `data_coleta` e `data_corte_estudo` quando aplicável.
 - Diferencie observado, cadastro, cálculo, inferência, estimativa, projeção, sinal indireto e informação negociada/autorizada.
 - Para mudanças não triviais: analisar → planejar → revisar → implementar → testar → revisar diff.
-- Divergências entre agentes devem ser resolvidas por código, testes, documentação canônica e evidência.
+- Quando chamado via MCP pelo Claude Code, forneça revisão independente; não concorde automaticamente com a proposta inicial.
+- Divergências entre Claude e Codex devem ser resolvidas pelo código, testes, documentação canônica e evidência, não por preferência de modelo.
 
 ## Prioridade atual
 
-1. CONAB Armazéns validado no BigQuery real.
-2. AgroLog Gateway para a primeira consulta.
-3. Validação multiagente sobre a mesma base.
-4. Expansão de fontes somente conforme priorização e governança.
+A prioridade operacional deve ser lida em `docs/BACKLOG.md` e nas Issues abertas. Este arquivo não deve manter uma fila concorrente de prioridades.
