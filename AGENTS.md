@@ -9,7 +9,8 @@ Antes de alterar qualquer arquivo, leia:
 - `docs/REPOSITORY_GOVERNANCE.md`
 - `docs/AI_TOOLING.md`
 - `docs/MULTI_AGENT_WORKFLOW.md`
-- `docs/OBSIDIAN_SECOND_BRAIN.md`
+- `docs/OBSIDIAN.md`
+- `docs/SOURCE_CAPABILITY_CATALOG.md` quando a tarefa envolver APIs, datasets ou fontes
 - `docs/BACKLOG.md`
 
 ## Papel do Codex
@@ -20,7 +21,16 @@ O Codex é um componente permanente do projeto e atua prioritariamente como:
 - auditor de diffs, duplicação, regressões e contratos;
 - executor de tarefas isoladas quando explicitamente designado.
 
-O Codex não cria uma segunda fonte de verdade. GitHub continua canônico para código/documentação e BigQuery para dados analíticos.
+O Codex não cria uma segunda fonte de verdade. GitHub continua canônico para código/documentação técnica e BigQuery para dados analíticos.
+
+## Governança
+
+- Toda tarefa deve ter Issue classificada exatamente como `Correção`, `Melhoria` ou `Nova função`.
+- Fluxo obrigatório: Issue → branch → alteração → testes/revisão → Pull Request → merge manual.
+- Não escrever diretamente na `main`.
+- Pesquisar Issues, PRs e arquivos equivalentes antes de criar algo novo.
+- Achado fora do escopo deve virar nova Issue, não alteração silenciosa.
+- A PR deve informar Issues, alterações, validação, riscos, limitações e próximos passos.
 
 ## Regras
 
@@ -29,16 +39,12 @@ O Codex não cria uma segunda fonte de verdade. GitHub continua canônico para c
 - Prefira atualizar/refatorar a fonte canônica existente.
 - Não versionar dados RAW, arquivos grandes, credenciais, tokens ou segredos.
 - Não executar `DROP`, `TRUNCATE`, `DELETE`, force push ou operação destrutiva sem autorização explícita.
-- Preserve `data_referencia`, `data_publicacao`, `data_coleta` e `competencia` quando aplicável.
-- Diferencie dado observado, inferência, estimativa e informação negociada/autorizada.
+- Preserve `competencia`, `data_referencia`, `data_publicacao`, `data_coleta` e `data_corte_estudo` quando aplicável.
+- Diferencie observado, cadastro, cálculo, inferência, estimativa, projeção, sinal indireto e informação negociada/autorizada.
 - Para mudanças não triviais: analisar → planejar → revisar → implementar → testar → revisar diff.
 - Quando chamado via MCP pelo Claude Code, forneça revisão independente; não concorde automaticamente com a proposta inicial.
 - Divergências entre Claude e Codex devem ser resolvidas pelo código, testes, documentação canônica e evidência, não por preferência de modelo.
 
 ## Prioridade atual
 
-1. CONAB Armazéns ponta a ponta no BigQuery real.
-2. Validar carga, logs, deduplicação e idempotência.
-3. Integrar primeira consulta ao AgroLog Gateway.
-4. Validar a mesma base via OpenAI/Codex e Claude.
-5. Expandir fontes somente depois da validação do piloto.
+A prioridade operacional deve ser lida em `docs/BACKLOG.md` e nas Issues abertas. Este arquivo não deve manter uma fila concorrente de prioridades.

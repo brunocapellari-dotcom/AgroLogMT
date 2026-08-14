@@ -54,7 +54,9 @@ Não manter duas implementações ativas para a mesma função sem motivo técni
 - `docs/ARCHITECTURE.md`: arquitetura técnica canônica.
 - `docs/DATA_GOVERNANCE.md`: governança e classificação de dados/evidências.
 - `docs/REPOSITORY_GOVERNANCE.md`: governança estrutural do GitHub e colaboração entre agentes.
-- `docs/BACKLOG.md`: prioridades executáveis e critérios de pronto.
+- `docs/SOURCE_CAPABILITY_CATALOG.md`: contrato do catálogo de fontes e capacidades.
+- `docs/OBSIDIAN.md`: arquitetura e escopo do Segundo Cérebro.
+- `docs/BACKLOG.md`: prioridades de alto nível; Issues controlam o trabalho rastreável.
 
 Novos documentos devem complementar essas fontes, não reescrevê-las.
 
@@ -62,11 +64,11 @@ Novos documentos devem complementar essas fontes, não reescrevê-las.
 
 1. Ler a árvore relevante do repositório.
 2. Ler os arquivos canônicos relacionados.
-3. Pesquisar nomes, funções, tabelas, schemas e regras semelhantes.
-4. Classificar a mudança como atualização, extensão, refatoração, migração ou novo componente.
+3. Pesquisar Issues, PRs, nomes, funções, tabelas, schemas e regras semelhantes.
+4. Classificar a mudança e vinculá-la à Issue correspondente.
 5. Preferir atualização/refatoração a novo arquivo quando a responsabilidade já existir.
 6. Validar que não surgiram duas fontes de verdade.
-7. Registrar a mudança de forma clara no commit ou pull request.
+7. Registrar a mudança de forma clara no commit ou Pull Request.
 
 ## 7. Claude e outros agentes
 
@@ -101,6 +103,18 @@ O GitHub não deve virar depósito de bases históricas, planilhas de operação
 - armazenamento apropriado/Drive quando necessário: documentos-fonte e artefatos pesados.
 - GitHub: código, configuração, schemas, SQL, documentação, testes, metadados e pequenos fixtures necessários ao desenvolvimento.
 
-## 10. Princípio final
+## 10. Governança obrigatória por Issue
+
+Toda tarefa de alteração do repositório deve ter uma classificação exata: **Correção**, **Melhoria** ou **Nova função**.
+
+Fluxo: **Issue → branch → alteração → testes/revisão → Pull Request → merge manual**.
+
+- Não escrever diretamente na `main`.
+- Antes de criar branch ou PR, pesquisar trabalho aberto equivalente.
+- Uma PR pode referenciar mais de uma Issue quando a mudança for coesa.
+- Achado fora do escopo deve virar nova Issue, não alteração silenciosa.
+- A PR deve informar Issues, alterações, validação, riscos, limitações e próximos passos.
+
+## 11. Princípio final
 
 Uma função, um contrato, um schema ou uma regra deve possuir uma única fonte canônica no repositório. Todo novo conteúdo deve melhorar, complementar ou referenciar o que já existe — nunca criar uma segunda verdade concorrente.
