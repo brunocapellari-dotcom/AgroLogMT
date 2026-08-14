@@ -1,11 +1,17 @@
-# Estado atual / síntese
+---
+type: estado_atual
+status: vivo
+aliases: []
+tags: []
+competencia:
+data_referencia:
+data_publicacao:
+data_coleta:
+data_corte_estudo:
+---
+# {{title}}
 
 ## Escopo
-- competência:
-- data_referencia:
-- data_publicacao:
-- data_coleta:
-- data_corte_estudo:
 
 ## Estado atual
 
@@ -17,8 +23,14 @@
 
 ## O que foi superseded
 
-## Evidências
+## Afirmações materiais e evidências
+| Afirmação | Classe da evidência | Fonte/citação | Página/seção | Qualidade da fonte | Confiança da afirmação |
+|---|---|---|---|---|---|
 
 ## Relações e implicações
 
 ## Riscos e ambiguidades
+
+## Próxima revisão / gatilhos
+
+## Fontes
