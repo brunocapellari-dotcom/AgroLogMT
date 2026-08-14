@@ -1,18 +1,22 @@
-# Estudo
+---
+type: estudo
+status: vivo
+aliases: []
+tags: []
+---
+# {{title}}
 
 ## Identificação
-- título:
 - autores:
-- instituição:
+- instituição_editora:
 - ano_edicao:
 - doi_isbn:
+- assunto:
 - região:
 - data_publicacao:
 - data_coleta:
 - data_corte_estudo:
 - documento_drive:
-
-## Assunto
 
 ## Metodologia
 
@@ -20,10 +24,19 @@
 
 ## Limitações
 
-## Afirmações aproveitáveis
+## Avaliação da evidência
+- qualidade_da_fonte:
+- qualidade_metodologica:
+- aplicabilidade_ao_agrolog:
 
-## Evidências e páginas
+## Afirmações aproveitáveis e evidências
+| Afirmação | Classe da evidência | Página/seção | Qualidade da fonte | Confiança da afirmação | Observação |
+|---|---|---|---|---|---|
 
 ## Estudos que confirmam ou contradizem
 
 ## Conceitos relacionados
+
+## Fontes e referências
+
+## Ambiguidades e lacunas
