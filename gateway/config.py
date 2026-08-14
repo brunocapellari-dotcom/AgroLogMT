@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_-]+$")
-_PROJECT_RE = re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
+_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{1,62}$")
 
 
 class ConfigurationError(RuntimeError):
@@ -41,8 +41,10 @@ def load_settings() -> Settings:
 
     if not project_id:
         raise ConfigurationError("GOOGLE_CLOUD_PROJECT não configurado.")
+    # Validação de segurança para interpolação do identificador no SQL. As regras de
+    # nomenclatura do projeto continuam sendo responsabilidade do Google Cloud.
     if not _PROJECT_RE.fullmatch(project_id):
-        raise ConfigurationError("GOOGLE_CLOUD_PROJECT possui formato inválido.")
+        raise ConfigurationError("GOOGLE_CLOUD_PROJECT possui formato inseguro.")
     if not bq_location:
         raise ConfigurationError("BQ_LOCATION não configurado.")
 
