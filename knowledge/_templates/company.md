@@ -1,11 +1,16 @@
-# Empresa
+---
+type: empresa
+status: vivo
+aliases: []
+tags: []
+---
+# {{title}}
 
 ## Identificação
-- nome:
-- aliases:
+- nome_canonico:
 - setor:
 - geografia:
-- status:
+- status_operacional:
 
 ## Papel na cadeia
 
@@ -17,8 +22,16 @@
 
 ## Relações relevantes
 
-## Afirmações e evidências
+## Afirmações materiais e evidências
+| Afirmação | Classe da evidência | Fonte/citação | Página/seção | Qualidade da fonte | Confiança da afirmação |
+|---|---|---|---|---|---|
+
+## Datas relevantes
+- competencia:
+- data_referencia:
+- data_publicacao:
+- data_coleta:
 
 ## Fontes
 
-## Ambiguidades
+## Ambiguidades e lacunas
