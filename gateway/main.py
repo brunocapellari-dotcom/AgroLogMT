@@ -7,6 +7,7 @@ import uuid
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from google.api_core.exceptions import GoogleAPIError
+from google.auth.exceptions import GoogleAuthError
 from google.cloud import bigquery
 
 from gateway.config import ConfigurationError, load_settings
@@ -44,7 +45,8 @@ def list_armazens(
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, object]:
     started = time.perf_counter()
-    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    incoming_request_id = (request.headers.get("x-request-id") or "").strip()
+    request_id = incoming_request_id[:128] or str(uuid.uuid4())
     response.headers["x-request-id"] = request_id
 
     try:
@@ -83,7 +85,7 @@ def list_armazens(
         )
         rows = list(job.result())
         records = [dict(row.items()) for row in rows]
-    except GoogleAPIError as exc:
+    except (GoogleAPIError, GoogleAuthError) as exc:
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
         _log_event(
             "gateway_bigquery_error",
