@@ -65,7 +65,7 @@ Novos documentos devem complementar essas fontes, não reescrevê-las.
 1. Ler a árvore relevante do repositório.
 2. Ler os arquivos canônicos relacionados.
 3. Pesquisar Issues, PRs, nomes, funções, tabelas, schemas e regras semelhantes.
-4. Classificar a mudança e vincular à Issue.
+4. Classificar a mudança e vinculá-la à Issue correspondente.
 5. Preferir atualização/refatoração a novo arquivo quando a responsabilidade já existir.
 6. Validar que não surgiram duas fontes de verdade.
 7. Registrar a mudança de forma clara no commit ou Pull Request.
@@ -74,17 +74,34 @@ Novos documentos devem complementar essas fontes, não reescrevê-las.
 
 Claude Code e futuros agentes devem tratar o conteúdo atual do repositório como estado oficial do projeto.
 
-Ao propor alterações, devem reutilizar estruturas existentes, evitar redefinições concorrentes, apontar conflitos, preferir mudanças pequenas e preservar compatibilidade quando apropriado.
+Ao propor alterações, devem:
+
+- reutilizar estruturas existentes;
+- evitar criar arquivos equivalentes com outro nome;
+- evitar redefinir schemas, contratos ou regras já canônicas;
+- apontar conflitos antes de implementar;
+- preferir alterações pequenas, rastreáveis e testáveis;
+- preservar compatibilidade quando tecnicamente apropriado.
 
 ## 8. Conflitos de informação
 
-Se houver conflito entre arquivos, não escolher silenciosamente. Identificar a fonte canônica, consolidar a informação válida, atualizar referências dependentes e remover a ambiguidade antes de continuar.
+Se houver conflito entre arquivos:
+
+1. não escolher silenciosamente um deles;
+2. identificar qual é a fonte canônica pela responsabilidade definida neste documento;
+3. consolidar a informação válida na fonte canônica;
+4. atualizar referências dependentes;
+5. remover a ambiguidade antes de continuar o desenvolvimento.
+
+Nenhum processo automatizado deve depender de duas definições concorrentes para o mesmo conceito.
 
 ## 9. Dados brutos e artefatos grandes
 
+O GitHub não deve virar depósito de bases históricas, planilhas de operação ou arquivos grandes que pertencem ao armazenamento de dados.
+
 - BigQuery: dados estruturados e históricos analíticos.
-- armazenamento apropriado/Drive: documentos-fonte e artefatos pesados.
-- GitHub: código, configuração, schemas, SQL, documentação, testes, metadados e pequenos fixtures.
+- armazenamento apropriado/Drive quando necessário: documentos-fonte e artefatos pesados.
+- GitHub: código, configuração, schemas, SQL, documentação, testes, metadados e pequenos fixtures necessários ao desenvolvimento.
 
 ## 10. Governança obrigatória por Issue
 
