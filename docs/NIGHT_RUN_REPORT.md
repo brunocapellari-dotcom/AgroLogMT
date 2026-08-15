@@ -909,3 +909,93 @@ mudança de causa raiz não agrega evidência nova).
 8. Revisitar ONTL quando acessível.
 9. Quando `improve/issue-26-knowledge-48h` for mesclada/enviada, confirmar
    que a correção `AGENTS.md`/`docs/OBSIDIAN.md` chegou a `main`.
+
+## Sessão de 2026-08-15 (execução 10)
+
+### Escopo desta execução
+Reconciliação completa de Fase A/B/C/D (sem mudança de estado em nenhuma
+frente desbloqueada ou nova) e fechamento de um gap real de cobertura de
+teste no Gateway (Issue #13 / PR #25), encontrado ao revisar o código já
+aprovado em busca de trabalho seguro e independente, já que todas as
+demais frentes seguiam bloqueadas por decisão humana pendente.
+
+### Fase A — Gateway (Issue #13 / PR #25) — gap de teste corrigido
+
+`git fetch --all --prune` e `git log` local vs. `origin/feat/13-...`:
+sem divergência. `pytest -q gateway/tests` (invocador direto) falhou com
+`ModuleNotFoundError: No module named 'gateway'` — confirmado como quirk
+de ambiente (esse `pytest` não insere a raiz do repo em `sys.path`; não
+há `pytest.ini`/`pyproject.toml`/`conftest.py` configurando isso), não
+regressão de código. `python -m pytest -q gateway/tests` funciona
+normalmente. `gh pr view 25` conferido: `OPEN`, `DRAFT`, `MERGEABLE`,
+mesmo comentário único já registrado, sem novos reviews.
+
+Revisão linha a linha de `gateway/main.py`, `gateway/query.py`,
+`gateway/config.py` e `gateway/.dockerignore`: implementação consistente
+com o comentário de validação do PR #25 (parametrização BigQuery,
+`MAX_OFFSET`, middleware único de request-id, `.dockerignore` cobrindo
+credenciais, `USER agrolog` no Dockerfile). Nenhum bug novo no código de
+produção.
+
+Gap real encontrado em `gateway/tests/test_main.py`: nenhum teste
+automatizado exercitava `GET /v1/armazens` no caminho de sucesso
+(`200`) nem no caminho de erro do BigQuery (`502`) — só validação manual
+contra BigQuery real, documentada no comentário do PR #25 (execução 9),
+nunca protegida por teste de regressão. Adicionados
+`test_armazens_returns_contract_shape_on_success` e
+`test_armazens_bigquery_error_does_not_leak_internal_detail`, com mocks
+de `bigquery.Client`/`Job`/`Row`.
+
+**Revisão Codex (adversarial, uma rodada, `codex:codex-rescue`):** achado
+real — a primeira versão do teste de sucesso comparava só um subconjunto
+dos campos de `meta` (`source`, `classification`, `rows_returned`,
+`bigquery_job_id`, `total_bytes_processed`), deixando `request_id`,
+`filters`, `limit` e `offset` sem proteção de regressão — uma mudança
+que quebrasse esses campos passaria despercebida pelo teste. O ambiente
+de execução do Codex estava em modo somente leitura nesta sessão (não
+conseguiu aplicar o fix diretamente), então a correção foi aplicada por
+este worker: comparação do dicionário `meta` inteiro contra o valor
+esperado, com `duration_ms` (não-determinístico) validado separadamente
+por `isinstance`.
+
+`python -m pytest -q gateway/tests` → **16 passed** (eram 14). Commit
+`93dd0f8` enviado a `feat/13-agrolog-gateway-armazens` (sessão principal
+já estava nessa branch, sem necessidade de worktree); PR #25 atualizada
+com comentário.
+
+Deploy em Cloud Run privado continua não iniciado — decisão preservada
+de aguardar revisão humana do PR #25 (criação de service account/IAM real
+é infraestrutura com efeito em sistema compartilhado e difícil de
+reverter; nenhuma informação nova nesta execução justifica revisitar essa
+decisão unilateralmente).
+
+### Fase B/C/D — reconciliadas, sem mudança
+
+`gh issue list`/`gh pr list` completos conferidos: nenhuma issue ou PR
+nova além das já registradas. Nenhum comentário/review novo em nenhuma
+PR aberta (#8, #2, #24 IMEA; #27–#34 Fase D), exceto o comentário desta
+própria execução no PR #25. `gh pr view 34` (Issue #18) confirmado como
+mesmo estado documental já registrado na execução 8 (critérios de aceite
+parcialmente marcados, PoC pesado pendente de decisão de escopo humana).
+Bloqueio de permissão do Drive MCP não re-testado (já confirmado negado
+na execução 7). Trabalho da execução 9 sobre Issue #15/ANA (PR #33) não
+repetido — nada mudou desde então.
+
+### Próximo item executável (execução 10)
+
+1. Fase A: Gateway tecnicamente completo e testado (16 testes, contrato
+   de sucesso/erro coberto) para tudo que não depende de decisão humana.
+   Único próximo incremento real é o deploy em Cloud Run privado, que
+   depende de revisão humana do PR #25.
+2. IMEA e Drive: mesmos blockers das execuções anteriores, sem mudança.
+3. PRs #27, #29, #30, #31, #32, #33 e #34 aguardam revisão humana. PR #31
+   continua dependendo da PR #27.
+4. Quando a PR #29 mesclar: migrar `usda_agtransport` para
+   `socrata_connector`.
+5. Issue #18: decisão humana sobre escopo ainda pendente, sem mudança.
+6. Issue #15: sem mudança — próximo passo depende de decisão humana sobre
+   solicitar credencial a `hidro@ana.gov.br`.
+7. Issue #22 e #16 seguem adiadas pela coordenação de manifesto.
+8. Revisitar ONTL quando acessível.
+9. Quando `improve/issue-26-knowledge-48h` for mesclada/enviada, confirmar
+   que a correção `AGENTS.md`/`docs/OBSIDIAN.md` chegou a `main`.
