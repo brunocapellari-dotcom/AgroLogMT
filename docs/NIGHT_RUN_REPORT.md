@@ -1307,3 +1307,74 @@ continuam dependendo de decisão humana: revisão do PR #25 (Cloud Run),
 revisão/merge de pelo menos uma das PRs #27–#34, decisão de
 consolidação IMEA, autorização do conector Drive, ou decisão de escopo
 da Issue #18.
+
+## Sessão de 2026-08-15 (execução 16)
+
+### Escopo desta execução
+Nova sessão dentro da mesma janela autônoma 48h (oitava execução
+consecutiva, 9–16, sem trabalho novo de engenharia identificado em
+Fase A). Reconciliação completa de Fases A/B/C/D, incluindo checagem
+individual de `reviews`/`mergeable`/`updatedAt` para as sete PRs de
+Fase D, das Issues #1 (IMEA), #13 e #22, e listagem completa de
+branches locais/remotas para confirmar que nenhuma frente nova de
+engenharia foi aberta fora do que já está registrado.
+
+### Fase A — Gateway (Issue #13 / PR #25) — reconciliada, sem mudança
+
+1. `git status`, `git log -5` local e `git log
+   origin/feat/13-agrolog-gateway-armazens -5`: idênticos, HEAD local ==
+   HEAD remoto (`68185c4`), sem divergência.
+2. `python -m pip install -r gateway/requirements-dev.txt` +
+   `python -m pytest -q gateway/tests` → **16 passed**, sem regressão,
+   idêntico às execuções 10–15.
+3. `gh pr view 25 --json state,isDraft,mergeable,updatedAt,comments,reviews`:
+   `OPEN`, `DRAFT`, `mergeable: MERGEABLE`, `reviews: []`, `updatedAt`
+   inalterado (`2026-08-15T17:54:12Z`), mesmos dois comentários já
+   registrados (execuções 9/10).
+4. `gh issue view 13 --json comments,updatedAt`: `comments: []`,
+   `updatedAt` inalterado desde a execução 15.
+
+### Fase D — sete PRs abertas revalidadas individualmente, sem mudança
+
+`gh pr view <n> --json reviews,mergeable,updatedAt` para #27, #29, #30,
+#31, #32, #33, #34: todas `MERGEABLE`, `reviews: []`, mesmo `updatedAt`
+já registrado nas execuções 14/15 — nenhuma revisão humana nova em
+nenhuma delas. `gh pr list --state open` confirma o mesmo conjunto de
+PRs conhecido (#2, #8, #12, #24, #25, #27–#34), incluindo a PR #28
+(relatório, já conhecida). `gh issue list --state open` confirma o
+mesmo conjunto de Issues conhecido; nenhuma nova.
+
+`git branch -a --sort=-committerdate` revalidado nesta execução:
+confirma que todas as branches locais/remotas existentes já
+correspondem a Issues/PRs conhecidas (Fase D #14/#15/#17/#18/#19/#20/#21,
+Gateway, CONAB, bootstrap, relatório e a branch de conhecimento
+`improve/issue-26-knowledge-48h`, fora do escopo ENGINEERING desta
+execução). Nenhuma branch órfã ou frente de engenharia nova encontrada.
+
+### Fase B/C — sem mudança
+
+`gh issue view 1 --json comments,updatedAt` (IMEA): `comments: []`,
+`updatedAt` inalterado (`2026-08-12T15:56:42Z`) — sem decisão
+humana/ChatGPT sobre qual candidato promover. `gh issue view 22 --json
+comments,updatedAt`: `comments: []`, `updatedAt` inalterado — Issue #22
+segue sem branch/PR própria, mesma coordenação de manifesto pendente.
+Drive: mesma causa raiz das execuções 7/13/15 (autorização OAuth
+interativa indisponível em sessão não interativa), não re-testado por
+não haver mudança de causa raiz a confirmar.
+
+### Registro do relatório (PR #28)
+
+Esta seção e a seção correspondente de `docs/NIGHT_RUN_BLOCKERS.md`
+foram adicionadas em `chore/night-run-reports-48h` e enviadas na PR #28
+já existente (mesma frente usada pelas execuções 12–15), sem criar uma
+segunda PR de relatório.
+
+### Próximo item executável (execução 16)
+
+Sem mudança em relação à execução 15. Oitava execução consecutiva
+(9–16) sem trabalho de engenharia novo, seguro e desbloqueado
+disponível em Fase A/D. Todos os itens executáveis remanescentes
+continuam dependendo de decisão humana: revisão do PR #25 (Cloud Run),
+revisão/merge de pelo menos uma das PRs #27–#34, decisão de
+consolidação IMEA, autorização do conector Drive, ou decisão de escopo
+da Issue #18.
