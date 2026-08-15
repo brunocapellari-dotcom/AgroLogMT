@@ -483,3 +483,146 @@ execução.
    primeira passada.
 8. Revisitar ONTL quando o portal estiver acessível a partir do ambiente de
    execução (blocker informativo, não bloqueia o restante do trabalho).
+
+## Sessão de 2026-08-15 (execução 6)
+
+### Escopo desta execução
+Reconciliação da Fase A (Issue #13 / PR #25, sem mudança — sem novos
+reviews/checks desde a execução 5) e execução da Fase D — subconjunto sem
+chave nova da Issue #15 (clima e hidrologia).
+
+### Fase A — Gateway (Issue #13 / PR #25) — reconciliada, sem mudança
+
+`gh pr view 25` conferido: `OPEN`, `MERGEABLE`, sem novos reviews/checks
+desde a execução 5 (único comentário continua sendo o de validação
+completa já registrado). Nenhum retrabalho realizado. Deploy em Cloud Run
+privado segue aguardando revisão humana do PR #25 — decisão mantida desta
+sessão sem reavaliação, por ser criação de infraestrutura real (service
+account, IAM) e não haver informação nova que justifique revisitar o
+julgamento das execuções anteriores.
+
+### Fase D — Issue #15 (clima e hidrologia) — subconjunto NASA POWER concluído e enviado
+
+A Issue #15 lista seis fontes candidatas: NASA POWER, ERA5/AgERA5
+(Copernicus CDS), ANA HidroWebService, NASA FIRMS, NOAA/USGS Water e USACE
+Corps Locks/Rivergages. Antes de escolher o item desta execução,
+`origin/chatgpt/comando-mestre-v2-20260812` foi checada novamente (mesma
+verificação das execuções 2/4/5): sem manifesto `sources/` equivalente a
+clima/hidrologia lá (só `anp`, `comex`, `conab/armazens`, `imea/fretes`,
+`imea/indicadores`, `portos`), então a Issue #15 não duplica estrutura em
+progresso — diferente de #16/#22, que seguem adiadas pelo mesmo motivo já
+registrado.
+
+Testadas diretamente (chamada HTTP real, sem chave quando possível) as
+fontes candidatas antes de implementar:
+
+| Fonte | Resultado real | Observação |
+|---|---|---|
+| NASA POWER | `HTTP 200`, dados reais, cobertura global (MT incluído) | Escolhida — implementada nesta execução |
+| USGS Water Services | `HTTP 200`, dados reais | Sem cobertura Brasil/MT — não implementada por falta de relevância geográfica |
+| ANA HidroWebService (inventário legado) | `HTTP 200`, XML com estações do MT | Endpoint de série (dado temporal) não localizado — blocker de descoberta, não de credencial |
+| Copernicus CDS (ERA5/AgERA5) | `HTTP 202` no endpoint raiz | Exige token pessoal para dados reais — blocker de credencial |
+| NASA FIRMS | `HTTP 400` — `"Invalid MAP_KEY"` | `DEMO_KEY` não aceito, exige `MAP_KEY` pessoal — blocker de credencial |
+| USACE Rivergages | `HTTP 200`, corpo de erro genérico | Chamada usada não é a correta; território EUA, baixa prioridade geográfica — não aprofundado |
+
+Só o NASA POWER ficou dentro do escopo desta execução. As demais foram
+registradas em `docs/NIGHT_RUN_BLOCKERS.md` (duas por credencial, uma por
+descoberta de endpoint pendente, duas por falta de relevância geográfica
+direta ao MT).
+
+Branch `feat/15-nasa-power-poc`, criada a partir de `main`, via worktree
+separado (`../AgroLogMT_NASA_POWER_15`, removido ao final) para não
+disturbar o checkout de `feat/13-agrolog-gateway-armazens` na sessão
+principal. Módulo `nasa_power/` autocontido — sem extração de conector
+genérico compartilhado, porque NASA POWER é a única fonte do projeto
+nesta plataforma até agora (diferente do Socrata, que já tinha dois
+consumidores quando `socrata_connector/` foi extraído na execução 5);
+generalizar antes de existir uma segunda fonte seria abstração prematura.
+
+Dois pontos de referência validados no MT (`sorriso_mt`, `rondonopolis_mt`)
+e cinco parâmetros agroclimatológicos padrão (`T2M`, `T2M_MAX`, `T2M_MIN`,
+`PRECTOTCORR`, `RH2M`), todos confirmados por chamada real. Classificação
+de evidência conforme `docs/DATA_GOVERNANCE.md`: **estimado**, não
+observado — a própria API declara as fontes (`SYN1DEG`, `MERRA2`,
+`POWER`: satélite + reanálise numérica), não medição direta de estação
+terrestre; há teste de regressão para essa classificação.
+
+**Revisão Codex (adversarial, 7 rodadas, `codex exec --sandbox
+read-only`):**
+- Rodada 1: 4 achados — trava de host contornável via reatribuição da
+  constante de módulo `NASA_POWER_BASE_URL` (risco de SSRF); erro HTTP
+  com corpo não-JSON perdia o `status_code` real (`response.json()`
+  chamado antes de checar o status); validação de data aceitava datas de
+  calendário inexistentes (`20260231`, `20261301`); `parameters` aceitava
+  string solta (`"T2M"` virava 3 parâmetros por iteração de caracteres)
+  ou itens vazios/não-string.
+- Rodada 2 (após corrigir os 4): confirmou os 4 corrigidos; encontrou 2
+  novos, de baixa severidade — trava de origem validava só `hostname`
+  (aceitava `http://` ou porta não padrão); payload JSON com schema
+  inesperado podia vazar exceção nativa em vez de `NasaPowerApiError`.
+- Rodada 3: confirmou a trava de origem corrigida (comparação de origem
+  exata); encontrou um caminho remanescente — a construção de
+  `DailyPointResult` ficava fora do `try/except` do parsing.
+- Rodada 4: confirmou a correção; encontrou `OverflowError` não capturado
+  (`fill_value` como inteiro JSON extremo).
+- Rodada 5: confirmou a correção; encontrou `latitude`/`longitude`/
+  `community` sem validação de tipo (`None`, string, `NaN`, `inf`
+  escapavam como `TypeError`/`AttributeError` nativos antes da
+  comparação de faixa).
+- Rodada 6: confirmou a correção; encontrou `loc` malformado em corpo de
+  erro (`{"detail": [{"msg": ..., "loc": None}]}`) quebrando
+  `".".join(...)` com `TypeError` nativo dentro do parsing de mensagem de
+  erro.
+- Rodada 7: confirmou a correção. **Aprovado explicitamente para
+  commit, sem achados restantes.**
+
+Também apontou, incidentalmente, uma inconsistência documental
+pré-existente e alheia a esta PR (`AGENTS.md` referencia
+`docs/OBSIDIAN_SECOND_BRAIN.md`, que não existe — só `docs/OBSIDIAN.md`),
+registrada em `docs/NIGHT_RUN_BLOCKERS.md` como item informativo, não
+corrigida nesta branch por estar fora do escopo da Issue #15.
+
+`python -m pytest -q nasa_power/tests` → **57 passed** (52
+mockados/determinísticos + 5 de integração real contra a API NASA POWER).
+Nenhum dado carregado no BigQuery, conforme escopo de avaliação da
+Issue #15.
+
+Commit `768565d` enviado; PR #33 (draft) criada contra `main`,
+referenciando a Issue #15. Sem merge automático. Worktree temporário
+removido ao final; sessão principal permaneceu em
+`feat/13-agrolog-gateway-armazens` durante toda a execução (nunca trocou
+de branch no diretório principal, diferente de execuções anteriores que
+alternavam checkout na mesma árvore de trabalho).
+
+### Próximo item executável (execução 6)
+
+1. IMEA e Drive: mesmos blockers das execuções anteriores. Nota: as
+   ferramentas `mcp__claude_ai_Google_Drive__*` aparecem autenticadas
+   nesta sessão (fora da lista de servidores MCP que exigem autorização),
+   diferente do registrado em execuções anteriores — revalidar o acesso
+   real (não só a presença da ferramenta) numa próxima execução antes de
+   assumir que o blocker de allowlist mudou.
+2. Cloud Run privado do Gateway: aguarda revisão humana do PR #25.
+3. PRs #27 (CKAN), #29 (USDA), #30 (BigQuery Public Datasets), #31 (ANTT
+   ferrovias), #32 (CFTC COT) e #33 (NASA POWER) aguardam revisão humana.
+   PR #31 continua dependendo da PR #27.
+4. Quando a PR #29 (AgTransport) mesclar: migrar `usda_agtransport` para
+   consumir `socrata_connector`.
+5. Issue #15: reavaliar Copernicus CDS (ERA5/AgERA5) e NASA FIRMS quando
+   houver decisão humana sobre registro de token/chave; retomar avaliação
+   do endpoint de série do ANA HidroWebService numa execução futura
+   (inventário já responde sem chave, série ainda não localizada).
+6. Issue #22 e #16 seguem adiadas pela mesma razão de coordenação de
+   manifesto das execuções anteriores.
+7. Issue #18 (motor próprio de rotas) segue como o próximo item de Fase D
+   sem risco de duplicação de manifesto, mas é um PoC mais pesado
+   (benchmark Valhalla x OSRM, estimativa de custo de infraestrutura) — a
+   avaliar se cabe no formato "avaliação/documentação real" que funcionou
+   para #14/#15/#17/#19/#20/#21, ou se precisa de escopo reduzido para
+   uma primeira passada.
+8. Revisitar ONTL quando o portal estiver acessível a partir do ambiente
+   de execução (blocker informativo, não bloqueia o restante do
+   trabalho).
+9. Inconsistência documental `AGENTS.md`/`docs/OBSIDIAN_SECOND_BRAIN.md`
+   (encontrada incidentalmente pelo Codex) — investigar numa execução
+   futura, possivelmente coordenando com o worker KNOWLEDGE (Issue #26).

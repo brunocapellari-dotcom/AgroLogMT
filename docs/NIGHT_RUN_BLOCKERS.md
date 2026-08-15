@@ -211,3 +211,90 @@ migrar `usda_agtransport` para consumir `socrata_connector` em vez do
 **Impacto:** nenhum — ambas as implementações funcionam de forma
 independente e correta hoje; é só uma segunda implementação do mesmo
 protocolo coexistindo temporariamente até a consolidação.
+
+---
+
+## 2026-08-15 — Issue #15: Copernicus CDS (ERA5/AgERA5) e NASA FIRMS exigem chave nova
+
+**Status:** ABERTO, não bloqueante — bloqueia só duas das seis fontes
+candidatas da Issue #15; NASA POWER (a quinta) foi implementada nesta
+sessão sem depender deste blocker.
+
+**Descrição:** as fontes candidatas da Issue #15 foram testadas
+diretamente (chamada HTTP real, sem chave quando possível) antes de
+decidir o que implementar:
+
+- Copernicus Climate Data Store (ERA5/AgERA5,
+  `https://cds.climate.copernicus.eu/api`): o endpoint raiz responde
+  `HTTP 202` com mensagem de boas-vindas sem chave, mas a documentação
+  oficial do CDS exige token pessoal (UID + API key, registro gratuito)
+  para qualquer requisição de dados real — não confirmado nesta sessão
+  porque exigiria criar conta.
+- NASA FIRMS (`firms.modaps.eosdis.nasa.gov/api/area/csv/DEMO_KEY/...`):
+  `HTTP 400` — `"Invalid MAP_KEY"`. Diferente de outras APIs da NASA,
+  `DEMO_KEY` não é aceito; exige `MAP_KEY` pessoal via registro gratuito.
+
+Ambas exigem "chave nova" no sentido da regra de Fase D ("fontes que não
+exijam compra/chave nova") e ficam fora do escopo desta rodada. Evidência
+completa em `docs/sources/nasa_power/README.md` (seção "Fontes da Issue
+#15 fora do escopo desta avaliação").
+
+**Como desbloquear:** usuário decide se registra as chaves/tokens
+necessários (ambos têm registro gratuito por e-mail) e onde armazená-los
+com segurança (nunca em texto plano no Git, conforme `CLAUDE.md`). Só
+então retomar a avaliação dessas duas fontes dentro da Issue #15.
+
+**Impacto:** Issue #15 permanece parcialmente atendida — NASA POWER
+implementado e enviado (PR #33); as outras cinco fontes candidatas
+(Copernicus, ANA HidroWebService, NASA FIRMS, NOAA/USGS Water, USACE
+Rivergages) aguardam decisão humana sobre credenciais, descoberta de
+endpoint ou simplesmente não têm relevância geográfica para o MT — ver
+próximo item.
+
+---
+
+## 2026-08-15 — Issue #15: endpoint de série temporal do ANA HidroWebService não localizado
+
+**Status:** ABERTO, não bloqueante — não é bloqueio de credencial, é
+pendência de descoberta de endpoint.
+
+**Descrição:** o serviço de inventário legado do ANA HidroWebService
+(`telemetriaws1.ana.gov.br/ServiceANA.asmx/HidroInventario`) responde sem
+chave e retorna XML real com estações do Mato Grosso quando filtrado por
+`nmEstado=MATO GROSSO`. Já o endpoint mais novo testado para série de
+cotas (`www.ana.gov.br/hidrowebservice/EstacoesTelemetricas/
+HidroinfoanaSerieCotas/v1`) respondeu `HTTP 404` — o caminho exato da API
+de série da ANA não foi confirmado nesta sessão (a API da ANA já trocou
+de rota mais de uma vez segundo documentação pública).
+
+**Como desbloquear:** em uma execução futura, mapear a documentação
+oficial atualizada da ANA (ou testar variações de caminho) para
+encontrar o endpoint de série correspondente ao inventário já confirmado;
+só então avaliar hidrologia MT-específica como extensão da Issue #15.
+
+**Impacto:** nenhum sobre o NASA POWER implementado nesta sessão — a
+avaliação de hidrologia MT-específica (rios navegáveis relevantes para
+logística) fica pendente para uma rodada futura de Fase D.
+
+---
+
+## 2026-08-15 — Inconsistência documental pré-existente: `AGENTS.md` referencia `docs/OBSIDIAN_SECOND_BRAIN.md` inexistente
+
+**Status:** ABERTO, informativo — não bloqueia nenhuma frente de
+engenharia, encontrado incidentalmente pela revisão Codex da Issue #15,
+não introduzido por esta sessão.
+
+**Descrição:** `AGENTS.md` referencia `docs/OBSIDIAN_SECOND_BRAIN.md`,
+mas o arquivo existente no repositório é `docs/OBSIDIAN.md`. Não
+investigado a fundo nesta sessão (fora do escopo da Issue #15/branch
+`feat/15-nasa-power-poc`, que parte de `main` sem tocar `AGENTS.md`).
+
+**Como desbloquear:** confirmar em uma execução futura se `docs/OBSIDIAN.md`
+é o arquivo correto (e `AGENTS.md` precisa de correção) ou se
+`docs/OBSIDIAN_SECOND_BRAIN.md` deveria existir e falta ser criado/migrado
+— possivelmente relacionado à Issue #26 (Segundo Cérebro/Obsidian),
+trabalhada pelo worker KNOWLEDGE em paralelo nesta mesma janela 48h
+(`improve/issue-26-knowledge-48h`), não pelo worker ENGINEERING.
+
+**Impacto:** nenhum sobre o código desta sessão; risco de confusão para
+quem seguir a referência de `AGENTS.md` até existir correção.
