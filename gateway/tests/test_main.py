@@ -1,10 +1,57 @@
 from fastapi.testclient import TestClient
+from google.api_core.exceptions import GoogleAPIError
 
 import gateway.main as gateway_main
 from gateway.main import app
 
 
 client = TestClient(app)
+
+
+class _FakeRow:
+    def __init__(self, mapping):
+        self._mapping = mapping
+
+    def items(self):
+        return self._mapping.items()
+
+
+class _FakeJob:
+    def __init__(self, rows, *, job_id="fake-job-123", total_bytes_processed=4096):
+        self._rows = rows
+        self.job_id = job_id
+        self.total_bytes_processed = total_bytes_processed
+
+    def result(self):
+        return self._rows
+
+
+class _FakeSuccessClient:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def query(self, sql, job_config=None, location=None):
+        row = _FakeRow(
+            {
+                "hash_chave_natural": "abc123",
+                "identificacao_armazem": "Armazem Teste",
+                "uf": "MT",
+                "municipio": "Sorriso",
+                "capacidade_estatica_t": 1000,
+                "snapshot_id_atual": "snap-1",
+                "data_snapshot_atual": "2026-08-01",
+                "coleta_snapshot_em_utc": "2026-08-01T00:00:00Z",
+            }
+        )
+        return _FakeJob([row])
+
+
+class _FakeFailingClient:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def query(self, sql, job_config=None, location=None):
+        raise GoogleAPIError("segredo interno do BigQuery que não deve vazar")
 
 
 def test_healthz_does_not_require_bigquery_configuration(monkeypatch):
@@ -77,6 +124,68 @@ def test_unhandled_exception_still_returns_request_id(monkeypatch):
     assert response.status_code == 500
     assert response.headers["x-request-id"] == "meu-id-789"
     assert "falha inesperada" not in response.text
+
+
+def test_armazens_returns_contract_shape_on_success(monkeypatch):
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "agrolog-test1")
+    monkeypatch.setenv("BQ_LOCATION", "southamerica-east1")
+    monkeypatch.setattr(gateway_main.bigquery, "Client", _FakeSuccessClient)
+
+    response = client.get(
+        "/v1/armazens?uf=MT&limit=5",
+        headers={"x-request-id": "meu-id-contrato"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["x-request-id"] == "meu-id-contrato"
+    body = response.json()
+    assert body["meta"] == {
+        "request_id": "meu-id-contrato",
+        "source": "agrolog-test1.logistica.vw_armazens_atuais",
+        "classification": "observado",
+        "filters": {
+            "uf": "MT",
+            "municipio": None,
+            "identificacao_armazem": None,
+            "limit": 5,
+            "offset": 0,
+        },
+        "rows_returned": 1,
+        "limit": 5,
+        "offset": 0,
+        "bigquery_job_id": "fake-job-123",
+        "total_bytes_processed": 4096,
+        "duration_ms": body["meta"]["duration_ms"],
+    }
+    assert isinstance(body["meta"]["duration_ms"], (int, float))
+    assert body["data"] == [
+        {
+            "hash_chave_natural": "abc123",
+            "identificacao_armazem": "Armazem Teste",
+            "uf": "MT",
+            "municipio": "Sorriso",
+            "capacidade_estatica_t": 1000,
+            "snapshot_id_atual": "snap-1",
+            "data_snapshot_atual": "2026-08-01",
+            "coleta_snapshot_em_utc": "2026-08-01T00:00:00Z",
+        }
+    ]
+    assert "x-request-id" in response.headers
+
+
+def test_armazens_bigquery_error_does_not_leak_internal_detail(monkeypatch):
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "agrolog-test1")
+    monkeypatch.setenv("BQ_LOCATION", "southamerica-east1")
+    monkeypatch.setattr(gateway_main.bigquery, "Client", _FakeFailingClient)
+
+    response = client.get(
+        "/v1/armazens?uf=MT",
+        headers={"x-request-id": "meu-id-999"},
+    )
+
+    assert response.status_code == 502
+    assert response.headers["x-request-id"] == "meu-id-999"
+    assert "segredo interno" not in response.text
 
 
 def test_armazens_ignores_unsafe_client_request_id(monkeypatch):
