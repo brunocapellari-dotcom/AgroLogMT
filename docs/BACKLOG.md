@@ -22,11 +22,16 @@ Pendências da fonte CONAB que não reabrem o piloto de Armazéns:
 
 ## P1 — AgroLog Gateway
 
-- [ ] Definir contrato mínimo da primeira ferramenta de consulta.
+- [x] Definir contrato mínimo da primeira ferramenta de consulta.
 - [ ] Conectar Cloud Run ao BigQuery com permissões mínimas.
-- [ ] Implementar endpoint/ferramenta de leitura para `logistica.vw_armazens_atuais`.
-- [ ] Adicionar logs e tratamento de erros.
+- [x] Implementar endpoint/ferramenta de leitura para `logistica.vw_armazens_atuais`.
+- [x] Adicionar logs e tratamento de erros.
 - [ ] Testar a mesma consulta via OpenAI/Codex e Claude.
+
+Estado: implementação, testes automatizados (16 casos) e revisão adversarial
+Codex concluídos e validados contra BigQuery real em `feat/13-agrolog-gateway-armazens`
+(PR #25). Falta apenas o deploy em Cloud Run (pendente de revisão humana do PR)
+e a comparação formal da mesma consulta entre Codex e Claude.
 
 Issue operacional: #13 — AgroLog Gateway para Armazéns.
 
