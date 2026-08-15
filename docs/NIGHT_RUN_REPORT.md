@@ -363,3 +363,123 @@ um segundo cliente CKAN.
    passada.
 6. Revisitar ONTL quando o portal estiver acessível a partir do ambiente de
    execução (blocker informativo, não bloqueia o restante do trabalho).
+
+## Sessão de 2026-08-15 (execução 5)
+
+### Escopo desta execução
+Reconciliação da Fase A (Issue #13 / PR #25, sem mudança — sem novos
+reviews/checks desde a execução 4) e execução da Fase D — subconjunto sem
+chave nova da Issue #14 (fontes de mercado agrícola dos EUA).
+
+### Fase A — Gateway (Issue #13 / PR #25) — reconciliada, sem mudança
+
+`gh pr view 25` conferido: `OPEN`, `MERGEABLE`, sem novos reviews/checks
+desde a execução 4 (único comentário continua sendo o de validação
+completa já registrado). Nenhum retrabalho realizado. Deploy em Cloud Run
+privado segue aguardando revisão humana do PR #25.
+
+### Fase D — Issue #14 (fontes de mercado agrícola dos EUA) — subconjunto CFTC concluído e enviado
+
+A Issue #14 lista quatro fontes aprovadas: USDA FAS Open Data, USDA NASS
+Quick Stats, USDA AMS MyMarketNews e CFTC Commitments of Traders (COT).
+Antes de escolher o item de Fase D desta execução, `origin/chatgpt/
+comando-mestre-v2-20260812` foi checada novamente (mesma verificação das
+execuções 2 e 4): sem manifesto `sources/` equivalente às quatro fontes,
+então a Issue #14 não duplica estrutura em progresso.
+
+Testadas diretamente (chamada HTTP real, sem chave) as quatro fontes antes
+de implementar, para decidir qual respeita a regra de Fase D ("fontes que
+não exijam compra/chave nova"):
+
+| Fonte | Resultado real | Bloqueio |
+|---|---|---|
+| CFTC Commitments of Traders | `HTTP 200`, dados reais | Nenhum |
+| USDA AMS MyMarketNews | `HTTP 403 Forbidden` | Exige registro de API key |
+| USDA FAS Open Data (PSD) | Timeout de conexão | Exige `X-Api-Key`; nem o tipo de erro pôde ser confirmado |
+| USDA NASS Quick Stats | `HTTP 401 Unauthorized` (mesmo com `key=DEMO_KEY`) | Exige registro de API key real |
+
+Só o CFTC COT ficou dentro do escopo desta execução. As outras três foram
+registradas como blocker de credencial (ver `docs/NIGHT_RUN_BLOCKERS.md`),
+não retentadas além da checagem inicial.
+
+Branch `feat/14-cftc-cot-poc`, criada a partir de `main`. Dataset
+escolhido: "Disaggregated - Combined" (`kh3c-gbw2`, futuros + opções
+combinados, decomposição Producer/Merchant/Swap/Managed Money/Other
+Reportables), confirmado por metadado real contra os dois outros
+candidatos do catálogo (`jun7-fc8e` Legacy-Combined, `72hh-3qpy`
+Disaggregated-Futures-Only) antes de escolher. Contratos avaliados:
+soja padrão CBOT (`005602`) e milho padrão CBOT (`002602`), priorizados
+pela mesma ordem soja→milho já usada no restante do projeto. Confirmado
+por dado real que o dataset também contém `MINI SOYBEANS`, com open
+interest ~45x menor — descartado por não ser a referência de mercado.
+
+**Extração de `socrata_connector/`:** ao montar `cftc_cot/client.py`,
+ficou evidente que a lógica seria idêntica à de `usda_agtransport/client.py`
+(Issue #20, PR #29, ainda não mesclada) — ambas as fontes usam a mesma
+plataforma Socrata/SODA. Em vez de duplicar (ou editar a branch de PR de
+outra sessão ainda em revisão, sem coordenação), foi extraído
+`socrata_connector/` como pacote compartilhado, no mesmo molde de
+`ckan_connector` (Issue #19). `cftc_cot/` consome esse pacote via
+`build_client()`, uma função que trava o cliente no host
+`publicreporting.cftc.gov` sem expor `base_url` como parâmetro. Migrar
+`usda_agtransport` para consumir `socrata_connector` fica registrado como
+próxima ação, a fazer só depois que a PR #29 mesclar.
+
+**Revisão Codex (adversarial, 4 rodadas, `codex exec --sandbox
+read-only`):**
+- Rodada 1 (sobre a primeira versão, antes da extração): 4 achados —
+  docstring de `query()` alegando falsamente que o módulo não expõe
+  entrada de usuário final às cláusulas SoQL (a função é pública, a
+  alegação não é garantida pelo código); testes live só tratavam
+  `SocrataConnectionError` na chamada de metadata preliminar, não nas
+  chamadas reais de cada teste; teste de relevância com limiar absoluto
+  frágil (`open_interest_all > 500_000`); duplicação integral do cliente
+  Socrata com `usda_agtransport/client.py`.
+- Rodada 2 (após extrair `socrata_connector/` e corrigir os 3 primeiros):
+  confirmou os 4 corrigidos, mas encontrou 2 novos — `base_url` era
+  atributo público mutável (contradizendo a garantia documentada de host
+  travado; corrigido com `@property` somente leitura sobre atributo
+  privado); teste de open interest relativo (soja padrão vs. mini)
+  comparava registros sem garantir que vinham do mesmo relatório semanal
+  (corrigido exigindo `DATE_FIELD` igual antes de comparar magnitude).
+- Rodada 3: confirmou os 2 corrigidos, encontrou 2 problemas documentais
+  (nome de teste desatualizado em `docs/sources/cftc_cot/README.md`;
+  referência a `docs/NIGHT_RUN_BLOCKERS.md` como se existisse nesta
+  branch) — corrigidos.
+- Rodada 4: nenhum achado novo. **Aprovado explicitamente para commit.**
+
+`python -m pytest -q socrata_connector/tests cftc_cot/tests` → **29
+passed** (23 mockados/determinísticos + 6 de integração real contra a API
+do CFTC — schema do dataset, identidade dos dois contratos, cadência
+semanal real via gap de datas, e a regressão de relevância soja-padrão vs.
+mini). Nenhum dado carregado no BigQuery, conforme escopo de avaliação da
+Issue #14.
+
+Commit `0fa3dcb` enviado; PR #32 (draft) criada contra `main`,
+referenciando a Issue #14. Sem merge automático. Sessão retornou à branch
+`feat/13-agrolog-gateway-armazens` ao final, conforme escopo desta
+execução.
+
+### Próximo item executável (execução 5)
+
+1. IMEA e Drive: mesmos blockers das execuções anteriores, sem mudança.
+2. Cloud Run privado do Gateway: aguarda revisão humana do PR #25.
+3. PRs #27 (CKAN), #29 (USDA), #30 (BigQuery Public Datasets), #31 (ANTT
+   ferrovias) e #32 (CFTC COT) aguardam revisão humana. PR #31 continua
+   dependendo da PR #27.
+4. Quando a PR #29 (AgTransport) mesclar: migrar `usda_agtransport` para
+   consumir `socrata_connector` em vez do `SocrataClient` duplicado que
+   ainda existe naquela branch — evita duas implementações concorrentes do
+   mesmo protocolo coexistindo em `main`.
+5. Issue #14: reavaliar USDA FAS Open Data, NASS Quick Stats e AMS
+   MyMarketNews quando houver decisão humana sobre registro de API key.
+6. Issue #22 segue adiada pela mesma razão de coordenação de manifesto das
+   execuções anteriores.
+7. Issue #18 (motor próprio de rotas) segue como o próximo item de Fase D
+   sem risco de duplicação de manifesto, mas é um PoC mais pesado
+   (benchmark Valhalla x OSRM, estimativa de custo de infraestrutura) — a
+   avaliar se cabe no formato "avaliação/documentação real" que funcionou
+   para #14/#17/#19/#20/#21, ou se precisa de escopo reduzido para uma
+   primeira passada.
+8. Revisitar ONTL quando o portal estiver acessível a partir do ambiente de
+   execução (blocker informativo, não bloqueia o restante do trabalho).

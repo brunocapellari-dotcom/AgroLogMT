@@ -147,3 +147,67 @@ ferramenta/rede antes de descartar a fonte.
 
 **Impacto:** avaliação de ONTL como fonte de matrizes O/D multimodais fica
 pendente para uma execução futura. Ver `docs/sources/antt_ferrovias/README.md`.
+
+---
+
+## 2026-08-15 — Issue #14: USDA FAS Open Data, NASS Quick Stats e AMS MyMarketNews exigem chave nova
+
+**Status:** ABERTO, não bloqueante — bloqueia só três das quatro fontes da
+Issue #14; a quarta (CFTC Commitments of Traders) foi implementada nesta
+sessão sem depender deste blocker.
+
+**Descrição:** as quatro fontes aprovadas pela Issue #14 foram testadas
+diretamente (chamada HTTP real, sem chave) antes de decidir o que
+implementar:
+
+- USDA AMS MyMarketNews (`marsapi.ams.usda.gov/services/v1.2/reports`):
+  `HTTP 403 Forbidden` — `"Attempt to access the protected resource"`.
+- USDA FAS Open Data / PSD (`apps.fas.usda.gov/OpenData/api/psd/commodities`):
+  timeout de conexão — não foi possível nem confirmar o tipo de erro por
+  bloqueio de rede neste ambiente; a documentação oficial da API exige
+  `X-Api-Key`.
+- USDA NASS Quick Stats (`quickstats.nass.usda.gov/api/api_GET/`): `HTTP
+  401 Unauthorized` mesmo com `key=DEMO_KEY` — exige registro de chave
+  real, chave de demonstração não é aceita.
+
+As três exigem "chave nova" no sentido da regra de Fase D ("fontes que não
+exijam compra/chave nova"), então ficam fora do escopo de "sem bloqueio
+humano" desta rodada. Evidência completa em
+`docs/sources/cftc_cot/README.md` (seção "Fontes da Issue #14 fora do
+escopo desta avaliação").
+
+**Como desbloquear:** usuário decide se registra as chaves de API
+necessárias (USDA FAS Open Data e NASS Quick Stats têm registro gratuito
+por e-mail; AMS MyMarketNews também exige registro) e onde armazená-las
+com segurança (nunca em texto plano no Git, conforme `CLAUDE.md`). Só
+então retomar a avaliação dessas três fontes dentro da Issue #14.
+
+**Impacto:** Issue #14 permanece parcialmente atendida — subconjunto CFTC
+COT implementado e enviado (PR #32); as outras três fontes aguardam
+decisão humana sobre credenciais.
+
+---
+
+## 2026-08-15 — Issue #14/#20: duplicação remanescente de cliente Socrata em `usda_agtransport` (não bloqueante)
+
+**Status:** ABERTO, não bloqueante — não impede uso de nenhuma das duas
+fontes; é um item de limpeza de duplicação de código entre branches.
+
+**Descrição:** ao implementar o subconjunto CFTC da Issue #14 nesta
+sessão, ficou evidente que `usda_agtransport/client.py` (Issue #20, PR
+#29, ainda não mesclada) e o novo `cftc_cot/client.py` implementavam a
+mesma lógica de cliente Socrata/SODA de forma duplicada — ambas as fontes
+usam a mesma plataforma. Foi extraído `socrata_connector/` como pacote
+compartilhado (mesmo molde de `ckan_connector`, Issue #19), e `cftc_cot`
+foi migrado para consumi-lo. `usda_agtransport/client.py` **não foi
+editado**, porque isso exigiria alterar uma branch de PR de outra sessão
+ainda em revisão, sem coordenação — fora do escopo autorizado desta
+execução.
+
+**Como desbloquear:** quando a PR #29 (AgTransport) for revisada/mesclada,
+migrar `usda_agtransport` para consumir `socrata_connector` em vez do
+`SocrataClient` que ainda duplica a mesma lógica naquela branch.
+
+**Impacto:** nenhum — ambas as implementações funcionam de forma
+independente e correta hoje; é só uma segunda implementação do mesmo
+protocolo coexistindo temporariamente até a consolidação.
