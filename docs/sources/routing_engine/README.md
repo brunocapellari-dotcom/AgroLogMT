@@ -94,15 +94,18 @@ Classificação: **observado** (tamanho de arquivo no servidor de download
 consultado nesta avaliação).
 
 - `brazil-latest.osm.pbf` (Geofabrik, extrato de todo o Brasil,
-  atualizado continuamente): **1,9 GB** em 31/07/2026.
+  atualizado continuamente): **1,9 GB**, arquivo modificado em
+  2026-08-14 (o dado de cobertura interno do extrato vai até
+  2026-07-31 — data de replicação incorporada aos dados, diferente da
+  data de modificação do arquivo em si; as duas não devem ser
+  confundidas).
 - Geofabrik não publica um extrato isolado por estado para o Brasil;
-  divide o país em 5 macrorregiões. As publicadas com tamanho
-  confirmado nesta consulta: Nordeste 410 MB, Norte 150 MB, Sul 395 MB,
-  Sudeste 811 MB. **Não observado nesta avaliação**: tamanho do extrato
-  Centro-Oeste (região que contém Mato Grosso) — não apareceu nos
-  resultados desta consulta; precisa confirmação direta em
-  `download.geofabrik.de/south-america/brazil.html` antes de qualquer
-  dimensionamento de infraestrutura.
+  divide o país em 5 macrorregiões, todas com tamanho confirmado nesta
+  consulta direta a `download.geofabrik.de/south-america/brazil.html`:
+  **Centro-Oeste (região que contém Mato Grosso) 191 MB**, Nordeste
+  418 MB, Norte 152 MB, Sul 402 MB, Sudeste 815 MB. Centro-Oeste é,
+  portanto, o extrato relevante para um recorte MT — bem menor que o
+  arquivo consolidado do Brasil inteiro.
 - Esses tamanhos são o `.osm.pbf` de entrada, não o grafo já processado
   por Valhalla/OSRM — o grafo processado é tipicamente maior que o
   `.pbf` de origem (ver tabela acima); não há, nesta avaliação, medição
