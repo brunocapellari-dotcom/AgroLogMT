@@ -1378,3 +1378,58 @@ continuam dependendo de decisão humana: revisão do PR #25 (Cloud Run),
 revisão/merge de pelo menos uma das PRs #27–#34, decisão de
 consolidação IMEA, autorização do conector Drive, ou decisão de escopo
 da Issue #18.
+
+## Sessão de 2026-08-15 (execução 17)
+
+### Escopo desta execução
+Reconciliação completa de Fase A/B/C/D (nona execução consecutiva,
+9–17, sem trabalho de engenharia novo, seguro e desbloqueado
+disponível), incluindo verificação explícita de que a branch
+`origin/chatgpt/comando-mestre-v2-20260812` (candidata a desbloquear a
+coordenação de `sources/*/source_manifest.yaml` das Issues #16/#22)
+continua não mesclada em `main`.
+
+### Fase A — reconciliada, sem mudança
+`git log -5` local vs. `origin/feat/13-agrolog-gateway-armazens`: sem
+divergência, HEAD idêntico (`68185c4`). `python -m pip install -r
+gateway/requirements-dev.txt` + `python -m pytest -q gateway/tests` →
+**16 passed**, sem regressão. `gh pr view 25 --json
+state,isDraft,mergeable,updatedAt,comments,reviews`: `OPEN`, `DRAFT`,
+`mergeable: MERGEABLE`, `reviews: []`, `updatedAt` inalterado
+(`2026-08-15T17:54:12Z`), os mesmos dois comentários de execuções
+anteriores (nenhum de revisor humano). `gh issue view 13`: `comments:
+[]`.
+
+### Fase D — sete PRs revalidadas individualmente, sem mudança
+`gh pr view <n> --json reviews,mergeable,updatedAt` para #27, #29, #30,
+#31, #32, #33, #34: todas `MERGEABLE`, `reviews: []`, mesmo `updatedAt`
+das execuções 14–16. `gh pr list --state open`/`gh issue list --state
+open` confirmam o mesmo conjunto conhecido (nenhuma PR/Issue nova),
+incluindo PR #28 (relatório).
+
+### Fase B/C — sem mudança
+`gh issue view 1` (IMEA): `comments: []`, `updatedAt` inalterado.
+`gh issue view 22`: `comments: []`, `updatedAt` inalterado. Verificado
+explicitamente, via `git merge-base --is-ancestor
+origin/chatgpt/comando-mestre-v2-20260812 origin/main` (retorna
+`NOT MERGED`) e `git ls-tree -r --name-only main -- sources/` (vazio),
+que a coordenação de manifesto que bloqueia as Issues #16/#22 desde a
+execução 2 continua sem mudança de causa raiz — `main` ainda não tem
+nenhum arquivo `sources/`. Drive: mesma causa raiz de autorização OAuth
+interativa indisponível em sessão não interativa, não re-testado por
+não haver mudança de causa raiz a confirmar.
+
+### Registro do relatório (PR #28)
+Esta seção e a seção correspondente de `docs/NIGHT_RUN_BLOCKERS.md`
+foram adicionadas em `chore/night-run-reports-48h` e enviadas na PR #28
+já existente, sem criar uma segunda PR de relatório.
+
+### Próximo item executável (execução 17)
+Sem mudança em relação à execução 16. Nona execução consecutiva (9–17)
+sem trabalho de engenharia novo, seguro e desbloqueado disponível em
+Fase A/D. Todos os itens executáveis remanescentes continuam
+dependendo de decisão humana: revisão do PR #25 (Cloud Run),
+revisão/merge de pelo menos uma das PRs #27–#34, decisão de
+consolidação IMEA, autorização do conector Drive, decisão de escopo da
+Issue #18, ou merge/decisão sobre a convenção `sources/*` para
+desbloquear #16/#22.
