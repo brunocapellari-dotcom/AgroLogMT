@@ -775,7 +775,15 @@ de qualquer conclusão de desempenho, em vez de apresentar estimativa não
 verificada como fato observado.
 
 Commits `29135c9` e `0d3615a` enviados; PR #34 (não-draft, pronta para
-revisão) criada contra `main`. Sem merge automático.
+revisão) criada contra `main`. Sem merge automático. Consulta direta
+adicional (`WebFetch` a `download.geofabrik.de/south-america/
+brazil.html`) fechou, ainda na mesma execução, a única lacuna de dado
+deixada em aberto pela primeira versão: extrato Centro-Oeste (região
+que contém MT) = 191 MB — commit `48037a1`, mesma branch/PR. Também
+corrigida uma confusão entre a data de modificação do arquivo
+`brazil-latest.osm.pbf` (2026-08-14) e a data de cobertura de
+replicação incorporada aos dados (2026-07-31), que a primeira busca
+não distinguia com clareza.
 
 **Status dos critérios de aceite da Issue #18 após este documento:**
 licença/atribuição documentadas (✅); custo de infraestrutura com
@@ -803,6 +811,6 @@ documental) que continua sendo do usuário, não deste worker.
 8. Revisitar ONTL quando acessível.
 9. Quando `improve/issue-26-knowledge-48h` for mesclada/enviada, confirmar
    que a correção `AGENTS.md`/`docs/OBSIDIAN.md` chegou a `main`.
-10. Confirmar, numa execução futura, o tamanho do extrato Geofabrik
-    Centro-Oeste (não localizado nesta sessão) antes de qualquer
-    dimensionamento real de infraestrutura para a Issue #18.
+10. ~~Confirmar tamanho do extrato Geofabrik Centro-Oeste~~ — resolvido
+    ainda nesta execução (191 MB, commit `48037a1`); sem próxima ação
+    pendente sobre esse ponto específico.
