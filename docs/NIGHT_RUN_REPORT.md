@@ -1433,3 +1433,53 @@ revisão/merge de pelo menos uma das PRs #27–#34, decisão de
 consolidação IMEA, autorização do conector Drive, decisão de escopo da
 Issue #18, ou merge/decisão sobre a convenção `sources/*` para
 desbloquear #16/#22.
+
+## Sessão de 2026-08-15 (execução 18)
+
+### Escopo desta execução
+Reconciliação completa de Fase A/B/C/D (décima execução consecutiva,
+9–18, sem trabalho de engenharia novo, seguro e desbloqueado
+disponível). Método idêntico à execução 17, sem adicionar verificação
+nova além das já estabelecidas por não haver hipótese nova a testar.
+
+### Fase A — reconciliada, sem mudança
+`git fetch --all --prune`: sem novidade. `git log -3` local vs.
+`origin/feat/13-agrolog-gateway-armazens`: HEAD idêntico (`68185c4`).
+`python -m pytest -q gateway/tests` → **16 passed**, sem regressão.
+`gh pr view 25 --json state,isDraft,mergeable,updatedAt,comments,reviews`:
+`OPEN`, `DRAFT`, `mergeable: MERGEABLE`, `reviews: []`, `updatedAt`
+inalterado (`2026-08-15T17:54:12Z`, idêntico à execução 17), mesmos dois
+comentários (nenhum de revisor humano). `gh issue view 13 --json
+comments,updatedAt`: `comments: []`.
+
+### Fase D — sete PRs revalidadas individualmente, sem mudança
+`gh pr view <n> --json reviews,mergeable,updatedAt` para #27, #29, #30,
+#31, #32, #33, #34: todas `MERGEABLE`, `reviews: []`, `updatedAt`
+idêntico ao registrado nas execuções 14–17 (nenhuma revisão humana
+nova). `gh pr list --state open`/`gh issue list --state open` confirmam
+o mesmo conjunto conhecido, incluindo PR #28 (relatório, `updatedAt`
+avançado apenas pelos commits desta própria frente de relatório).
+
+### Fase B/C — sem mudança
+`gh issue view 1` (IMEA): `comments: []`, `updatedAt` inalterado
+(`2026-08-12T15:56:42Z`). `gh issue view 22`: `comments: []`,
+`updatedAt` inalterado. `git merge-base --is-ancestor
+origin/chatgpt/comando-mestre-v2-20260812 origin/main` → `NOT MERGED`,
+mesma causa raiz do bloqueio de #16/#22 desde a execução 2. Drive: sem
+re-teste por não haver mudança de causa raiz a confirmar (autorização
+OAuth interativa segue indisponível em sessão não interativa).
+
+### Registro do relatório (PR #28)
+Esta seção e a seção correspondente de `docs/NIGHT_RUN_BLOCKERS.md`
+foram adicionadas em `chore/night-run-reports-48h` e enviadas na PR #28
+já existente, sem criar uma segunda PR de relatório.
+
+### Próximo item executável (execução 18)
+Sem mudança em relação à execução 17. Décima execução consecutiva
+(9–18) sem trabalho de engenharia novo, seguro e desbloqueado
+disponível em Fase A/D. Todos os itens executáveis remanescentes
+continuam dependendo de decisão humana: revisão do PR #25 (Cloud Run),
+revisão/merge de pelo menos uma das PRs #27–#34, decisão de
+consolidação IMEA, autorização do conector Drive, decisão de escopo da
+Issue #18, ou merge/decisão sobre a convenção `sources/*` para
+desbloquear #16/#22.

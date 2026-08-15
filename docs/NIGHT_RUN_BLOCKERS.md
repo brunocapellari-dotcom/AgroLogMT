@@ -525,3 +525,26 @@ raiz.
 
 Detalhe completo em `docs/NIGHT_RUN_REPORT.md`, seção "execução 17", e em
 `.agrolog48h_state.md`.
+
+---
+
+## 2026-08-15 (execução 18) — Revalidação geral: nenhum blocker mudou de causa raiz
+
+Reconciliação completa (`git fetch --all --prune`, `git log` local vs.
+`origin/feat/13-agrolog-gateway-armazens`, `gh pr view 25`, `gh issue
+view 13`, `gh issue view 1`, `gh issue view 22`, `gh pr list`/`gh issue
+list`, `gh pr view` com `reviews`/`mergeable`/`updatedAt` para as sete
+PRs de Fase D #27/#29–#34, `git merge-base --is-ancestor
+origin/chatgpt/comando-mestre-v2-20260812 origin/main`, `python -m
+pytest -q gateway/tests` → 16 passed) não encontrou mudança em nenhum
+dos blockers registrados neste arquivo desde a execução 17: IMEA sem
+decisão de consolidação (`Issue #1` `comments: []`, `updatedAt`
+inalterado), PR #25 sem review humano (`reviews: []`, ainda `DRAFT`,
+`updatedAt` inalterado em `2026-08-15T17:54:12Z`), as sete PRs de Fase D
+(#27, #29–#34) todas ainda `reviews: []`/`MERGEABLE` sem novo
+`updatedAt`, Issue #22 sem branch/PR própria (`comments: []`,
+`updatedAt` inalterado), coordenação `sources/*/source_manifest.yaml`
+(`chatgpt/comando-mestre-v2-20260812`) continua `NOT MERGED` em `main`.
+
+Detalhe completo em `docs/NIGHT_RUN_REPORT.md`, seção "execução 18", e em
+`.agrolog48h_state.md`.
