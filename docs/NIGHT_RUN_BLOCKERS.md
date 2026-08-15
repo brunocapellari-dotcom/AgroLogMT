@@ -88,6 +88,19 @@ ainda fora da allowlist.
 **Revalidado em 2026-08-15 (execução 3):** sem mudança — `gh issue list`/
 `gh pr list`/`gh pr view 25` conferidos, idênticos ao estado registrado.
 
+**Revalidado em 2026-08-15 (execução 7):** chamada real repetida
+(`mcp__claude_ai_Google_Drive__list_recent_files`, schema carregado via
+`ToolSearch` sem problema). A chamada em si foi negada explicitamente com
+`Permission to use mcp__claude_ai_Google_Drive__list_recent_files has been
+denied because Claude Code is running in don't ask mode` — confirma que o
+bloqueio é de permissão/allowlist da sessão (`dontAsk`), não de
+autenticação OAuth (a ferramenta nem aparece na lista de servidores MCP
+que exigem autorização desta sessão). A nota da execução 6, que
+levantava a hipótese de o blocker ter mudado só porque a ferramenta
+aparecia autenticada, fica resolvida: **não mudou** — segue exigindo que
+o usuário adicione as ferramentas Drive à allowlist ou rode em modo
+interativo.
+
 ---
 
 ## 2026-08-15 — Coordenação de estrutura: `sources/*/source_manifest.yaml` (não bloqueante)
@@ -298,3 +311,12 @@ trabalhada pelo worker KNOWLEDGE em paralelo nesta mesma janela 48h
 
 **Impacto:** nenhum sobre o código desta sessão; risco de confusão para
 quem seguir a referência de `AGENTS.md` até existir correção.
+
+**Atualização em 2026-08-15 (execução 7):** confirmado, sem editar nada
+nesta branch, que o worker KNOWLEDGE já corrigiu essa referência em
+`AGENTS.md` (linha 12: `docs/OBSIDIAN.md`, não
+`docs/OBSIDIAN_SECOND_BRAIN.md`) na branch `improve/issue-26-knowledge-48h`
+(commits locais ainda não enviados a `origin` no momento da checagem).
+Nenhuma ação adicional necessária deste lado — evitar duplicar a correção;
+revalidar apenas se essa branch for mesclada/enviada e a referência em
+`main` continuar quebrada.

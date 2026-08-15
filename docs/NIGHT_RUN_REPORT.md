@@ -626,3 +626,84 @@ alternavam checkout na mesma árvore de trabalho).
 9. Inconsistência documental `AGENTS.md`/`docs/OBSIDIAN_SECOND_BRAIN.md`
    (encontrada incidentalmente pelo Codex) — investigar numa execução
    futura, possivelmente coordenando com o worker KNOWLEDGE (Issue #26).
+
+## Sessão de 2026-08-15 (execução 7)
+
+### Escopo desta execução
+Reconciliação completa das Fases A/B/C (sem mudança de status em nenhuma)
+e revalidação definitiva do blocker de Drive. Nenhum código de fonte novo
+foi criado nesta execução — todas as frentes de Fase D sem risco de
+duplicação continuam bloqueadas por decisão humana pendente (credenciais)
+ou por serem o mesmo PoC pesado (Issue #18) já avaliado e adiado em
+quatro execuções anteriores, sem informação nova que justifique revisitar
+esse julgamento nesta sessão.
+
+### Fase A — Gateway (Issue #13 / PR #25) — reconciliada, sem mudança
+
+`python -m pytest -q gateway/tests -p no:cacheprovider` → 14 passed, sem
+regressão. `git diff --stat` na branch confirma zero mudanças não
+commitadas. `gh pr view 25` conferido: `OPEN`, `MERGEABLE`, mesmo
+comentário de validação da execução 5/6, sem novos reviews/checks/
+comentários. `gh fetch --all --prune` sem novidade. Nenhum retrabalho.
+Deploy em Cloud Run privado continua não iniciado, mesma decisão mantida
+(aguarda revisão humana do PR #25).
+
+### Fase B (IMEA) — sem mudança
+
+`gh issue list`/`gh pr list` conferidos: nenhuma nova branch/PR IMEA,
+nenhuma decisão de consolidação registrada em `docs/ARCHITECTURE.md`/
+`BACKLOG.md`. Blocker mantido.
+
+### Fase C (Drive) — blocker revalidado e precisado
+
+Chamada real repetida contra
+`mcp__claude_ai_Google_Drive__list_recent_files` (schema carregado via
+`ToolSearch`, sem problema de autenticação): a chamada foi **negada
+explicitamente** pelo modo de permissão `dontAsk` da sessão, não por
+falta de autorização OAuth. Isso resolve a ambiguidade levantada na
+execução 6 (a ferramenta aparecer "autenticada" na lista de servidores
+MCP não significa que está liberada para uso nesta sessão não
+interativa). Blocker permanece aberto, mesma causa raiz de sempre:
+allowlist de permissões, não credencial.
+
+### Fase D — sem novo item implementado
+
+Antes de escolher trabalho, `gh pr list`/`gh issue list` confirmaram que
+nenhuma das 6 PRs de Fase D em aberto (#27, #29, #30, #31, #32, #33) foi
+revisada/mesclada desde a execução 6 — o blocker de migração
+`usda_agtransport` → `socrata_connector` (depende da PR #29 mesclar)
+continua aberto sem mudança.
+
+Verificado que o worker KNOWLEDGE (branch `improve/issue-26-knowledge-48h`,
+worktree paralelo) já corrigiu, em commits locais próprios ainda não
+enviados, a referência quebrada `AGENTS.md` → `docs/OBSIDIAN_SECOND_BRAIN.md`
+apontada incidentalmente pelo Codex na execução 6 — não duplicado aqui.
+
+Issue #18 (motor próprio de rotas) segue como o único item de Fase D sem
+risco de duplicação de manifesto e sem exigência de credencial nova, mas
+continua sendo um PoC pesado (implantação local de Valhalla e/ou OSRM,
+extrato OpenStreetMap, benchmark, estimativa de custo de infraestrutura)
+— decisão de escopo (avaliação documental reduzida vs. implantação real
+dos dois motores) permanece pendente pela quinta execução consecutiva,
+sem informação nova nesta sessão que justifique decidir unilateralmente
+o escopo de uma tarefa de infraestrutura não trivial sem revisão humana
+prévia.
+
+### Próximo item executável (execução 7)
+
+1. IMEA e Drive: mesmos blockers, causa raiz confirmada e sem mudança.
+2. Cloud Run privado do Gateway: aguarda revisão humana do PR #25.
+3. PRs #27, #29, #30, #31, #32 e #33 aguardam revisão humana. PR #31
+   continua dependendo da PR #27.
+4. Quando a PR #29 mesclar: migrar `usda_agtransport` para
+   `socrata_connector`.
+5. Issue #18: decisão humana sobre escopo (avaliação documental reduzida
+   vs. PoC completo com Valhalla/OSRM reais) recomendada antes da próxima
+   tentativa — repetir a mesma avaliação pela sexta vez sem decidir o
+   escopo não agrega valor novo.
+6. Issue #15: mesmos sub-blockers (Copernicus CDS, NASA FIRMS, endpoint de
+   série ANA HidroWebService).
+7. Issue #22 e #16 seguem adiadas pela coordenação de manifesto.
+8. Revisitar ONTL quando acessível.
+9. Quando `improve/issue-26-knowledge-48h` for mesclada/enviada, confirmar
+   que a correção `AGENTS.md`/`docs/OBSIDIAN.md` chegou a `main`.
