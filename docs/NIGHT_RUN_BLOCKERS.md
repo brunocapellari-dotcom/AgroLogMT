@@ -458,3 +458,26 @@ Issue #22 sem branch/PR própria.
 
 Detalhe completo em `docs/NIGHT_RUN_REPORT.md`, seção "execução 14", e em
 `.agrolog48h_state.md`.
+
+---
+
+## 2026-08-15 (execução 15) — Revalidação geral: nenhum blocker mudou de causa raiz
+
+Reconciliação completa (`git fetch --all --prune`, `gh pr view 25`,
+`gh issue view 13`, `gh issue view 1`, `gh issue view 22`, `gh pr list`/
+`gh issue list`, `gh pr view` com `reviews`/`mergeable` para as sete PRs
+de Fase D #27/#29–#34, `python -m pytest -q gateway/tests` → 16 passed)
+não encontrou mudança em nenhum dos blockers registrados neste arquivo
+desde a execução 14: IMEA sem decisão de consolidação (`Issue #1`
+`comments: []`, `updatedAt` inalterado), PR #25 sem review humano
+(`reviews: []`, ainda `DRAFT`, `updatedAt` inalterado em
+`2026-08-15T17:54:12Z`), as sete PRs de Fase D (#27, #29–#34) todas ainda
+`reviews: []`/`MERGEABLE` sem novo `updatedAt`, Issue #22 sem branch/PR
+própria (`comments: []`, `updatedAt` inalterado). PR #28
+(`chore/night-run-reports-48h`) confirmada já sincronizada com o último
+commit registrado em `.agrolog48h_state.md` (`a7819a9`, execução 14) —
+não é uma PR nova, é a mesma frente de relatório usada pelas execuções
+anteriores.
+
+Detalhe completo em `docs/NIGHT_RUN_REPORT.md`, seção "execução 15", e em
+`.agrolog48h_state.md`.
