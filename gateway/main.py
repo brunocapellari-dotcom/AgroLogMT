@@ -2,20 +2,24 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 import uuid
 
-from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from google.api_core.exceptions import GoogleAPIError
 from google.auth.exceptions import GoogleAuthError
 from google.cloud import bigquery
 
 from gateway.config import ConfigurationError, load_settings
-from gateway.query import MAX_LIMIT, QueryValidationError, build_armazens_query
+from gateway.query import MAX_LIMIT, MAX_OFFSET, QueryValidationError, build_armazens_query
 
 
 logger = logging.getLogger("agrolog.gateway")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 app = FastAPI(
     title="AgroLog Gateway",
@@ -29,6 +33,27 @@ def _log_event(event: str, **fields: object) -> None:
     logger.info(json.dumps(payload, ensure_ascii=False, default=str))
 
 
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    incoming_request_id = (request.headers.get("x-request-id") or "").strip()[:128]
+    request_id = (
+        incoming_request_id if _REQUEST_ID_RE.fullmatch(incoming_request_id) else str(uuid.uuid4())
+    )
+    request.state.request_id = request_id
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception(
+            json.dumps({"event": "gateway_unhandled_error", "request_id": request_id})
+        )
+        response = JSONResponse(
+            status_code=500,
+            content={"detail": "Erro interno do AgroLog Gateway."},
+        )
+    response.headers["x-request-id"] = request_id
+    return response
+
+
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok", "service": "agrolog-gateway"}
@@ -37,17 +62,14 @@ def healthz() -> dict[str, str]:
 @app.get("/v1/armazens")
 def list_armazens(
     request: Request,
-    response: Response,
     uf: str | None = Query(default=None, min_length=2, max_length=2),
     municipio: str | None = Query(default=None, max_length=120),
     identificacao_armazem: str | None = Query(default=None, max_length=180),
     limit: int = Query(default=100, ge=1, le=MAX_LIMIT),
-    offset: int = Query(default=0, ge=0),
+    offset: int = Query(default=0, ge=0, le=MAX_OFFSET),
 ) -> dict[str, object]:
     started = time.perf_counter()
-    incoming_request_id = (request.headers.get("x-request-id") or "").strip()
-    request_id = incoming_request_id[:128] or str(uuid.uuid4())
-    response.headers["x-request-id"] = request_id
+    request_id = request.state.request_id
 
     try:
         settings = load_settings()

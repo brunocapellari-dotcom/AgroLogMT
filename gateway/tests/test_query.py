@@ -1,5 +1,5 @@
 from gateway.config import Settings
-from gateway.query import MAX_LIMIT, QueryValidationError, build_armazens_query
+from gateway.query import MAX_LIMIT, MAX_OFFSET, QueryValidationError, build_armazens_query
 
 
 def _settings() -> Settings:
@@ -38,6 +38,15 @@ def test_build_query_uses_only_canonical_view_and_parameters():
     assert params["offset"] == 10
 
 
+def test_build_query_selects_real_view_columns():
+    query = build_armazens_query(_settings())
+
+    # A coluna real da view é hash_chave_natural; hash_chave_armazem não existe
+    # em vw_armazens_atuais e já causou regressão anteriormente.
+    assert "hash_chave_natural" in query.sql
+    assert "hash_chave_armazem" not in query.sql
+
+
 def test_query_rejects_invalid_uf():
     try:
         build_armazens_query(_settings(), uf="M1")
@@ -54,3 +63,27 @@ def test_query_rejects_limit_above_contract():
         assert "limit" in str(exc)
     else:
         raise AssertionError("limit acima do teto deveria ser rejeitado")
+
+
+def test_query_rejects_offset_above_contract():
+    try:
+        build_armazens_query(_settings(), offset=MAX_OFFSET + 1)
+    except QueryValidationError as exc:
+        assert "offset" in str(exc)
+    else:
+        raise AssertionError("offset acima do teto deveria ser rejeitado")
+
+
+def test_query_rejects_negative_offset():
+    try:
+        build_armazens_query(_settings(), offset=-1)
+    except QueryValidationError as exc:
+        assert "offset" in str(exc)
+    else:
+        raise AssertionError("offset negativo deveria ser rejeitado")
+
+
+def test_query_orders_by_natural_key_for_deterministic_pagination():
+    query = build_armazens_query(_settings())
+
+    assert "ORDER BY uf, municipio, identificacao_armazem, hash_chave_natural" in query.sql

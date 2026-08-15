@@ -8,6 +8,7 @@ from gateway.config import Settings
 
 
 MAX_LIMIT = 500
+MAX_OFFSET = 100_000
 
 
 class QueryValidationError(ValueError):
@@ -43,8 +44,8 @@ def build_armazens_query(
 ) -> ArmazensQuery:
     if not 1 <= limit <= MAX_LIMIT:
         raise QueryValidationError(f"limit deve estar entre 1 e {MAX_LIMIT}.")
-    if offset < 0:
-        raise QueryValidationError("offset não pode ser negativo.")
+    if not 0 <= offset <= MAX_OFFSET:
+        raise QueryValidationError(f"offset deve estar entre 0 e {MAX_OFFSET}.")
 
     uf_norm = _clean_optional(uf, field="uf", max_length=2)
     if uf_norm is not None:
@@ -87,7 +88,7 @@ def build_armazens_query(
 
     sql = f"""
 SELECT
-  hash_chave_armazem,
+  hash_chave_natural,
   identificacao_armazem,
   uf,
   municipio,
@@ -97,7 +98,7 @@ SELECT
   coleta_snapshot_em_utc
 FROM `{settings.armazens_table_ref}`
 WHERE {' AND '.join(where)}
-ORDER BY uf, municipio, identificacao_armazem
+ORDER BY uf, municipio, identificacao_armazem, hash_chave_natural
 LIMIT @limit OFFSET @offset
 """.strip()
 
