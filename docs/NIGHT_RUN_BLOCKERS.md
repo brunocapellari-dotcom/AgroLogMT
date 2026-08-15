@@ -402,3 +402,25 @@ PR #25 sem review humano, PRs #27–#34 sem revisão humana, Issue #22 sem
 branch/PR (ainda bloqueada pela coordenação de `source_manifest.yaml`).
 Detalhe completo em `docs/NIGHT_RUN_REPORT.md`, seção "execução 12", e em
 `.agrolog48h_state.md`.
+
+---
+
+## 2026-08-15 (execução 13) — Revalidação geral: nenhum blocker mudou de causa raiz
+
+Reconciliação completa (`git fetch`, `gh pr view 25`, `gh issue view 13`,
+`gh issue view 1`, `gh pr list`/`gh issue list`, `python -m pytest -q
+gateway/tests`) não encontrou mudança em nenhum dos blockers registrados
+neste arquivo desde a execução 12: IMEA sem decisão de consolidação, PR
+#25 sem review humano (`reviews: []`, ainda `DRAFT`), PRs #27–#34 sem
+revisão humana, Issue #22 sem branch/PR própria.
+
+Único detalhe novo: o conector `claude.ai Google Drive` passou a ser
+listado explicitamente como exigindo autorização OAuth interativa, que
+uma sessão não interativa não pode completar — mesma causa raiz de fundo
+do blocker de Drive já registrado (acesso fora do alcance autônomo desta
+execução), agora com confirmação mais direta de que nenhuma nova tentativa
+de chamada muda esse estado até autorização humana via configurações de
+conector do claude.ai.
+
+Detalhe completo em `docs/NIGHT_RUN_REPORT.md`, seção "execução 13", e em
+`.agrolog48h_state.md`.
