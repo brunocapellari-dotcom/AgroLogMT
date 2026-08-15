@@ -264,3 +264,102 @@ execução.
    estiverem consolidados em `main`, considerar Issue #17 (dados
    ferroviários oficiais) ou #18 (motor próprio de rotas) como alternativa
    sem esse risco de duplicação.
+
+## Sessão de 2026-08-15 (execução 4)
+
+### Escopo desta execução
+Reconciliação da Fase A (Issue #13 / PR #25, sem mudança — sem novos
+reviews/checks desde a execução 3) e execução da Fase D — Issue #17
+(dados ferroviários oficiais, ANTT).
+
+### Fase A — Gateway (Issue #13 / PR #25) — reconciliada, sem mudança
+
+`pytest -q gateway/tests` revalidado: 14 passed, sem regressão. `gh pr
+view 25` conferido: ainda `OPEN`, `MERGEABLE`, sem novos reviews/checks
+desde a execução 3 (único comentário continua sendo o de validação
+completa já registrado). Nenhum retrabalho realizado. Deploy em Cloud Run
+privado segue aguardando revisão humana do PR #25.
+
+### Fase D — Issue #17 (dados ferroviários ANTT) — concluída e enviada
+
+Antes de iniciar, `chatgpt/comando-mestre-v2-20260812` foi checada
+(conforme blocker de coordenação de `sources/*/source_manifest.yaml`
+registrado nas execuções anteriores): não há manifesto de fonte
+ferroviária/rodoviária lá (só `anp`, `comex`, `conab/armazens`,
+`imea/fretes`, `imea/indicadores`, `portos`), então a Issue #17 não
+duplica estrutura em progresso — diferente do que aconteceria com a
+Issue #22, que continua adiada pelo mesmo motivo.
+
+Branch `feat/17-dados-ferroviarios-antt`, criada **a partir de
+`feat/19-ckan-connector`** (não de `main`) para reaproveitar o
+`ckan_connector` genérico da Issue #19 — o portal `"antt"` já estava
+validado em `KNOWN_PORTALS` no mesmo dia, então esta execução não criou
+um segundo cliente CKAN.
+
+1. Avaliação real via API CKAN da ANTT (`dados.antt.gov.br`) e download
+   direto do recurso "Produção Origem Destino 2025" (601.148 bytes, 7.799
+   linhas). Nenhum dado carregado em `logistica` — escopo é avaliação/PoC,
+   DQ pendente antes de qualquer carga, conforme a própria Issue #17.
+2. Criado `docs/sources/antt_ferrovias/README.md` (avaliação) e
+   `ckan_connector/tests/test_antt_ferrovias_live.py` (2 testes de
+   integração real).
+3. **Achados principais:**
+   - Dataset principal: SIADE (`sistema-de-acompanhamento-do-desempenho-operacional-das-concessionarias-siade`),
+     licença CC-BY, schema real `Mes_Ano;Ferrovia;Mercadoria_ANTT;
+     Estacao_Origem;UF_Origem;Estacao_Destino;UF_Destino;TU;TKU`,
+     **encoding `cp1252`, não UTF-8** (confirmado por decodificação real do
+     arquivo inteiro, não suposição).
+   - Relevância MT medida diretamente: 427/7.799 linhas do arquivo de 2025
+     têm `UF_Origem`/`UF_Destino` = `MT`; ferrovias `RMN`/`RMP`; principais
+     mercadorias incluem Soja, Farelo de Soja e Grãos-Milho — corredor Rumo
+     Malha Norte (Rondonópolis/Alto Araguaia/Itiquira → Santos).
+   - Achado de link obsoleto: o dataset `transporte-ferroviario-de-cargas-e-passageiros`
+     (encontrado via busca web) retorna `403`/`404` real — o dataset vivo
+     equivalente é o SIADE.
+   - Dataset secundário RAAF (acidentes) avaliado; `competencia` do RAAF
+     deixada como proposta não confirmada (cadência de publicação
+     semestral não é o mesmo que período do registro).
+   - ONTL/Infra S.A. (fonte complementar da Issue #17) inacessível deste
+     ambiente nesta sessão (`getaddrinfo ETIMEOUT`) — blocker informativo
+     registrado, não impediu o restante da avaliação.
+4. Revisão adversarial via Codex CLI (`codex exec --sandbox read-only`),
+   **2 rodadas**:
+   - Rodada 1: 4 achados reais (2 médios, 2 baixos) — `package_show`/
+     `list_resources` do teste novo sem tratamento de `CkanConnectionError`
+     (só o download tinha); cadência de ~4 meses de defasagem do SIADE
+     apresentada como "cadência real, não suposta" a partir de um único
+     `last_modified` (contradição interna com o próprio texto, que já
+     reconhecia `last_modified` como proxy); teste de encoding validava só
+     o cabeçalho ASCII, não provava de fato a alegação de `cp1252`;
+     `competencia` do RAAF confundia cadência de publicação com período do
+     registro.
+   - Rodada 2: confirmou os 4 corrigidos de forma real, sem regressão
+     nova; aprovado. Observação não bloqueante aplicada por limpeza
+     (checagem de U+FFFD redundante com decode `cp1252` estrito removida).
+5. `pytest -q ckan_connector/tests` → 25 passed (rede real, sem mock nos
+   testes live novos).
+6. Commit `ef5b2db` enviado para `feat/17-dados-ferroviarios-antt`; PR #31
+   (draft) criada contra `feat/19-ckan-connector` (não contra `main`), já
+   que depende do conector ainda não mesclado. Sem merge automático em
+   nenhuma das duas.
+7. Sessão retornou à branch `feat/13-agrolog-gateway-armazens` ao final,
+   conforme escopo desta execução.
+
+### Próximo item executável (execução 4)
+
+1. IMEA e Drive: mesmos blockers das execuções anteriores, sem mudança.
+2. Cloud Run privado do Gateway: aguarda revisão humana do PR #25.
+3. PRs #27 (CKAN), #29 (USDA), #30 (BigQuery Public Datasets) e #31 (ANTT
+   ferrovias) aguardam revisão humana. PR #31 especificamente depende da
+   PR #27 ser revisada/mesclada primeiro (ou pelo menos considerada
+   estável), já que é baseada nela.
+4. Issue #22 segue adiada pela mesma razão de coordenação de manifesto das
+   execuções anteriores.
+5. Issue #18 (motor próprio de rotas) é o próximo item de Fase D sem risco
+   de duplicação de manifesto — mas é um PoC mais pesado (benchmark
+   Valhalla x OSRM, estimativa de custo de infraestrutura), a avaliar se
+   cabe no formato "avaliação/documentação real" que funcionou para
+   #17/#19/#20/#21, ou se precisa de escopo reduzido para uma primeira
+   passada.
+6. Revisitar ONTL quando o portal estiver acessível a partir do ambiente de
+   execução (blocker informativo, não bloqueia o restante do trabalho).

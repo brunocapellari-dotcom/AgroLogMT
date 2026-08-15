@@ -113,3 +113,37 @@ nessa branch) foi priorizada em vez de #16/#22 na execução 2.
 `chatgpt/comando-mestre-v2-20260812` foi mesclada ou se a convenção de
 manifesto foi documentada em `docs/ARCHITECTURE.md`/`BACKLOG.md`; seguir essa
 convenção em vez de criar uma nova.
+
+**Revalidado em 2026-08-15 (execução 4):** mesma branch checada antes de
+iniciar a Issue #17 (dados ferroviários ANTT) — confirmado que não há
+manifesto `sources/ferrovias/*` ou `sources/rodovias/*` equivalente lá, então
+a Issue #17 foi executada sem risco de duplicação (diferente de #16/#22, que
+seguem adiadas). Sem mudança quanto a #16/#22 em si.
+
+---
+
+## 2026-08-15 — ONTL/Infra S.A. inacessível deste ambiente (Issue #17, não bloqueante)
+
+**Status:** ABERTO, não bloqueante — não impediu a conclusão da Issue #17.
+
+**Descrição:** `ontl.infrasa.gov.br` (Observatório Nacional de Transporte e
+Logística, fonte complementar citada na Issue #17 para matrizes O/D
+multimodais) não pôde ser acessado a partir deste ambiente nesta sessão:
+`WebFetch` retornou falha de resolução DNS (`getaddrinfo ETIMEOUT
+ontl.infrasa.gov.br`). Não foi possível confirmar de primeira mão o
+mecanismo de acesso (download direto, API, GeoPortal/ArcGIS), formato ou
+licença — o que a busca web indica sobre o portal não foi verificado e não
+deve ser tratado como confirmado.
+
+**Por que não bloqueou a Issue #17:** o dataset SIADE da ANTT (via
+`ckan_connector`, portal já validado) já fornece dado observado real de
+movimentação ferroviária mensal por rota, incluindo MT — suficiente para
+concluir a avaliação/PoC pedida pela Issue #17 sem depender de ONTL.
+
+**Como desbloquear:** repetir o acesso a `ontl.infrasa.gov.br` em uma
+execução futura (pode ser bloqueio de rede transitório do ambiente, não
+necessariamente do portal); se persistir, considerar acesso via outra
+ferramenta/rede antes de descartar a fonte.
+
+**Impacto:** avaliação de ONTL como fonte de matrizes O/D multimodais fica
+pendente para uma execução futura. Ver `docs/sources/antt_ferrovias/README.md`.
