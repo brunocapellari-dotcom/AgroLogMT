@@ -138,8 +138,8 @@ possível, para confirmar o tipo de bloqueio antes de registrar):
 | Fonte | Endpoint testado | Resultado | Observação |
 |---|---|---|---|
 | ERA5/AgERA5 (Copernicus CDS) | `GET https://cds.climate.copernicus.eu/api` | `HTTP 202`, mensagem de boas-vindas | O endpoint raiz responde sem chave, mas a documentação oficial do CDS exige token pessoal (UID + API key, registro gratuito) para qualquer requisição de dados real — não confirmado nesta sessão porque exigiria criar conta. Registrado como blocker de credencial. |
-| ANA HidroWebService (série de cotas, `hidrowebservice/EstacoesTelemetricas/HidroinfoanaSerieCotas/v1`) | `GET .../HidroinfoanaSerieCotas/v1?Código da Estação=...` | `HTTP 404` | Caminho exato do endpoint de série não confirmado nesta sessão (a API mais nova da ANA trocou de rota mais de uma vez); **não é bloqueio de credencial**, é pendência de descoberta de endpoint. |
-| ANA HidroWebService (inventário legado, `telemetriaws1.ana.gov.br/ServiceANA.asmx/HidroInventario`) | `GET .../HidroInventario?nmEstado=MATO GROSSO` | `HTTP 200`, XML com estações do MT | Responde sem chave e cobre inventário de estações do MT — caminho mais promissor para uma futura avaliação de hidrologia MT-específica, mas fica fora desta rodada (o PoC desta avaliação já está coberto pelo NASA POWER; retomar quando houver capacidade para mapear o endpoint de série correspondente). |
+| ANA HidroWebService (spec OpenAPI oficial, `https://www.ana.gov.br/hidrowebservice/api-docs/swagger-config`) | `GET` na spec OpenAPI real (v1 `.../HidroinfoanaSerieTelemetricaAdotada/v1` e `.../HidroinfoanaSerieTelemetricaDetalhada/v1`; equivalentes em v2) | `HTTP 200`, JSON OpenAPI completo (22 rotas em v1) | Endpoint de série **localizado** nesta rodada a partir da spec oficial (não mais um caminho adivinhado): host correto é `www.ana.gov.br/hidrowebservice` (não `telemetriaws1.ana.gov.br`, que é o serviço legado `.asmx`). Toda a API exige `Authorization: Bearer <JWT>` (`components.securitySchemes.Authorization`, `security` global na spec) — inclusive o próprio endpoint de obtenção de token, `GET /EstacoesTelemetricas/OAUth/v1`, exige headers `Identificador`/`Senha` já cadastrados. Duas buscas web independentes indicam, sem confirmação direta nesta sessão em manual ou página oficial completa (o manual PDF oficial não pôde ser lido — sem biblioteca de PDF disponível no ambiente), que o cadastro não seria self-service: exigiria solicitação a `hidro@ana.gov.br` com nome completo e instituição, com token resultante de validade de 60 minutos. **Reclassificado de "pendência de descoberta de endpoint" para blocker de credencial**, na mesma categoria de Copernicus CDS e NASA FIRMS — a parte confirmada diretamente na spec (token obrigatório, `Identificador`/`Senha` exigidos no endpoint de OAuth) já basta para essa reclassificação; o mecanismo exato de cadastro é a parte com evidência mais fraca. |
+| ANA HidroWebService (inventário legado, `telemetriaws1.ana.gov.br/ServiceANA.asmx/HidroInventario`) | `GET .../HidroInventario?nmEstado=MATO GROSSO` | `HTTP 200`, XML com estações do MT | Continua respondendo sem chave e cobre inventário de estações do MT — mas é a API legada `.asmx`, distinta da API moderna localizada acima; útil só para inventário de estações, não para série temporal. |
 | NASA FIRMS (focos de calor) | `GET https://firms.modaps.eosdis.nasa.gov/api/area/csv/DEMO_KEY/...` | `HTTP 400` — `"Invalid MAP_KEY"` | `DEMO_KEY` não é aceito (diferente de outras APIs NASA); exige `MAP_KEY` pessoal via registro gratuito. Blocker de credencial. |
 | NOAA/USGS Water (`waterservices.usgs.gov/nwis/iv`) | `GET .../nwis/iv/?sites=07010000&period=P1D` | `HTTP 200`, dados reais | Responde sem chave, mas é **especificamente território dos EUA** (rede de estações USGS) — sem cobertura no Brasil/MT, então sem relevância direta para o AgroLog apesar de tecnicamente acessível. Não implementado por falta de relevância geográfica, não por bloqueio técnico. |
 | USACE Rivergages (Corps Locks) | `GET https://rivergages.mvr.usace.army.mil/watercontrol/webservices/rest/webserviceWaterML.cfc?method=RGWML` | `HTTP 200`, corpo de erro genérico (`"An error has occurred."`) | Formato de chamada usado nesta avaliação não é o correto (serviço ColdFusion legado com assinatura própria); também é território/rios dos EUA (Mississippi), sem relevância direta para o MT. Não aprofundado por baixa prioridade geográfica. |
@@ -164,11 +164,20 @@ generalização prematura.
    ponto e `competencia` o mês/safra; `data_publicacao` precisa de
    confirmação do delay real de consolidação MERRA-2 (não medido nesta
    avaliação).
-2. Confirmar o endpoint correto de série temporal do ANA HidroWebService
-   (o inventário responde sem chave; a série ainda não foi localizada) e
-   avaliar hidrologia MT-específica numa rodada futura.
-3. Reavaliar ERA5/AgERA5 (Copernicus) e NASA FIRMS quando houver decisão
-   humana sobre registro de chave/token pessoal.
+2. Endpoint de série do ANA HidroWebService **localizado** (ver tabela
+   acima: `EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada` em
+   `www.ana.gov.br/hidrowebservice`, v1 ou v2) — mas o acesso real
+   depende de credencial (token JWT obrigatório, confirmado na spec
+   oficial); o mecanismo exato de obtenção dessa credencial (segundo
+   fontes secundárias convergentes, mas não confirmadas diretamente
+   nesta sessão em documentação oficial completa, seria solicitação a
+   `hidro@ana.gov.br` com nome completo e instituição) ainda precisa de
+   confirmação direta. Avaliar hidrologia MT-específica só é executável
+   numa rodada futura após decisão humana sobre buscar/confirmar essa
+   credencial (mesma natureza de decisão do item 3 abaixo).
+3. Reavaliar ERA5/AgERA5 (Copernicus), NASA FIRMS e ANA HidroWebService
+   quando houver decisão humana sobre registro/solicitação de
+   chave/token/credencial pessoal.
 4. Só considerar carga real no BigQuery depois de (1) e da revisão de DQ,
    seguindo o mesmo processo de piloto validado usado para CONAB Armazéns.
 5. Exposição no AgroLog Gateway somente após homologação de DQ, conforme
