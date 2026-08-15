@@ -388,3 +388,17 @@ unilateralmente, mesmo padrão já aplicado ao Cloud Run do Gateway
 **Impacto:** Issue #18 permanece parcialmente atendida — 1 de 7 critérios
 de aceite concluído, 1 parcial (estimativa de infraestrutura inicial, não
 medição própria), 5 pendentes de decisão de escopo.
+
+---
+
+## 2026-08-15 (execução 12) — Revalidação geral: nenhum blocker mudou de causa raiz
+
+Reconciliação completa (`git fetch`, `gh pr view 25`, `gh issue view 1`,
+`gh pr list`/`gh issue list`, chamada real ao Drive MCP, histórico de
+commits das sete branches de Fase D com PR aberto) não encontrou mudança
+em nenhum dos blockers registrados neste arquivo desde a execução 11:
+IMEA sem decisão de consolidação, Drive negado por `dontAsk`/allowlist,
+PR #25 sem review humano, PRs #27–#34 sem revisão humana, Issue #22 sem
+branch/PR (ainda bloqueada pela coordenação de `source_manifest.yaml`).
+Detalhe completo em `docs/NIGHT_RUN_REPORT.md`, seção "execução 12", e em
+`.agrolog48h_state.md`.
