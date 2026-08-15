@@ -814,3 +814,98 @@ documental) que continua sendo do usuário, não deste worker.
 10. ~~Confirmar tamanho do extrato Geofabrik Centro-Oeste~~ — resolvido
     ainda nesta execução (191 MB, commit `48037a1`); sem próxima ação
     pendente sobre esse ponto específico.
+
+## Sessão de 2026-08-15 (execução 9)
+
+### Escopo desta execução
+Reconciliação de Fase A/B/C (sem mudança) e um incremento real em Fase D:
+localização do endpoint de série do ANA HidroWebService (Issue #15/PR
+#33), pendência registrada desde a execução 3 e repetida sem avanço nas
+execuções 4-8.
+
+### Fase A — reconciliada, sem mudança
+`pytest -q gateway/tests` (executado da raiz do repositório, não de
+dentro de `gateway/`, para evitar falha de import por path) → 14 passed,
+idêntico à execução 8. `gh pr view 25` → `OPEN`, `MERGEABLE`, sem
+comentários/reviews novos. Nenhum retrabalho.
+
+### Fase B/C — sem mudança
+`gh pr view` nas PRs candidatas IMEA (#8, #2) e na PR #24 confirmou:
+nenhuma mesclada, nenhum novo comentário em `Issue #1`. `git log
+origin/main` idêntico ao registrado nas execuções anteriores — nenhuma
+decisão de consolidação IMEA ou de convenção `sources/*` chegou a `main`.
+Bloqueio de permissão do Drive MCP não foi re-testado nesta execução (já
+confirmado explicitamente negado na execução 7; repetir o mesmo teste sem
+mudança de causa raiz não agrega evidência nova).
+
+### Fase D — Issue #15: endpoint de série do ANA HidroWebService localizado
+
+1. Busca web (`WebSearch`) por documentação/swagger do HidroWebService
+   levou à página `https://www.ana.gov.br/hidrowebservice/swagger-ui/
+   index.html`. Como o Swagger UI renderiza via JavaScript (WebFetch não
+   captura conteúdo dinâmico), o worker seguiu a cadeia de configuração
+   real do Swagger (`swagger-initializer.js` → `configUrl` →
+   `/hidrowebservice/api-docs/swagger-config`) via `curl` direto, sem
+   adivinhar caminhos.
+2. `swagger-config` (`HTTP 200`) apontou duas specs OpenAPI versionadas
+   reais (`v1.0.3984.2` com 22 rotas, `v2.0.6581.0` com 2 rotas), ambas
+   baixadas e parseadas (`json.load`). Confirmado nelas, com evidência
+   direta (não busca de terceiros):
+   - host correto: `www.ana.gov.br/hidrowebservice` — distinto do
+     serviço legado `.asmx` (`telemetriaws1.ana.gov.br`) usado nas
+     tentativas das execuções anteriores;
+   - rotas de série telemétrica:
+     `GET /EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v1`
+     (dados adotados de chuva/nível/vazão) e
+     `.../HidroinfoanaSerieTelemetricaDetalhada/v1` (inclui dados brutos),
+     com equivalentes em v2;
+   - toda a API exige `Authorization: Bearer <JWT>`
+     (`components.securitySchemes`, `security` global na spec), inclusive
+     o próprio endpoint de obtenção de token
+     (`GET /EstacoesTelemetricas/OAUth/v1`), que exige headers
+     `Identificador`/`Senha` já cadastrados como parâmetros obrigatórios.
+3. Duas buscas web independentes convergem em como esse cadastro é obtido
+   (solicitação por e-mail a `hidro@ana.gov.br` com nome completo e
+   instituição, token resultante válido por 60 minutos) — mas essa parte
+   não foi confirmada diretamente nesta sessão em manual/página oficial
+   completa (o manual PDF oficial não pôde ser lido: sem biblioteca de
+   PDF disponível no ambiente Python local). Atualização aplicada em
+   `docs/sources/nasa_power/README.md`, branch `feat/15-nasa-power-poc`
+   (worktree temporário `../AgroLogMT_ANA_15`, removido ao final).
+4. Revisão adversarial via `codex:codex-rescue` (uma rodada): achado real
+   — a primeira versão do texto usava linguagem categórica ("confirma",
+   "não é self-service") para a parte de evidência indireta (busca web),
+   com hedging menor do que o já usado no mesmo arquivo para Copernicus
+   CDS apesar de evidência mais fraca. Corrigido antes do commit,
+   separando claramente o que é confirmado por spec oficial (host, rotas,
+   exigência de token) do que é indicado por fontes secundárias não
+   confirmadas (mecanismo exato de cadastro).
+5. Commit `3136c33` enviado a `feat/15-nasa-power-poc`; PR #33 atualizada
+   com comentário explicando a mudança. **Reclassificação de resultado:**
+   o blocker da Issue #15 para ANA HidroWebService muda de "pendência de
+   descoberta de endpoint" para **blocker de credencial** (mesma
+   categoria de Copernicus CDS e NASA FIRMS) — ver
+   `docs/NIGHT_RUN_BLOCKERS.md`.
+6. Nenhum dado carregado no BigQuery. Nenhuma credencial obtida ou
+   solicitada — decisão de enviar a solicitação a `hidro@ana.gov.br`
+   permanece humana.
+
+### Próximo item executável (execução 9)
+
+1. IMEA e Drive: mesmos blockers das execuções anteriores, sem mudança.
+2. Cloud Run privado do Gateway: aguarda revisão humana do PR #25.
+3. PRs #27, #29, #30, #31, #32, #33 e #34 aguardam revisão humana. PR #31
+   continua dependendo da PR #27.
+4. Quando a PR #29 mesclar: migrar `usda_agtransport` para
+   `socrata_connector`.
+5. Issue #18: decisão humana sobre escopo ainda pendente, sem mudança.
+6. Issue #15: endpoint do ANA HidroWebService localizado nesta execução;
+   próximo passo depende de decisão humana sobre solicitar a credencial a
+   `hidro@ana.gov.br` (mecanismo de cadastro ainda não confirmado em
+   documentação oficial completa) — mesma natureza de decisão de
+   Copernicus CDS/NASA FIRMS. Sem essa decisão, não há próximo incremento
+   de engenharia seguro nesta sub-frente.
+7. Issue #22 e #16 seguem adiadas pela coordenação de manifesto.
+8. Revisitar ONTL quando acessível.
+9. Quando `improve/issue-26-knowledge-48h` for mesclada/enviada, confirmar
+   que a correção `AGENTS.md`/`docs/OBSIDIAN.md` chegou a `main`.

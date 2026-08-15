@@ -266,28 +266,55 @@ próximo item.
 
 ---
 
-## 2026-08-15 — Issue #15: endpoint de série temporal do ANA HidroWebService não localizado
+## 2026-08-15 — Issue #15: ANA HidroWebService — endpoint localizado (execução 9); reclassificado para blocker de credencial
 
-**Status:** ABERTO, não bloqueante — não é bloqueio de credencial, é
-pendência de descoberta de endpoint.
+**Status:** ABERTO, não bloqueante — RECLASSIFICADO na execução 9: de
+"pendência de descoberta de endpoint" para **blocker de credencial**
+(mesma categoria de Copernicus CDS e NASA FIRMS).
 
-**Descrição:** o serviço de inventário legado do ANA HidroWebService
-(`telemetriaws1.ana.gov.br/ServiceANA.asmx/HidroInventario`) responde sem
-chave e retorna XML real com estações do Mato Grosso quando filtrado por
-`nmEstado=MATO GROSSO`. Já o endpoint mais novo testado para série de
-cotas (`www.ana.gov.br/hidrowebservice/EstacoesTelemetricas/
-HidroinfoanaSerieCotas/v1`) respondeu `HTTP 404` — o caminho exato da API
-de série da ANA não foi confirmado nesta sessão (a API da ANA já trocou
-de rota mais de uma vez segundo documentação pública).
+**Descrição original (execuções 1-8):** o serviço de inventário legado do
+ANA HidroWebService (`telemetriaws1.ana.gov.br/ServiceANA.asmx/
+HidroInventario`) respondia sem chave e retornava XML real com estações
+do Mato Grosso quando filtrado por `nmEstado=MATO GROSSO`. O endpoint
+mais novo testado para série de cotas
+(`www.ana.gov.br/hidrowebservice/EstacoesTelemetricas/
+HidroinfoanaSerieCotas/v1`) respondia `HTTP 404` — caminho adivinhado, não
+confirmado em fonte oficial.
 
-**Como desbloquear:** em uma execução futura, mapear a documentação
-oficial atualizada da ANA (ou testar variações de caminho) para
-encontrar o endpoint de série correspondente ao inventário já confirmado;
-só então avaliar hidrologia MT-específica como extensão da Issue #15.
+**O que mudou (execução 9):** a spec OpenAPI oficial da ANA
+(`https://www.ana.gov.br/hidrowebservice/api-docs/swagger-config`,
+`HTTP 200`) foi localizada e baixada (v1 com 22 rotas, v2 com 2 rotas).
+Ela confirma o host correto (`www.ana.gov.br/hidrowebservice`, distinto
+do legado `.asmx`) e as rotas reais de série telemétrica —
+`GET /EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v1` e
+`.../HidroinfoanaSerieTelemetricaDetalhada/v1` (equivalentes em v2). A
+mesma spec confirma que **toda** a API exige `Authorization: Bearer
+<JWT>`, inclusive o próprio endpoint de obtenção de token
+(`GET /EstacoesTelemetricas/OAUth/v1`, que exige headers
+`Identificador`/`Senha` já cadastrados) — ou seja, o endpoint em si não é
+mais o problema; o acesso real depende de credencial.
 
-**Impacto:** nenhum sobre o NASA POWER implementado nesta sessão — a
-avaliação de hidrologia MT-específica (rios navegáveis relevantes para
-logística) fica pendente para uma rodada futura de Fase D.
+**Evidência com confiança diferenciada:** host, rotas e exigência de
+Bearer JWT/`Identificador`/`Senha` — confirmados diretamente na spec
+OpenAPI oficial (`HTTP 200`, JSON real). O mecanismo exato de obtenção da
+credencial (duas buscas web convergem em "solicitação por e-mail a
+`hidro@ana.gov.br` com nome completo e instituição, token válido por 60
+minutos") **não foi confirmado nesta sessão** em manual ou página oficial
+completa (o manual PDF oficial não pôde ser lido — sem biblioteca de PDF
+disponível no ambiente); revisão adversarial via `codex:codex-rescue`
+apontou que a primeira versão do texto apresentava essa parte com
+confiança maior do que a evidência sustentava — corrigido antes do commit
+`3136c33` em `feat/15-nasa-power-poc` (PR #33).
+
+**Como desbloquear:** usuário decide se solicita a credencial (e-mail a
+`hidro@ana.gov.br`, pendente de confirmação do processo exato) — mesma
+natureza de decisão já registrada para Copernicus CDS e NASA FIRMS acima.
+Só então avaliar hidrologia MT-específica como extensão da Issue #15.
+
+**Impacto:** nenhum sobre o NASA POWER implementado (PR #33, já
+enviado). A avaliação de hidrologia MT-específica (rios navegáveis
+relevantes para logística) segue pendente de decisão humana sobre
+credencial, não mais de descoberta técnica de endpoint.
 
 ---
 
