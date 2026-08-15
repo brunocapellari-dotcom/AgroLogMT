@@ -78,7 +78,7 @@ ordem de grandeza para planejamento, não como capacidade contratada.
 | Onde fica o grafo em tempo de resposta | Em tiles no disco, carregados sob demanda | Memory-mapped a partir de arquivos `.osrm` pré-processados |
 | RAM em produção (extrato regional, não planeta) | Referenciado como confortável em 4–8 GB para a maioria dos perfis de tráfego | Depende diretamente do tamanho do `.osrm`; tende a exigir mais RAM que o Valhalla para o mesmo extrato, pois os dados pré-computados residem em memória |
 | Disco (grafo processado) | Da ordem de dezenas de GB para uma região (ex.: tiles da América do Norte citados na faixa de 15–20 GB); planeta inteiro da ordem de 100 GB | Menor pegada em disco que o conjunto de tiles do Valhalla para a mesma área, mas o custo se desloca para RAM |
-| Velocidade de resposta | Mais lento por request (calcula rota em tempo real a partir do grafo) | Mais rápido por request (rota pré-computada), à custa de RAM |
+| Velocidade de resposta | Calcula a rota por request sobre o grafo pré-processado; desempenho precisa de benchmark no recorte e workload do AgroLog | Calcula a rota por request sobre o grafo pré-processado com CH ou MLD; desempenho e consumo de RAM precisam de benchmark no mesmo recorte e workload |
 | Trade-off resumido | Favorece ambiente com RAM limitada | Favorece resposta mais rápida quando há RAM disponível |
 
 Fontes: [Valhalla — GitHub](https://github.com/valhalla/valhalla),
