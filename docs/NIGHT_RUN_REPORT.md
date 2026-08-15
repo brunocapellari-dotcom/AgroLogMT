@@ -97,3 +97,95 @@ decisão de consolidação de fonte canônica; (2) Drive aguarda liberação de
 permissão na sessão; (3) Cloud Run privado do Gateway aguarda revisão humana
 do PR #25; (4) PR #27 (CKAN) aguarda revisão humana; próximas Issues de
 Fase D sem avaliação ainda: #20, #21, #22.
+
+## Sessão de 2026-08-15 (execução 2)
+
+### Escopo desta execução
+Reconciliação do estado das Fases A/B/C (sem mudança de status), descoberta
+de uma frente de coordenação relevante ao planejamento da Fase D, e execução
+da Issue #20 (avaliação/PoC de datasets USDA AgTransport).
+
+### Fase A — Gateway (Issue #13 / PR #25) — reconciliada, sem mudança
+
+`pytest -q gateway/tests` revalidado: **14 passed** (via `python -m pytest`;
+`pytest` direto falha por não adicionar o diretório atual ao `sys.path` neste
+ambiente — não é regressão do gateway, é só um detalhe de invocação a
+lembrar em execuções futuras). PR #25 continua `OPEN`, sem novo review desde
+o comentário da sessão anterior. Deploy em Cloud Run privado **continua não
+iniciado**, mesma decisão da sessão anterior: depende de revisão humana do
+PR #25 antes de criar service account/IAM em produção real — o plano
+autoriza em princípio, mas criar infraestrutura de nuvem real não é uma
+decisão segura para tomar unilateralmente sem esse aval.
+
+### Fase B (IMEA) e Fase C (Drive) — revalidadas, blockers continuam abertos
+
+Nenhuma mudança encontrada: Issue #1 sem novos comentários, branches
+candidatas IMEA (`bootstrap/v3-conab-imea`, `chatgpt/comando-mestre-v2-20260812`)
+sem decisão de consolidação registrada; ferramentas Google Drive MCP
+continuam fora da allowlist da sessão. Ver `docs/NIGHT_RUN_BLOCKERS.md`.
+
+### Descoberta de coordenação: estrutura `sources/*/source_manifest.yaml` já em andamento (ChatGPT)
+
+A branch `origin/chatgpt/comando-mestre-v2-20260812` (não mesclada em `main`)
+já contém `sources/anp/source_manifest.yaml`, `sources/comex/source_manifest.yaml`
+e `sources/portos/source_manifest.yaml` — cobrindo boa parte do escopo das
+Issues #16 (energia/diesel/fertilizantes) e #22 (comércio global/portuária)
+de Fase D, além do IMEA já registrado como blocker. `main` ainda não tem
+nenhum arquivo `sources/`; essa convenção de manifesto está sendo definida
+pelo ChatGPT/OpenAI, responsável por "estrutura canônica" conforme
+`CLAUDE.md`.
+
+**Implicação para Fase D:** antes de iniciar as Issues #16 e #22, checar essa
+branch (ou seu estado consolidado em `main`, se já mesclada) para não criar
+uma segunda estrutura de manifesto concorrente. Por isso Issue #20 (USDA,
+sem manifesto equivalente nessa branch) foi escolhida nesta sessão em vez de
+#16/#22.
+
+### Fase D — Issue #20 (avaliação/PoC USDA AgTransport) — concluída e enviada
+
+Sem código/avaliação USDA prévia no repositório. Conectividade real
+confirmada com `agtransport.usda.gov` (API SODA/Socrata pública, sem
+autenticação) antes de implementar — inclusive um dataset (`wcku-8yrp`,
+fretes rodoviários trimestrais Brasil) com rotas reais de origem
+`North MT (Sorriso)` até Santos e Paranaguá, o mais diretamente relevante ao
+MT entre os avaliados.
+
+Criado `usda_agtransport/` em branch nova (`feat/20-usda-agtransport-poc`, a
+partir de `main`): cliente somente leitura da API SODA (`SocrataClient`),
+registro dos 5 datasets avaliados (`KNOWN_DATASETS`) e avaliação completa em
+`docs/sources/usda_agtransport/README.md` (termos de uso, cadência, schema,
+classificação de evidência observado-vs-derivado, qualidade/limitações).
+**Nenhum dado foi carregado no BigQuery**, conforme escopo explícito da
+Issue #20.
+
+**Revisão Codex (adversarial, uma rodada, `codex exec --sandbox
+read-only`):** achados reais corrigidos — redirect não revalidado podia
+seguir para outro host e potencialmente vazar `X-App-Token` (corrigido com
+`allow_redirects=False` + allowlist fixa de host); `base_url` aceitava
+qualquer host `https` incluindo loopback/IP privado (restrito à allowlist);
+nenhum teste validava a cadência declarada contra dados reais (adicionado
+teste que mede o intervalo real entre as duas datas mais recentes e distintas
+de cada dataset); `limit`/`offset` aceitavam `bool`/`float`; payload de
+`query()` aceitava elementos não-dict; coluna sem `dataTypeName`/`name`
+virava a string literal `"None"`. Achado sobre testes reais rodarem por
+padrão na suíte foi aceito como decisão deliberada, para manter consistência
+com o mesmo padrão já aprovado na Issue #19 (CKAN).
+
+`python -m pytest -q usda_agtransport/tests` → **32 passed**, incluindo 22
+chamadas reais à API (schema, cadência via gap real de datas, e uma
+regressão de relevância que confirma pelo menos uma rota com origem no MT).
+
+Commit `fee9bbc` enviado; PR #29 (draft) criado referenciando a Issue #20.
+Sem merge automático. Sessão retornou à branch
+`feat/13-agrolog-gateway-armazens` ao final, conforme escopo desta execução.
+
+### Próximo item executável (execução 2)
+
+1. IMEA e Drive: mesmos blockers da execução 1, sem mudança.
+2. Cloud Run privado do Gateway: aguarda revisão humana do PR #25.
+3. PRs #27 (CKAN) e #29 (USDA) aguardam revisão humana.
+4. Antes de iniciar Issues #16/#22, verificar se
+   `chatgpt/comando-mestre-v2-20260812` (ou seu conteúdo já mesclado em
+   `main`) define a convenção de `sources/*/source_manifest.yaml` a seguir.
+5. Issue #21 (avaliar NOAA/GDELT em BigQuery Public Datasets) ainda não
+   avaliada.

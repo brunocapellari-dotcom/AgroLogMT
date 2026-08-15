@@ -80,3 +80,33 @@ permissões da sessão, ou executa a Fase C em modo interativo.
 
 **Impacto:** inventário do Drive não iniciado nesta sessão. Não impede o avanço em
 Fase D (fontes/APIs públicas sem bloqueio humano).
+
+**Revalidado em 2026-08-15 (execução 2):** sem mudança — Issue #1 sem novos
+comentários, branches candidatas IMEA sem decisão de consolidação, Drive MCP
+ainda fora da allowlist.
+
+---
+
+## 2026-08-15 — Coordenação de estrutura: `sources/*/source_manifest.yaml` (não bloqueante)
+
+**Status:** INFORMATIVO — não bloqueia trabalho, mas deve ser checado antes de
+iniciar as Issues #16 e #22.
+
+**Descrição:** a branch `origin/chatgpt/comando-mestre-v2-20260812` (não
+mesclada em `main`) já define `sources/anp/source_manifest.yaml`,
+`sources/comex/source_manifest.yaml` e `sources/portos/source_manifest.yaml`
+— cobrindo parte do escopo de Fase D das Issues #16 (energia/diesel/
+fertilizantes/macroeconomia) e #22 (comércio global/atividade portuária),
+além dos manifestos IMEA já registrados no blocker acima. `main` ainda não
+tem nenhum arquivo `sources/`.
+
+**Por que registrar:** por `CLAUDE.md`, ChatGPT/OpenAI mantém a estrutura
+canônica; criar uma segunda estrutura de manifesto para ANP/comex/portos sem
+checar essa branch (ou seu estado já mesclado, se for o caso) arriscaria uma
+definição concorrente. Por isso a Issue #20 (USDA, sem manifesto equivalente
+nessa branch) foi priorizada em vez de #16/#22 na execução 2.
+
+**Como desbloquear:** antes de iniciar #16/#22, verificar se
+`chatgpt/comando-mestre-v2-20260812` foi mesclada ou se a convenção de
+manifesto foi documentada em `docs/ARCHITECTURE.md`/`BACKLOG.md`; seguir essa
+convenção em vez de criar uma nova.
