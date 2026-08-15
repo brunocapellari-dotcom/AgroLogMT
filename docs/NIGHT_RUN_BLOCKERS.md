@@ -320,3 +320,44 @@ nesta branch, que o worker KNOWLEDGE já corrigiu essa referência em
 Nenhuma ação adicional necessária deste lado — evitar duplicar a correção;
 revalidar apenas se essa branch for mesclada/enviada e a referência em
 `main` continuar quebrada.
+
+---
+
+## 2026-08-15 — Issue #18: decisão de escopo (PoC completo vs. avaliação documental) ainda pendente
+
+**Status:** ABERTO, não bloqueante — bloqueia só a conclusão completa dos
+critérios de aceite da Issue #18; o primeiro passo documental foi
+concluído e enviado nesta sessão (execução 8, PR #34).
+
+**Descrição:** cinco execuções consecutivas (3ª–7ª) identificaram a Issue
+#18 (motor próprio de rotas, Valhalla/OSRM sobre OpenStreetMap) como o
+próximo item de Fase D sem risco de duplicação de manifesto, mas adiaram
+por depender de decisão de escopo: subir Valhalla e OSRM de fato (PoC
+completo com benchmark real) é infraestrutura não trivial, que este
+worker optou por não decidir unilateralmente sem revisão humana. A
+execução 8 seguiu a recomendação explícita deixada pela execução 7 e
+avançou o único passo que não dependia dessa decisão: licenciamento ODbL
+do OpenStreetMap (atribuição, quando share-alike se aplica) e comparação
+de requisitos de disco/memória entre Valhalla e OSRM a partir de fontes
+públicas, documentado em `docs/sources/routing_engine/README.md` (PR
+#34), revisado adversarialmente pelo Codex (1 achado real corrigido —
+afirmação de desempenho comparativo sem benchmark, corrigida para exigir
+validação real).
+
+Continuam pendentes, porque dependem da decisão de escopo: benchmark
+Valhalla x OSRM em rotas do AgroLog, qualidade de rota validada em
+corredores prioritários, matriz O/D testada em lote, custo de
+infraestrutura de nuvem (Cloud Run/Compute Engine, egress, reprocessamento
+periódico do grafo), limites de atualização do mapa, API interna
+somente leitura para o Gateway.
+
+**Como desbloquear:** usuário decide se autoriza um PoC completo (subir
+Valhalla/OSRM reais em ambiente descartável, com extrato Centro-
+Oeste/MT) ou se a Issue #18 permanece documental por mais tempo. Sem essa
+decisão, este worker não amplia o escopo de infraestrutura
+unilateralmente, mesmo padrão já aplicado ao Cloud Run do Gateway
+(Issue #13).
+
+**Impacto:** Issue #18 permanece parcialmente atendida — 1 de 7 critérios
+de aceite concluído, 1 parcial (estimativa de infraestrutura inicial, não
+medição própria), 5 pendentes de decisão de escopo.

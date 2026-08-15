@@ -707,3 +707,102 @@ prévia.
 8. Revisitar ONTL quando acessível.
 9. Quando `improve/issue-26-knowledge-48h` for mesclada/enviada, confirmar
    que a correção `AGENTS.md`/`docs/OBSIDIAN.md` chegou a `main`.
+
+## Sessão de 2026-08-15 (execução 8)
+
+### Escopo desta execução
+Reconciliação da Fase A (Issue #13 / PR #25, sem mudança) e primeiro passo
+estritamente documental da Issue #18 (motor próprio de rotas), quebrando a
+sequência de sete execuções consecutivas que identificaram a issue como
+próximo item de Fase D e adiaram por decisão de escopo pendente.
+
+### Fase A — Gateway (Issue #13 / PR #25) — reconciliada, sem mudança
+
+`gh pr view 25` conferido: `OPEN`, `MERGEABLE`, sem novos reviews/checks
+desde a execução 7. `gh pr list`/`gh issue list` conferidos: nenhuma PR
+nova além das já conhecidas (#27, #29, #30, #31, #32, #33), nenhuma issue
+nova. Nenhum retrabalho. Deploy em Cloud Run privado continua não
+iniciado, mesma decisão mantida (aguarda revisão humana do PR #25 — criar
+service account/IAM real não é decisão segura para tomar unilateralmente).
+
+### Fase B (IMEA) e Fase C (Drive) — sem mudança
+
+Nenhuma branch/PR IMEA nova, nenhuma decisão de consolidação registrada.
+Ferramentas Google Drive continuam listadas como exigindo autorização
+nesta sessão. Blockers mantidos sem alteração de causa raiz.
+
+### Fase D — Issue #18 (motor próprio de rotas) — primeiro passo documental concluído e enviado
+
+Cinco execuções anteriores (3ª–7ª) haviam identificado a Issue #18 como o
+próximo item de Fase D sem risco de duplicação de manifesto, mas adiado
+repetidamente por depender de decisão de escopo sobre PoC pesado
+(Valhalla/OSRM reais). A nota final da execução 7 recomendava
+explicitamente, como alternativa a uma sexta repetição sem avanço, "um
+primeiro passo estritamente documental (pesquisa de licenciamento OSM,
+requisitos de disco/memória de Valhalla vs. OSRM, sem subir nenhum
+container)". Esta execução seguiu essa recomendação.
+
+**Nenhum container subiu, nenhum benchmark rodou, nenhuma decisão de
+infraestrutura foi tomada.** Trabalho realizado:
+
+1. Pesquisa real (busca web) sobre a licença ODbL do OpenStreetMap —
+   obrigações de atribuição para "Produced Works" (rotas calculadas),
+   quando share-alike se aplica (só a redistribuição pública de
+   "Derivative Database", não a uso operacional interno).
+2. Comparação de requisitos de disco/memória entre Valhalla (tiles em
+   disco, ~4–8 GB RAM em produção, tiles regionais na faixa de 15–20 GB)
+   e OSRM (grafo pré-computado memory-mapped, RAM escala com o tamanho
+   do `.osrm`), a partir de documentação oficial e comparativos públicos
+   independentes.
+3. Tamanho real do extrato de origem confirmado por consulta direta ao
+   servidor Geofabrik: `brazil-latest.osm.pbf` = 1,9 GB (31/07/2026).
+   Registrado explicitamente que o extrato Centro-Oeste (região que
+   contém MT) não apareceu na consulta e precisa confirmação direta
+   antes de qualquer dimensionamento.
+4. Cada afirmação classificada como observado/inferido/estimado
+   conforme `docs/DATA_GOVERNANCE.md`, com fontes linkadas.
+5. Documento criado: `docs/sources/routing_engine/README.md`, branch
+   nova `feat/18-routing-engine-research` (a partir de `main`).
+
+**Revisão Codex (adversarial, uma rodada, `codex:codex-rescue`):** 1
+achado real corrigido — a tabela comparativa afirmava como fato que
+Valhalla é "mais lento" (calcula rota "em tempo real a partir do grafo
+bruto") e OSRM "mais rápido" (rota pré-computada), mas ambos os motores
+usam estrutura pré-processada (tiles no Valhalla, contraction
+hierarchies/MLD no OSRM) e nenhum benchmark foi rodado nesta avaliação —
+corrigido para exigir benchmark real no recorte/workload do AgroLog antes
+de qualquer conclusão de desempenho, em vez de apresentar estimativa não
+verificada como fato observado.
+
+Commits `29135c9` e `0d3615a` enviados; PR #34 (não-draft, pronta para
+revisão) criada contra `main`. Sem merge automático.
+
+**Status dos critérios de aceite da Issue #18 após este documento:**
+licença/atribuição documentadas (✅); custo de infraestrutura com
+estimativa inicial de disco/memória de terceiros, não medição própria
+(parcial); benchmark, qualidade de rota, matriz O/D, política de
+atualização e API interna seguem explicitamente pendentes — dependem da
+decisão de escopo (PoC completo com Valhalla/OSRM reais vs. permanecer
+documental) que continua sendo do usuário, não deste worker.
+
+### Próximo item executável (execução 8)
+
+1. IMEA e Drive: mesmos blockers das execuções anteriores, sem mudança.
+2. Cloud Run privado do Gateway: aguarda revisão humana do PR #25.
+3. PRs #27, #29, #30, #31, #32, #33 e #34 aguardam revisão humana. PR #31
+   continua dependendo da PR #27.
+4. Quando a PR #29 mesclar: migrar `usda_agtransport` para
+   `socrata_connector`.
+5. Issue #18: decisão humana sobre escopo (PoC completo com Valhalla/OSRM
+   reais vs. permanecer com avaliação documental) ainda pendente — o
+   documento desta execução não decide isso, só remove a lacuna de
+   licenciamento/requisitos que bloqueava até uma primeira leitura.
+6. Issue #15: mesmos sub-blockers (Copernicus CDS, NASA FIRMS, endpoint de
+   série ANA HidroWebService).
+7. Issue #22 e #16 seguem adiadas pela coordenação de manifesto.
+8. Revisitar ONTL quando acessível.
+9. Quando `improve/issue-26-knowledge-48h` for mesclada/enviada, confirmar
+   que a correção `AGENTS.md`/`docs/OBSIDIAN.md` chegou a `main`.
+10. Confirmar, numa execução futura, o tamanho do extrato Geofabrik
+    Centro-Oeste (não localizado nesta sessão) antes de qualquer
+    dimensionamento real de infraestrutura para a Issue #18.
