@@ -999,3 +999,66 @@ repetido — nada mudou desde então.
 8. Revisitar ONTL quando acessível.
 9. Quando `improve/issue-26-knowledge-48h` for mesclada/enviada, confirmar
    que a correção `AGENTS.md`/`docs/OBSIDIAN.md` chegou a `main`.
+
+## Sessão de 2026-08-15 (execução 11)
+
+### Escopo desta execução
+Reconciliação completa de Fase A/B/C/D (confirmado: nenhuma mudança externa
+desde a execução 10 — sem novos commits, reviews, comentários, issues ou
+PRs) e correção de documentação desatualizada encontrada ao procurar
+trabalho seguro e independente, já que o código do Gateway (revisado linha
+a linha novamente) não apresentou nenhum bug novo.
+
+### Fase A — Gateway (Issue #13 / PR #25) — documentação corrigida, sem mudança de código
+
+`git fetch --all --prune`: sem divergência. `gh pr view 25`: `OPEN`,
+`DRAFT`, `MERGEABLE`, mesmos dois comentários já registrados, nenhum review
+novo. `gh issue list`/`gh pr list` completos: nenhuma issue/PR nova.
+`gh pr view` para #27–#34: nenhum comentário/review novo (PR #28 só reflete
+a própria atualização de relatório da execução 10). `pip install -r
+gateway/requirements-dev.txt` + `python -m pytest -q gateway/tests` → **16
+passed**, sem regressão. Revisão linha a linha de `gateway/main.py` e
+`gateway/query.py`: nenhum bug novo encontrado (mesma conclusão da
+execução 10).
+
+Gap real encontrado: `docs/BACKLOG.md` (seção "P1 — AgroLog Gateway") e o
+corpo da Issue #13 no GitHub ainda marcavam todos os critérios de aceite
+como pendentes (`[ ]`), embora 3 dos 5 itens do backlog e 11 das 13
+critérios da Issue já estivessem comprovados por código, testes e pelos
+comentários de validação registrados nas execuções 9/10 do PR #25. Isso
+criava risco de um revisor humano subestimar o quanto já está pronto.
+Corrigido:
+- `docs/BACKLOG.md`: marcados `[x]` "definir contrato mínimo", "implementar
+  endpoint de leitura" e "adicionar logs e tratamento de erros"; mantidos
+  `[ ]` "conectar Cloud Run" e "testar mesma consulta via OpenAI/Codex e
+  Claude" (não comprovados); nota de estado adicionada. Commit `68185c4`
+  em `feat/13-agrolog-gateway-armazens`.
+- Issue #13 (GitHub): 11 de 13 critérios de aceite marcados `[x]` com
+  evidência já registrada nos comentários do PR #25; os 2 restantes
+  (deploy manual em Cloud Run, comparação formal Codex/Claude) permanecem
+  `[ ]` e explicitamente ligados à mesma decisão humana pendente — nenhuma
+  ação de infraestrutura foi tomada.
+
+Deploy em Cloud Run privado continua não iniciado pela mesma razão das
+execuções anteriores (infraestrutura compartilhada, efeito difícil de
+reverter, aguardando revisão humana do PR #25).
+
+### Fase B/C/D — reconciliadas, sem mudança
+
+Mesmo estado das execuções 9/10: IMEA bloqueado por decisão de consolidação
+pendente; Drive bloqueado por permissão de sessão; PRs #27–#34 aguardando
+revisão humana, sem atividade nova. Avaliada a Issue #11 (Technology Radar)
+como candidata de trabalho independente, mas descartada nesta execução por
+sobrepor-se ao escopo "RADAR CIENTÍFICO" já atribuído ao worker KNOWLEDGE
+(`automation48h/AGROLOG_KNOWLEDGE_48H.md`), evitando duplicação entre
+workers paralelos.
+
+### Próximo item executável (execução 11)
+
+Sem mudança em relação à execução 10: todos os itens executáveis
+remanescentes (deploy Cloud Run do Gateway, IMEA, Drive, revisão humana das
+PRs #27–#34, Issue #18, Issue #15/ANA, Issue #16/#22, ONTL, merge de
+`improve/issue-26-knowledge-48h`) dependem de decisão humana ou de outro
+worker/agente já registrada nas execuções anteriores. Nenhum novo item de
+engenharia seguro e independente foi identificado nesta execução além da
+correção documental acima.
