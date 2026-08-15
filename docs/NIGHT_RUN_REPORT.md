@@ -189,3 +189,78 @@ Sem merge automático. Sessão retornou à branch
    `main`) define a convenção de `sources/*/source_manifest.yaml` a seguir.
 5. Issue #21 (avaliar NOAA/GDELT em BigQuery Public Datasets) ainda não
    avaliada.
+
+## Sessão de 2026-08-15 (execução 3)
+
+### Escopo desta execução
+Reconciliação do estado (sem mudança em Fases A/B/C, sem novos reviews em
+PR #25/#27/#29) e execução da Issue #21 (avaliação BigQuery Public
+Datasets: NOAA GSOD e GDELT v2).
+
+### Fase A/B/C — reconciliadas, sem mudança
+`gh pr view 25`, `gh issue list`, `gh pr list` conferidos contra o estado
+registrado em `.agrolog48h_state.md`: idêntico. Nenhum novo review em
+PR #25/#27/#29, nenhuma decisão de consolidação IMEA, Drive MCP ainda fora
+da allowlist. Nenhum retrabalho.
+
+### Fase D — Issue #21 (avaliação BigQuery Public Datasets) — concluída e enviada
+
+Avaliação real via `bq` CLI (projeto `project-61334ffa-ea5c-4c3a-82f`,
+já usado pelo Gateway) contra `bigquery-public-data.noaa_gsod` e
+`gdelt-bq.gdeltv2`, sem carregar nada em `logistica`. Criado
+`docs/sources/bigquery_public_datasets/` (branch nova
+`feat/21-bigquery-public-datasets`, a partir de `main`, fora da branch da
+Issue #13) com README de avaliação e 5 consultas SQL versionadas e
+reproduzíveis.
+
+**Achados principais:**
+- `logistica` está em `southamerica-east1`; NOAA GSOD e GDELT v2 estão em
+  `US` — `JOIN` direto falha. BigQuery *global queries* (Preview) mitigam
+  parcialmente, mas não suportam `_PARTITIONTIME` (o mecanismo de poda de
+  partição usado na consulta GDELT deste PR) e dependem de configuração no
+  projeto proprietário dos dados remotos, fora do controle do AgroLog.
+- NOAA GSOD: tabela mais recente (`gsod2025`) tem `MAX(data) = 2025-08-28`
+  — ~1 ano de defasagem em relação à data desta avaliação (2026-08-15).
+- GDELT v2: atualizado até o dia corrente (`MAX(SQLDATE) = 20260815`), mas
+  qualidade de entidade baixa (nomes de ator genéricos); conteúdo
+  semântico é inferido pelo pipeline do GDELT, não observação direta.
+
+**Revisão Codex (adversarial, três rodadas, `codex exec --sandbox
+read-only`, com busca web):** a primeira versão do documento continha 14
+achados reais, incluindo dois graves — a afirmação de atualização do NOAA
+GSOD estava **invertida** em relação à evidência real (presença de
+registros de 2025 interpretada erroneamente como "segue atualizado", em
+vez de indicar ~1 ano de defasagem), e a afirmação de que `JOIN`
+cross-region é impossível estava desatualizada (BigQuery global queries
+em Preview permite, com limitações). Segunda rodada corrigiu 9 dos 14 e
+encontrou 5 remanescentes (janela GDELT mal fechada, rótulo "custo real"
+contraditório com dry-run, TTL de global queries incorreto e limitação de
+`_PARTITIONTIME` omitida, classificação de evidência GDELT forte demais,
+evidências de atualização não versionadas em SQL). Terceira rodada
+confirmou os 5 corrigidos e apontou 2 imprecisões novas e menores (rótulo
+"full scan remoto" impreciso — a query falharia, não escanearia
+silenciosamente; e a dependência de `enable_global_queries_data_access`
+no projeto proprietário dos dados remotos, não só no do AgroLog), também
+corrigidas.
+
+Commit `26fd3e5` enviado; PR #30 (draft) criado referenciando a Issue #21.
+Sem merge automático. Sessão retornou à branch
+`feat/13-agrolog-gateway-armazens` ao final, conforme escopo desta
+execução.
+
+### Próximo item executável (execução 3)
+
+1. IMEA e Drive: mesmos blockers das execuções 1/2, sem mudança.
+2. Cloud Run privado do Gateway: aguarda revisão humana do PR #25.
+3. PRs #27 (CKAN), #29 (USDA) e #30 (BigQuery Public Datasets) aguardam
+   revisão humana.
+4. Antes de iniciar Issues #16/#22, verificar se
+   `chatgpt/comando-mestre-v2-20260812` (ou seu conteúdo já mesclado em
+   `main`) define a convenção de `sources/*/source_manifest.yaml` a
+   seguir.
+5. Issue #22 (comércio global/atividade portuária) — checar a nota de
+   coordenação acima antes de iniciar; se `sources/portos/` e
+   `sources/comex/` de `chatgpt/comando-mestre-v2-20260812` ainda não
+   estiverem consolidados em `main`, considerar Issue #17 (dados
+   ferroviários oficiais) ou #18 (motor próprio de rotas) como alternativa
+   sem esse risco de duplicação.

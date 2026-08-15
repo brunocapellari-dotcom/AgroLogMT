@@ -85,6 +85,9 @@ Fase D (fontes/APIs públicas sem bloqueio humano).
 comentários, branches candidatas IMEA sem decisão de consolidação, Drive MCP
 ainda fora da allowlist.
 
+**Revalidado em 2026-08-15 (execução 3):** sem mudança — `gh issue list`/
+`gh pr list`/`gh pr view 25` conferidos, idênticos ao estado registrado.
+
 ---
 
 ## 2026-08-15 — Coordenação de estrutura: `sources/*/source_manifest.yaml` (não bloqueante)
