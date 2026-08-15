@@ -424,3 +424,37 @@ conector do claude.ai.
 
 Detalhe completo em `docs/NIGHT_RUN_REPORT.md`, seção "execução 13", e em
 `.agrolog48h_state.md`.
+
+---
+
+## 2026-08-15 (execução 14) — Revalidação geral + verificação explícita das sete PRs de Fase D: nenhum blocker mudou de causa raiz
+
+Reconciliação completa de Fase A (`git fetch`, `gh pr view 25`,
+`gh issue view 13`, `python -m pytest -q gateway/tests` → 16 passed) sem
+mudança desde a execução 13. Adicionalmente, esta execução verificou de
+forma explícita o checklist e o status de CI de cada uma das sete PRs de
+Fase D já abertas (#27, #29, #30, #31, #32, #33, #34) em vez de só
+confirmar o resumo do estado anterior — nenhuma tinha item de engenharia
+pendente fora de revisão humana (PR #30 só falta "Revisão humana"; PR
+#34/Issue #18 confirma o mesmo blocker de decisão de escopo das execuções
+7/8).
+
+Também foi reavaliado, com evidência de `git ls-tree` em ambas as
+branches, se o item de limpeza `usda_agtransport` → `socrata_connector`
+(não-bloqueante desde a execução 5, ver entrada correspondente acima)
+poderia ser executado agora: `socrata_connector/` só existe em
+`feat/14-cftc-cot-poc` (PR #32, não mesclada) e `usda_agtransport/` só em
+`feat/20-usda-agtransport-poc` (PR #29, não mesclada) — a migração
+exigiria importar o pacote de uma PR ainda em revisão para dentro de
+outra PR ainda em revisão, alterando o diff de ambas antes de qualquer
+aprovação humana. Mantido como blocker não-bloqueante; permanece correto
+esperar pelo menos uma das duas PRs ser revisada/mesclada antes de
+executar essa consolidação.
+
+Nenhuma mudança em: IMEA sem decisão de consolidação, PR #25 sem review
+humano (`reviews: []`, ainda `DRAFT`, `updatedAt` inalterado), Drive
+ainda exigindo autorização OAuth interativa indisponível nesta sessão,
+Issue #22 sem branch/PR própria.
+
+Detalhe completo em `docs/NIGHT_RUN_REPORT.md`, seção "execução 14", e em
+`.agrolog48h_state.md`.
