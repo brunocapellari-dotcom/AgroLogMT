@@ -49,3 +49,6 @@ gcloud-service-key*.json
 Thumbs.db
 .vscode/
 .idea/
+
+# Estado local da execução autônoma 48h (não versionar)
+.agrolog48h_state.md
