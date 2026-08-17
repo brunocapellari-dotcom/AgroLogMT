@@ -1,0 +1,7 @@
+{
+  "crawl_url": "https://example.com",
+  "whisper_media": null,
+  "whisper_model": "turbo",
+  "polymarket_url": null,
+  "run_ollama_health": true
+}
