@@ -50,6 +50,17 @@ class PolymarketSafetyTests(unittest.TestCase):
         for token in forbidden:
             self.assertNotIn(token, source)
 
+    def test_market_signal_is_observed_subtype_not_new_evidence_class(self):
+        class DummyMarket:
+            def model_dump(self, mode="json"):
+                return {"id": "synthetic"}
+
+        payload = polymarket_poc.serialize_market(DummyMarket())
+        self.assertEqual(payload["classe_evidencia"], "observado")
+        self.assertEqual(payload["subtipo_evidencia"], "sinal_expectativa_mercado")
+        self.assertTrue(payload["read_only"])
+        self.assertTrue(payload["not_a_future_fact"])
+
 
 class LocalOnlyTests(unittest.TestCase):
     def test_ollama_is_localhost_only(self):
