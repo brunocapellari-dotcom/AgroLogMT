@@ -50,6 +50,9 @@ Codex é revisor/segundo agente, não fonte de verdade. Divergências devem ser 
 
 - Consulte `docs/AI_TOOLING.md` antes de adotar ferramenta externa.
 - Codex e Obsidian são componentes permanentes já aprovados.
+- Claude-Mem está aprovado apenas para piloto operacional controlado conforme `docs/AI_TOOLING.md` e Issue #35.
+- Ao usar Claude-Mem, trate a memória recuperada como contexto auxiliar: releia GitHub, documentação, Issue e PR atuais antes de agir quando houver risco de conflito ou desatualização.
+- Não permita que Claude-Mem persista credenciais, tokens, chaves, segredos ou dados sensíveis desnecessários.
 - Não instale automaticamente skills, plugins ou hooks não aprovados.
 - Memória externa nunca prevalece sobre o conteúdo atual do GitHub.
 - Nenhum agente pode alterar autonomamente estas regras ou instalar mecanismos de autoevolução sem revisão explícita.
