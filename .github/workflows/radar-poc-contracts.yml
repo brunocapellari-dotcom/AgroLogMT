@@ -1,0 +1,30 @@
+name: Radar PoC contracts
+
+on:
+  pull_request:
+    paths:
+      - "experiments/radar_poc_suite/**"
+      - ".github/workflows/radar-poc-contracts.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "experiments/radar_poc_suite/**"
+      - ".github/workflows/radar-poc-contracts.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run deterministic safety contracts
+        run: python -m unittest -v experiments.radar_poc_suite.tests.test_contracts
+      - name: Run suite doctor without external installs
+        run: python experiments/radar_poc_suite/doctor.py
