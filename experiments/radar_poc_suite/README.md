@@ -46,6 +46,22 @@ pip install -r experiments/radar_poc_suite/requirements-optional.txt
 
 Dependências pesadas (Whisper/Crawl4AI) podem exigir passos adicionais do projeto original, como FFmpeg e navegador. O PoC deve falhar com mensagem clara se a dependência não estiver instalada.
 
+## Executar tudo em um único comando
+
+Sem configuração externa, o runner executa os contratos determinísticos, doctor, LangGraph/VectorBT quando instalados e tenta apenas o health-check local do Ollama. Nenhuma chamada de rede pública é feita automaticamente.
+
+```bash
+python experiments/radar_poc_suite/run_all.py
+```
+
+Para habilitar também Crawl4AI, Whisper e Polymarket, copie `run_config.example.json` para um arquivo local de configuração, ajuste apenas URLs/mídia autorizadas e execute:
+
+```bash
+python experiments/radar_poc_suite/run_all.py --config caminho/run_config.json
+```
+
+`SKIP` significa que dependência, arquivo, URL ou serviço local ainda não está disponível; não é promovido a sucesso silenciosamente.
+
 ## Diagnóstico rápido
 
 ```bash
