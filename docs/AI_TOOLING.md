@@ -23,7 +23,7 @@ Este documento é o registro canônico de ferramentas externas, agentes, skills 
 
 ## Radar Tecnológico do AgroLog MT
 
-O projeto passa a manter um Radar Tecnológico como responsabilidade permanente do CONSTRUTOR/coordenação do AgroLog MT.
+O projeto mantém um Radar Tecnológico como responsabilidade permanente do CONSTRUTOR/coordenação do AgroLog MT.
 
 Objetivo:
 - identificar componentes open source que reduzam tempo de desenvolvimento;
@@ -41,33 +41,61 @@ Regra: componentes do Radar são **peças substituíveis**. BigQuery, GitHub, ar
 - Regra: não substitui `CLAUDE.md`, `AGENTS.md`, governança, testes próprios nem revisão multiagente.
 - Status: aprovado para configuração controlada; não vendorizado no repositório.
 
-## Candidatos prioritários do Radar — avaliar antes de produção
+## Seleção estratégica do Radar — ordem de avaliação
 
-A presença nesta seção significa **prioridade de avaliação**, não autorização automática para instalar ou colocar em produção.
+Os itens desta seção foram selecionados por criarem capacidade nova ou por terem papel suficientemente distinto. A seleção **não autoriza instalação ou produção automática**: cada componente ainda precisa de PoC, análise de licença, segurança, custo, manutenção e estratégia de saída.
+
+### Orquestração de agentes analíticos
+
+**LangGraph — candidato preferencial**
+- Uso pretendido: coordenar agentes analíticos stateful e de longa duração, com handoffs explícitos, checkpoint, condição de parada, human-in-the-loop e rastreabilidade de estado.
+- Papel: orquestração de **agentes de inteligência**, não de pipelines de coleta.
+- Separação obrigatória: `n8n` permanece candidato para orquestração operacional/gatilhos; LangGraph coordena raciocínio e fluxos multiagente.
+- Regra: não instalar simultaneamente Agno, CrewAI, Semantic Kernel e AutoGen para a mesma responsabilidade. Eles permanecem alternativas de referência caso LangGraph falhe no benchmark.
+
+**Padrão de debate inspirado em TradingAgents**
+- Adotar o padrão conceitual de especialistas independentes, análise pró/contra, agente cético/risco, auditor e consolidador final.
+- Não incorporar TradingAgents como segunda stack operacional, pois o padrão pode ser implementado sobre LangGraph e ferramentas próprias do AgroLog.
+- O debate nunca substitui evidência, DQ, testes ou revisão humana quando exigida.
 
 ### Automação e coleta
 
 **n8n**
 - Uso pretendido: gatilhos, automações, webhooks e integrações entre serviços.
 - Regra: revisar licença/modelo de uso antes de qualquer oferta comercial ou hospedagem para terceiros.
+- Não armazenar lógica analítica canônica dentro de workflows quando ela pertencer ao código versionado.
+
+**Crawl4AI — candidato prioritário para conteúdo público**
+- Uso pretendido: transformar sites e páginas públicas em conteúdo limpo/estruturado para pipelines, RAG e agentes, incluindo páginas dinâmicas quando aplicável.
+- Posição na hierarquia: usar depois de API/HTTP/arquivo determinístico e antes de automação de navegador mais pesada quando o caso permitir.
+- Hierarquia preferencial: `API/arquivo/HTTP → Crawl4AI → Playwright → browser-use`.
+- Regra: respeitar robots, termos, limites, autenticação e restrições da fonte; não usar técnicas de evasão como justificativa para violar políticas de acesso.
+- Licença/atribuição: revisar a licença vigente e requisitos de atribuição antes de distribuição, uso público ou oferta comercial.
 
 **Playwright**
-- Uso pretendido: navegação determinística em fontes sem API adequada, testes e downloads automatizados.
+- Uso pretendido: navegação determinística em fontes sem API adequada, testes, interação controlada e downloads automatizados.
+- Usar quando Crawl4AI/HTTP não resolver o fluxo de forma estável ou quando houver sequência de interação autorizada.
 
 **browser-use ou agente de navegador equivalente**
 - Uso pretendido: tarefas de navegação que exigem interpretação contextual.
-- Regra: não substituir coletor determinístico quando houver API/endpoint estável.
+- Regra: último nível da hierarquia de navegação; não substituir coletor determinístico quando houver API/endpoint estável.
 
 **Airbyte**
 - Uso pretendido: conectores padronizados para fontes em que o uso do conector seja mais simples e confiável que código próprio.
 
-### Inteligência documental
+### Inteligência documental, áudio e multimodal
 
 **Docling**
 - Uso pretendido: extração de texto, tabelas, estrutura e metadados de PDFs/documentos.
 
 **Unstructured / Marker**
 - Uso pretendido: alternativas/complementos de parsing documental quando demonstrarem desempenho melhor em casos específicos.
+
+**Whisper — candidato prioritário para áudio/vídeo**
+- Uso pretendido: transformar webinars, entrevistas, podcasts, vídeos, reuniões e áudios autorizados em transcrições pesquisáveis com referência temporal quando disponível.
+- Aplicações: conteúdo técnico do agro, apresentações empresariais, audiências, eventos, entrevistas e materiais públicos/autorizados.
+- Fluxo esperado: artefato original em RAW → transcrição → classificação/extração → conhecimento/RAG; nunca guardar mídia pesada no GitHub.
+- Regra: transcrição é evidência derivada do áudio; trechos relevantes devem permanecer rastreáveis ao artefato e timestamp quando tecnicamente possível.
 
 ### Conhecimento e recuperação
 
@@ -76,8 +104,26 @@ A presença nesta seção significa **prioridade de avaliação**, não autoriza
 - Regra: índice vetorial não é fonte de verdade; toda resposta relevante deve ser rastreável à evidência canônica.
 
 **RAGFlow / LlamaIndex / LangChain / AnythingLLM**
-- Uso pretendido: avaliar componentes de ingestão, recuperação e orquestração RAG.
+- Uso pretendido: avaliar componentes de ingestão e recuperação RAG quando agregarem capacidade não coberta pelo pipeline mínimo.
 - Regra: selecionar somente o mínimo necessário após benchmark; evitar empilhar frameworks equivalentes.
+- LangGraph, quando adotado, será tratado separadamente como orquestrador de agentes, não como substituto automático da camada RAG.
+
+### Cockpit interno e acesso humano à IA
+
+**LibreChat — candidato preferencial de cockpit**
+- Uso pretendido: interface interna multiusuário/multiprovedor para conversar com agentes, ferramentas e conhecimento do AgroLog.
+- Integração obrigatória: `LibreChat → AgroLog Gateway → BigQuery/serviços autorizados`.
+- Nunca conceder acesso direto e irrestrito do cockpit ao BigQuery.
+- Avaliar autenticação, RBAC, MCP/tools, logs, isolamento por usuário e custos antes do piloto.
+
+**Open WebUI — alternativa condicional**
+- Não adotar em paralelo com LibreChat para a mesma função.
+- Reavaliar somente se uma estratégia local-first/offline ou requisitos específicos de Open WebUI superarem claramente o cockpit preferencial.
+
+**Dify — somente prototipagem rápida**
+- Permitido como sandbox para validar rapidamente um agente, interface ou fluxo de IA.
+- Não usar como segunda plataforma de produção duplicando LangGraph + n8n + RAG + LibreChat.
+- Protótipo aprovado deve ser migrado para contratos e componentes oficiais do AgroLog antes de produção.
 
 ### BI, observabilidade e geointeligência
 
@@ -90,15 +136,41 @@ A presença nesta seção significa **prioridade de avaliação**, não autoriza
 **QGIS / GeoServer**
 - Uso pretendido: análise espacial e eventual disponibilização controlada de camadas geográficas.
 
-### Orquestração e memória de agentes
-
-**Agno / CrewAI / Semantic Kernel / AutoGen**
-- Uso pretendido: candidatos para orquestração formal de agentes.
-- Regra: não adotar vários orquestradores simultaneamente; selecionar somente após prova prática.
+### Memória de agentes
 
 **mem0 ou mecanismo equivalente**
 - Uso pretendido: memória operacional de análises, hipóteses e previsões.
 - Regra: GitHub, BigQuery e documentação canônica prevalecem sobre memória de agente.
+- Se LangGraph atender memória/checkpoint de forma suficiente, evitar instalar uma segunda camada apenas por conveniência.
+
+### Sinais externos experimentais
+
+**Polymarket Public API/SDK — somente leitura**
+- Uso pretendido: sinal complementar de expectativa coletiva sobre eventos macroeconômicos ou geopolíticos com possível impacto em energia, câmbio, fertilizantes, commodities ou logística.
+- Consumir somente dados públicos necessários; não usar wallet, ordem, posição ou execução de mercado no AgroLog.
+- Classificação: sinal observado de mercado de previsão, não fato futuro nem previsão oficial do AgroLog.
+- Qualquer uso analítico deve preservar mercado/evento, timestamp, probabilidade/preço observado, liquidez/volume quando disponíveis e limitações da amostra.
+- O SDK oficial vigente deve ser confirmado no momento da implementação; em 17/08/2026 o projeto oficial recomenda `Polymarket/py-sdk` para novos projetos.
+
+### IA local e redução futura de custo
+
+**Ollama — candidato preferencial para inferência local**
+- Uso pretendido: tarefas locais/privadas ou de alto volume em que qualidade, latência e custo demonstrem vantagem.
+- Não substituir modelos de maior qualidade em tarefas críticas sem benchmark objetivo.
+- Expor modelos locais por interface controlada e observável, evitando dependência direta espalhada pelo código.
+
+**llama.cpp — motor/fallback de baixo nível**
+- Não manter servidor paralelo ao Ollama sem necessidade real.
+- Avaliar apenas quando houver requisito de hardware, quantização, desempenho, portabilidade ou controle que Ollama não atenda.
+
+### Laboratório quantitativo e backtesting
+
+**VectorBT — R&D interno**
+- Uso pretendido: testar historicamente indicadores, sinais, thresholds, relações temporais e hipóteses do AgroLog, inclusive previsto × realizado e sensibilidade de parâmetros.
+- Não restringir o conceito a trading financeiro; pode ser usado como motor experimental para séries temporais do agro/logística quando a abstração fizer sentido.
+- Regra metodológica: sempre respeitar `data_referencia`, `data_publicacao`, `data_coleta`, data de corte, dados disponíveis naquele momento e prevenção de look-ahead bias.
+- Licença: a edição comunitária atual usa fair-code/Apache 2.0 com Commons Clause; tratar como laboratório e não como dependência central de produto comercial sem revisão jurídica/licença vigente.
+- Se uma metodologia validada virar funcionalidade central do AgroLog, avaliar implementação própria/permissiva ou licença adequada.
 
 ### Integração WhatsApp para Freight Listener
 
@@ -138,6 +210,25 @@ Regras específicas:
 - revisar licença, termos de uso, estabilidade, segurança, privacidade e compatibilidade antes de produção;
 - o módulo começa somente como ingestão/observação: não enviar mensagens, contratar fretes ou negociar automaticamente nesta fase.
 
+### Publicação e produtos de conteúdo
+
+**HyperFrames — camada futura de mídia**
+- Uso pretendido: transformar relatórios, gráficos, mapas e roteiros já aprovados em vídeos/explicadores automatizados para comunicação interna ou externa.
+- Não participa da geração do dado nem da conclusão analítica; recebe somente conteúdo já validado pelo fluxo editorial.
+- Prioridade baixa até existir necessidade real de publicação recorrente em vídeo.
+
+**Markdoc — condicional para portal público**
+- Não adotar agora: GitHub atende documentação técnica e Obsidian atende conhecimento interno.
+- Reavaliar quando existir portal público/cliente, documentação externa ou experiência editorial que justifique uma camada de publicação web dedicada.
+
+### Engenharia e acesso ao ambiente
+
+**code-server — opcional, fora do AgroLog Core**
+- Uso pretendido: acesso ao ambiente de desenvolvimento pelo navegador quando isso resolver uma necessidade operacional concreta.
+- Nunca expor diretamente à internet sem autenticação forte, HTTPS e camada de acesso como VPN/IAP/Zero Trust equivalente.
+- Credenciais GCP/GitHub e permissões do ambiente devem continuar mínimas e auditáveis.
+- Não é requisito para executar o AgroLog; é conveniência de engenharia substituível.
+
 ### Expansão operacional futura
 
 **Traccar / Fleetbase**
@@ -148,6 +239,24 @@ Regras específicas:
 
 **Ultralytics / OpenCV / Frigate**
 - Uso pretendido: provas controladas de visão computacional para contagem/atividade em pátios, vias e ativos.
+
+## Referências permanentes do Radar — estudar, não incorporar como dependência
+
+**TradingAgents**
+- Referência para arquitetura de analistas especializados, debate pró/contra, risco, persistência de decisão e consolidação final.
+- Não instalar como segunda stack operacional se LangGraph for adotado.
+
+**Vibe-Trading**
+- Referência para grounding, proveniência, trilha de auditoria, correção de unidades, testes de look-ahead, backtesting e controles de segurança/correctness.
+- Padrões úteis podem inspirar testes e contratos próprios sem importar toda a plataforma.
+
+**Fincept Terminal**
+- Benchmark de produto para terminal de inteligência, UX, pesquisa macro, geopolítica, quant, agentes e conectores.
+- Não incorporar o código aberto ao produto AgroLog sem revisão específica: a edição aberta atual é AGPL-3.0 strong copyleft e o fornecedor separa uma edição Enterprise proprietária para uso empresarial.
+
+**awesome-quant**
+- Catálogo de descoberta para bibliotecas quantitativas, estatísticas e de pesquisa.
+- Alimenta o Technology Radar; não é componente de produção.
 
 ## Piloto posterior
 
@@ -165,6 +274,11 @@ Regras específicas:
 
 ## Não incorporar ao núcleo agora
 
+- Open WebUI em paralelo com LibreChat.
+- Dify como segunda plataforma de produção.
+- llama.cpp como servidor paralelo ao Ollama sem necessidade comprovada.
+- Markdoc antes de existir portal/documentação externa.
+- Fincept Terminal, Vibe-Trading ou TradingAgents como stacks incorporadas; usar como referência.
 - Agent Reach.
 - OmniRoute e roteadores de muitos modelos.
 - Listas de APIs/modelos grátis.
