@@ -21,7 +21,8 @@ def serialize_market(market) -> dict:
         payload = {"repr": repr(market)}
     return {
         "source": "polymarket_public_sdk",
-        "classification": "sinal_expectativa_mercado",
+        "classe_evidencia": "observado",
+        "subtipo_evidencia": "sinal_expectativa_mercado",
         "read_only": True,
         "not_a_future_fact": True,
         "market": payload,
