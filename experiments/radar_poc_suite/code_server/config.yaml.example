@@ -1,0 +1,7 @@
+# PoC only. Keep code-server bound to localhost.
+bind-addr: 127.0.0.1:8080
+auth: password
+cert: false
+
+# Supply PASSWORD at runtime through a secure secret mechanism.
+# Never commit the real password here.
