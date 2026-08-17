@@ -102,11 +102,35 @@ A presença nesta seção significa **prioridade de avaliação**, não autoriza
 
 ### Integração WhatsApp para Freight Listener
 
-**Evolution API**
-- Uso pretendido: candidato principal inicial para prova técnica de recebimento de mensagens/mídias de canal autorizado e entrega via webhook/fila.
+**WPPConnect Server — baseline FL-0 provisório**
+- Motivo: a documentação atual declara explicitamente recebimento/envio de mensagens, múltiplas sessões, criação/entrada em grupos, webhook, auto-download de mídia para webhook e opção S3.
+- Licença observada: Apache-2.0 padrão no repositório consultado em 17/08/2026.
+- Arquitetura: usa WhatsApp Web com Chromium/Puppeteer; isso exige benchmark específico de consumo, reconexão e estabilidade.
+- Status: primeiro candidato para teste isolado, sem conta real nesta fase.
 
-**WPPConnect / WAHA**
-- Uso pretendido: alternativas para benchmark de estabilidade, grupos, mídia, operação e manutenção.
+**Evolution API — segundo benchmark**
+- Pontos fortes: arquitetura multi-provider/event-driven, integração Baileys + WhatsApp Cloud API, filas/eventos e armazenamento de mídia.
+- Licença observada: Apache-2.0 com condições adicionais de marca/notificação de uso no arquivo de licença consultado em 17/08/2026.
+- Status: comparar após o baseline WPPConnect, especialmente em estabilidade, consumo de recursos, grupos, mídia e recuperação de sessão.
+
+**WAHA — terceiro benchmark**
+- Pontos fortes: API REST self-hosted, Docker e múltiplos engines.
+- Licença observada: Apache-2.0 no repositório consultado em 17/08/2026.
+- Status: manter no benchmark; validar no caso AgroLog os requisitos exatos de grupos, webhooks e mídia antes de promoção na ordem de preferência.
+
+A ordem acima é **provisória e específica do Freight Listener**. A decisão final depende de teste comparável.
+
+Critérios mínimos FL-0:
+- receber mensagens de grupo autorizado;
+- preservar ID/timestamp do evento;
+- entregar evento por webhook/fila;
+- receber/baixar mídia sem expor credenciais;
+- reconectar após restart/rede;
+- medir mensagens perdidas/duplicadas;
+- medir consumo de CPU/RAM/disco;
+- isolar sessão e credenciais;
+- permitir pin de versão e rollback;
+- não exigir acesso direto ao BigQuery.
 
 Regras específicas:
 - integração deve ficar isolada do núcleo do AgroLog;
