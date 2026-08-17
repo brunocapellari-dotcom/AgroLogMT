@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Compile all PoC Python sources
+        run: python -m compileall -q experiments/radar_poc_suite
       - name: Run deterministic safety contracts
         run: python -m unittest -v experiments.radar_poc_suite.tests.test_contracts
       - name: Run suite doctor without external installs
