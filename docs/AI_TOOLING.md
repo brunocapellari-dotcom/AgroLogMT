@@ -28,11 +28,18 @@ Este documento é o registro canônico de ferramentas externas, agentes, skills 
 - Regra: não substitui `CLAUDE.md`, `AGENTS.md`, governança, testes próprios nem revisão multiagente.
 - Status: aprovado para configuração controlada; não vendorizado no repositório.
 
-## Piloto posterior
+**Claude-Mem — piloto operacional**
+- Função: memória operacional entre sessões, inicialmente para Claude Code.
+- Objetivo: reduzir reexplicação manual de contexto de implementação, erros, comandos, testes e próximos passos.
+- Status: aprovado para piloto controlado pela Issue #35; não é componente canônico de dados, código, arquitetura ou conhecimento.
+- Hierarquia obrigatória: BigQuery prevalece para dados; GitHub/documentação prevalecem para código e decisões arquiteturais; Issues/PRs prevalecem para estado do trabalho; Obsidian prevalece para conhecimento consolidado; Claude-Mem é apenas memória operacional auxiliar.
+- Memória externa nunca prevalece sobre o conteúdo atual do GitHub.
+- Não persistir credenciais, tokens, chaves, segredos, dados pessoais desnecessários ou conteúdo bruto sensível.
+- A configuração deve permitir desligamento/rollback sem impedir o funcionamento do projeto.
+- O piloto deve medir continuidade entre sessões, relevância do contexto recuperado, falsos contextos, custo de manutenção e risco de informação desatualizada.
+- A adoção permanente depende de evidência prática do piloto e documentação de instalação, segurança, retenção e rollback.
 
-**Claude Mem**
-- Função: memória entre sessões.
-- Regra: GitHub e documentação atual prevalecem sobre memória externa.
+## Piloto posterior
 
 **Auditoria / doctor do ambiente Claude**
 - Função: identificar skills, hooks, plugins e configurações desnecessárias ou quebradas.
@@ -51,6 +58,7 @@ Este documento é o registro canônico de ferramentas externas, agentes, skills 
 - Task Observer/autoevolução de skills.
 - Skills de design sem demanda atual.
 - Otimizadores de token/contexto não validados.
+- Caveman até existir benchmark interno que demonstre ganho líquido de custo/contexto sem perda de governança ou qualidade.
 
 ## Princípio operacional
 
