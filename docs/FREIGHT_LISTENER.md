@@ -327,7 +327,7 @@ O adaptador de WhatsApp não deve possuir credenciais permanentes para BigQuery.
 
 ## 15. Decisões ainda abertas
 
-- provedor/adaptador de WhatsApp;
+- provedor/adaptador final de WhatsApp;
 - mecanismo de fila/event bus;
 - política final de retenção de RAW;
 - limites de confiança por tipo de campo;
@@ -337,3 +337,122 @@ O adaptador de WhatsApp não deve possuir credenciais permanentes para BigQuery.
 - necessidade de armazenamento de texto integral após extração e auditoria.
 
 Essas decisões devem ser tomadas por evidência do piloto, não por preferência de ferramenta.
+
+## 16. Benchmark inicial de adaptadores — 17/08/2026
+
+O benchmark inicial analisou três candidatos self-hosted para a camada isolada de WhatsApp. A ordem abaixo é **provisória** e serve somente para organizar a prova FL-0; ela não representa aprovação definitiva para produção.
+
+### 16.1 WPPConnect Server — baseline FL-0
+
+Motivos para iniciar o teste por este candidato:
+- documentação atual declara recebimento e envio de mensagens;
+- múltiplas sessões;
+- criação de grupos e entrada por código de convite;
+- webhook;
+- auto-download de arquivos para webhook;
+- opção de envio de mídia para S3;
+- licença Apache-2.0 padrão observada no repositório consultado.
+
+Pontos que exigem teste:
+- depende de WhatsApp Web e Chromium/Puppeteer;
+- consumo de CPU/RAM por sessão;
+- estabilidade após atualização do WhatsApp Web;
+- reconexão após queda de rede/restart;
+- duplicidade/perda de eventos;
+- comportamento com volume alto de grupos e mídia.
+
+### 16.2 Evolution API — segundo benchmark
+
+Pontos favoráveis observados:
+- arquitetura multi-provider e orientada a eventos;
+- suporte a conexão baseada em Baileys e também WhatsApp Cloud API;
+- integrações com RabbitMQ, Kafka, SQS, Socket.io e outros mecanismos de evento;
+- suporte a S3/MinIO e download de mídia;
+- arquitetura potencialmente atraente para desacoplamento do Freight Listener.
+
+Pontos que exigem atenção:
+- licença observada usa Apache-2.0 com condições adicionais de marca e notificação de uso;
+- é necessário validar no cenário AgroLog o comportamento de grupos, mídia, reconexão, perda/duplicidade e consumo de recursos;
+- eventual uso comercial futuro exige nova revisão da licença vigente naquele momento.
+
+### 16.3 WAHA — terceiro benchmark
+
+Pontos favoráveis observados:
+- API REST self-hosted;
+- Docker;
+- múltiplos engines descritos no repositório;
+- licença Apache-2.0 observada.
+
+Pendências antes de promovê-lo na ordem:
+- validar de forma específica para o AgroLog os eventos de grupos;
+- validar webhook/eventos recebidos;
+- validar mídia e referências de arquivo;
+- comparar estabilidade, reconexão e recursos com os dois candidatos anteriores.
+
+A ausência de validação desses itens no benchmark inicial **não significa que o WAHA não os suporte**; significa apenas que eles ainda não foram comprovados para o nosso contrato de teste.
+
+### 16.4 Matriz obrigatória FL-0
+
+Todos os candidatos devem executar o mesmo conjunto de testes:
+
+| Critério | Evidência esperada |
+|---|---|
+| Mensagem de grupo | evento recebido com canal, mensagem e timestamp identificáveis |
+| Texto | conteúdo entregue ao adaptador canônico sem perda |
+| Imagem | mídia recebível/baixável com referência segura |
+| PDF/documento | mídia recebível/baixável com referência segura |
+| ID do evento | identificador estável suficiente para idempotência |
+| Restart do serviço | sessão recupera ou procedimento de recuperação é mensurável |
+| Queda/rede | reconexão e lacuna de eventos mensuradas |
+| Evento duplicado | duplicidade identificável e tratável |
+| Volume | throughput e latência medidos |
+| Recursos | CPU, RAM, disco e crescimento de sessão medidos |
+| Segurança | segredo/sessão fora do código e sem acesso direto ao BigQuery |
+| Upgrade | versão pinável e rollback documentado |
+| Operação | logs suficientes para diagnosticar perda/reconexão |
+
+### 16.5 Métricas comparáveis
+
+Por candidato registrar no mesmo relatório:
+
+- `events_sent_test`;
+- `events_received_test`;
+- `events_lost_test`;
+- `events_duplicated_test`;
+- `media_sent_test`;
+- `media_received_test`;
+- `p50_ingestion_latency_ms`;
+- `p95_ingestion_latency_ms`;
+- `reconnect_time_seconds`;
+- `restart_recovery_time_seconds`;
+- `peak_memory_mb`;
+- `average_cpu_percent`;
+- `disk_growth_mb`;
+- falhas observadas;
+- versão testada;
+- data do teste.
+
+### 16.6 Gate para escolher o adaptador
+
+Nenhum candidato será adotado apenas por popularidade ou quantidade de recursos. O selecionado deve:
+
+1. cumprir o contrato canônico de evento;
+2. receber grupos e mídia do caso real autorizado;
+3. demonstrar recuperação aceitável após falhas;
+4. apresentar perda/duplicidade dentro do limite definido pelo piloto;
+5. manter sessão/credenciais isoladas;
+6. permitir versão fixa e rollback;
+7. ter licença/termos compatíveis com o uso pretendido;
+8. ter custo operacional aceitável;
+9. não criar dependência direta com BigQuery ou com a lógica analítica do AgroLog.
+
+### 16.7 Dependência para FL-1
+
+O repositório ainda registra em `bootstrap/README.md` que a árvore de código utilizada pelo Claude Code precisa ser consolidada no GitHub. Por governança, o FL-1 não deve criar uma estrutura paralela de `collector/`, `tests/` ou schemas antes dessa consolidação.
+
+Assim que a árvore oficial estiver no GitHub, o FL-1 deverá criar, sobre a estrutura existente:
+- contrato executável do evento canônico;
+- fixtures 100% artificiais;
+- testes de normalização do adaptador;
+- cenários de repostagem/reajuste;
+- zero dependência de conta WhatsApp real.
