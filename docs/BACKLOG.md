@@ -2,9 +2,11 @@
 
 ## Regra de execução
 
-O AgroLog MT passa a trabalhar com **três frentes integradas** derivadas do Radar GitHub. Elas podem ser especificadas, prototipadas e testadas em paralelo, mas o núcleo em produção continua obedecendo aos gates de qualidade e governança já definidos.
+O AgroLog MT trabalha com **três frentes integradas** derivadas do Radar GitHub. Elas podem ser especificadas, prototipadas e testadas em paralelo, mas o núcleo em produção continua obedecendo aos gates de qualidade e governança já definidos.
 
 Não criar novas tabelas, serviços ou integrações reais apenas para preencher arquitetura futura. Cada componente entra quando tiver caso de uso, contrato mínimo, teste e benefício demonstrado.
+
+A seleção tecnológica atual deve evitar redundância: LangGraph é o candidato preferencial de orquestração de agentes; LibreChat é o candidato preferencial de cockpit; Ollama é o candidato preferencial de inferência local. Alternativas equivalentes só avançam quando o candidato preferencial falhar em requisito objetivo.
 
 ## P0 — CONAB Armazéns em produção
 
@@ -36,10 +38,13 @@ P0/P1 continuam sendo gates para declarar o núcleo ponta a ponta validado. As f
 ### A1 — Coleta híbrida
 - [ ] Catalogar fontes em `API`, `arquivo`, `página`, `login/navegação` e `canal autorizado`.
 - [ ] Definir padrão de adaptador de coleta desacoplado da normalização.
-- [ ] Fazer prova com Playwright em uma fonte sem API adequada.
+- [ ] Formalizar hierarquia `API/arquivo/HTTP → Crawl4AI → Playwright → browser-use`.
+- [ ] Fazer PoC de Crawl4AI em 2 fontes públicas: uma página estática/semiestruturada e uma página dinâmica, medindo completude, estabilidade, tempo, estrutura e rastreabilidade.
+- [ ] Fazer prova com Playwright em uma fonte sem API adequada e comparar com Crawl4AI quando houver sobreposição.
 - [ ] Avaliar browser agent apenas onde navegação determinística não for suficiente.
-- [ ] Avaliar n8n para webhooks, gatilhos e automações sem transferir a fonte de verdade para a ferramenta.
+- [ ] Avaliar n8n para webhooks, gatilhos e automações sem transferir a fonte de verdade para a ferramenta; manter alinhamento com a Issue #36.
 - [ ] Avaliar Airbyte somente em fontes com conector padronizado vantajoso.
+- [ ] Registrar termos, robots/políticas de acesso, licença e requisitos de atribuição antes de produção de qualquer crawler externo.
 
 ### A2 — Detecção de atualização e processamento por diferença
 - [ ] Definir registro canônico de URL/artefato, versão, hash, data de publicação e data de coleta.
@@ -47,22 +52,27 @@ P0/P1 continuam sendo gates para declarar o núcleo ponta a ponta validado. As f
 - [ ] Implementar diff para publicações recorrentes quando tecnicamente confiável.
 - [ ] Disparar processamento apenas do delta quando aplicável.
 
-### A3 — Inteligência documental
+### A3 — Inteligência documental e multimodal
 - [ ] Benchmark inicial de Docling em PDFs/tabelas reais autorizados.
 - [ ] Comparar Unstructured/Marker somente nos casos em que Docling não atender.
 - [ ] Preservar texto/tabela extraídos com referência à evidência original.
 - [ ] Definir pipeline multimodal para tabelas/imagens quando parser documental não for suficiente.
+- [ ] Criar PoC de Whisper com conteúdo público/autorizado em português: áudio curto e vídeo/webinar maior.
+- [ ] Medir qualidade de transcrição em termos técnicos, nomes próprios, números e timestamps.
+- [ ] Preservar `raw_artifact_ref`, idioma, modelo/versão, timestamp/segmento e confiança/revisão quando aplicável.
+- [ ] Definir fluxo `RAW → transcrição → classificação/extração → RAG/Obsidian`, sem mídia pesada no GitHub.
 
 ### A4 — Auditoria e linhagem
 - [ ] Criar validações comuns para valor ausente, duplicidade, outlier, unidade e quebra temporal.
 - [ ] Registrar versão do coletor/parser e hash do artefato.
 - [ ] Definir limite de confiança para bloquear extração por IA duvidosa.
 - [ ] Garantir rastreabilidade do indicador até fonte/artefato/transformação.
+- [ ] Criar regra transversal de data de corte para impedir look-ahead em estudos históricos, sinais e backtests.
 
 ## Frente B — inteligência, conhecimento e observabilidade
 
 ### B1 — RAG do Segundo Cérebro
-- [ ] Definir quais conteúdos do Obsidian/documentos podem ser indexados.
+- [ ] Definir quais conteúdos do Obsidian/documentos/transcrições podem ser indexados.
 - [ ] Benchmark Qdrant e pipeline mínimo de embeddings/recuperação.
 - [ ] Garantir que o índice vetorial não se torne fonte de verdade.
 - [ ] Exigir citação/evidência recuperável em respostas relevantes.
@@ -72,24 +82,62 @@ P0/P1 continuam sendo gates para declarar o núcleo ponta a ponta validado. As f
 - [ ] Persistir previsões relevantes antes de conhecer o resultado.
 - [ ] Implementar comparação previsto × realizado.
 - [ ] Avaliar memória de agente sem substituir BigQuery/GitHub/Obsidian.
+- [ ] Verificar se memória/checkpoint do LangGraph cobre a necessidade antes de adicionar mem0 ou camada equivalente.
 
-### B3 — Orquestração multiagente
-- [ ] Benchmark de um único orquestrador entre candidatos aprovados.
-- [ ] Definir permissões e ferramentas por agente.
-- [ ] Formalizar handoff, auditoria e condição de parada.
-- [ ] Não permitir instalação simultânea de frameworks equivalentes sem justificativa.
+### B3 — Orquestração multiagente com LangGraph
+- [ ] Usar LangGraph como **primeiro candidato** do benchmark de orquestração analítica.
+- [ ] Definir grafo mínimo com 3 papéis: especialista → cético/contra → auditor/consolidador.
+- [ ] Testar checkpoint/recovery, human-in-the-loop, handoff, condição de parada e rastreabilidade do estado.
+- [ ] Definir permissões e ferramentas por agente via AgroLog Gateway/contratos explícitos.
+- [ ] Adaptar, sem copiar stack, padrões úteis de TradingAgents: especialistas, debate pró/contra, risco e decisão final.
+- [ ] Avaliar padrões de Vibe-Trading para grounding, proveniência, audit ledger, unidade e look-ahead.
+- [ ] Não instalar CrewAI, Agno, Semantic Kernel ou AutoGen em paralelo; testar alternativa somente se LangGraph falhar em requisito documentado.
+- [ ] Manter separação entre LangGraph (agentes) e n8n (pipelines/gatilhos).
 
-### B4 — BI, observabilidade e geointeligência
+### B4 — Cockpit interno de IA
+- [ ] PoC de LibreChat como candidato preferencial de cockpit interno.
+- [ ] Integrar o PoC somente ao AgroLog Gateway/mock controlado; nenhuma credencial direta de BigQuery.
+- [ ] Validar autenticação, RBAC/grupos, MCP/tools, arquivos, logs, isolamento por usuário e custo.
+- [ ] Definir perfis iniciais: Agro, Logística, Portos, Clima/Macro, Documentos e Freight Intelligence.
+- [ ] Não instalar Open WebUI em paralelo; reavaliar apenas se houver requisito local-first/offline não atendido.
+- [ ] Permitir Dify somente em sandbox para protótipos rápidos; qualquer protótipo aprovado deve migrar para a arquitetura oficial.
+
+### B5 — BI, observabilidade e geointeligência
 - [ ] Avaliar Metabase para exploração analítica.
 - [ ] Avaliar Grafana para saúde de coletores/jobs/filas/serviços.
 - [ ] Definir primeiras camadas QGIS: produção, armazéns, indústria, corredores e portos.
 - [ ] Avaliar GeoServer apenas quando houver necessidade real de servir camadas.
 
-### B5 — AgroLog Watch e grafo causal
+### B6 — AgroLog Watch e grafo causal
 - [ ] Definir monitoramento de páginas/publicações críticas.
 - [ ] Separar clipping de notícia de evento material para variável AgroLog.
 - [ ] Registrar relações causais tipadas quando houver evidência suficiente.
 - [ ] Manter confiança e alternativas explicativas em análises causais.
+
+### B7 — Laboratório quantitativo e backtesting
+- [ ] Criar especificação de laboratório separada da produção, sem criar nova fonte de verdade.
+- [ ] Avaliar VectorBT em sandbox para 2 casos AgroLog: um indicador de mercado/agro e um sinal logístico/frete.
+- [ ] Implementar reconstrução point-in-time usando `data_referencia`, `data_publicacao`, `data_coleta` e data de corte.
+- [ ] Medir robustez fora da amostra, sensibilidade de parâmetros e desempenho por regime/período quando aplicável.
+- [ ] Registrar versão da hipótese, universo, janela, regra, métricas, limitações e resultado.
+- [ ] Revisar Commons Clause/licença vigente antes de qualquer uso que componha produto comercial.
+- [ ] Se metodologia validada virar função central, avaliar implementação própria/permissiva ou licença adequada.
+- [ ] Usar `awesome-quant` como catálogo de descoberta, não como dependência.
+
+### B8 — Sinais macro/geopolíticos experimentais
+- [ ] PoC somente leitura com a API/SDK pública oficial vigente da Polymarket.
+- [ ] Selecionar poucos mercados com vínculo causal plausível a petróleo/energia, câmbio, fertilizantes, commodities, comércio ou logística.
+- [ ] Persistir evento/mercado, timestamp, probabilidade/preço, volume/liquidez quando disponíveis e metadados de origem.
+- [ ] Classificar explicitamente como `sinal_expectativa_mercado`, nunca fato futuro nem previsão oficial.
+- [ ] Proibir wallet, posição, ordem ou execução no escopo AgroLog.
+- [ ] Avaliar utilidade incremental: o sinal melhora antecedência/explicação ou apenas replica notícias?
+
+### B9 — IA local
+- [ ] Benchmark Ollama com 2 tarefas de alto volume e baixo risco antes de qualquer uso crítico.
+- [ ] Comparar custo, latência, privacidade e qualidade com modelo externo de referência.
+- [ ] Expor IA local por interface controlada, sem espalhar dependência de provider pelo código.
+- [ ] Não manter llama.cpp como servidor paralelo; avaliá-lo somente para requisito específico de hardware/quantização/desempenho.
+- [ ] Definir quais tarefas nunca podem ser rebaixadas para modelo local sem validação adicional.
 
 ## Frente C — expansão operacional e comercial
 
@@ -130,6 +178,27 @@ P0/P1 continuam sendo gates para declarar o núcleo ponta a ponta validado. As f
 - [ ] Avaliar visão computacional apenas em ambiente autorizado e com objetivo mensurável.
 - [ ] Todo produto externo deve consumir interfaces controladas via AgroLog Gateway.
 
+### C5 — Publicação automatizada
+- [ ] Avaliar HyperFrames somente após existir fluxo editorial estável e necessidade recorrente de vídeo/explicador.
+- [ ] PoC futura: transformar um relatório já aprovado em vídeo curto com gráficos/mapas/narração/legendas.
+- [ ] Garantir que a camada de publicação consuma números e conclusões aprovados, sem recalcular indicadores.
+- [ ] Definir identidade visual e revisão humana antes de conteúdo externo automático.
+- [ ] Reavaliar Markdoc somente quando houver portal público/documentação para clientes.
+
+## Trilha transversal — engenharia e referências
+
+### T1 — Ambiente de desenvolvimento remoto
+- [ ] Avaliar code-server apenas se acesso pelo navegador resolver necessidade concreta do time.
+- [ ] Qualquer PoC deve usar autenticação forte, HTTPS e acesso de rede restrito (VPN/IAP/Zero Trust equivalente).
+- [ ] Não expor credenciais GCP/GitHub ao frontend e não tornar code-server requisito do runtime.
+
+### T2 — Benchmarks arquiteturais
+- [ ] Fincept Terminal: estudar UX/terminal de inteligência, macro/geopolítica/quant e organização de módulos; não incorporar código sem revisão específica de licença/copyright/comercialização.
+- [ ] TradingAgents: estudar debate multiagente, risco, persistência e checkpoints.
+- [ ] Vibe-Trading: estudar grounding, proveniência, audit ledger, unidades e look-ahead.
+- [ ] awesome-quant: manter como fonte de descoberta do Technology Radar.
+- [ ] Toda ideia aproveitada deve ser reimplementada como contrato/padrão próprio ou por componente com licença compatível; não copiar plataforma inteira.
+
 ## Próxima fonte oficial
 
 A expansão de fontes de produção continua começando pelo **IMEA** após o núcleo P0/P1 estar validado, preservando separação por produto e rotina de atualização automática/API/login conforme a fonte permitir.
@@ -152,4 +221,6 @@ Uma fonte/módulo só é considerada em produção quando tiver:
 - consulta de conferência;
 - documentação de limitações;
 - teste pelo AgroLog Gateway quando aplicável;
-- plano de substituição para dependências externas críticas.
+- plano de substituição para dependências externas críticas;
+- licença/termos revisados para o modo de uso real;
+- ausência de ferramenta equivalente paralela sem justificativa documentada.
