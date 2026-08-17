@@ -12,6 +12,9 @@ MODULES = {
 }
 
 REQUIRED_FILES = [
+    "manifest.json",
+    "run_all.py",
+    "run_config.example.json",
     "crawl4ai_poc.py",
     "whisper_poc.py",
     "langgraph_poc.py",
