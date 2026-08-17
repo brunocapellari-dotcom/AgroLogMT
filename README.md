@@ -17,16 +17,31 @@ Construir uma plataforma de inteligência em agronegócio e logística com foco 
 - **Obsidian**: Segundo Cérebro permanente do projeto para conhecimento técnico, histórico e contextual.
 - **PostgreSQL**: reservado para eventual camada transacional futura.
 
+### Programa Integrado Radar
+
+As melhorias derivadas do Radar GitHub são incorporadas como três frentes complementares da mesma arquitetura:
+
+1. **Coleta, documentos e qualidade** — automação, navegação controlada, inteligência documental, detecção de atualização, diff, auditoria e linhagem.
+2. **Inteligência, conhecimento e observabilidade** — RAG, memória, agentes, avaliação previsto × realizado, BI, observabilidade e geointeligência.
+3. **Expansão operacional e comercial** — Freight Listener, sinais de mercado, telemetria/IoT/visão futuros e produtos controlados pelo AgroLog Gateway.
+
+Os componentes open source avaliados são peças substituíveis. Eles não substituem as fontes canônicas do projeto apenas por oferecerem função semelhante.
+
+### Freight Listener
+
+O Freight Listener é o módulo para transformar mensagens e mídias de **canais autorizados** em observações estruturadas de ofertas de frete. A oferta anunciada é tratada como `observado` com subtipo `oferta_frete_observada`; isso não comprova contratação, execução nem frete efetivamente pago. O módulo inclui normalização, deduplicação, reoferta, reajuste, persistência e sinais agregados, com PII minimizada e evidência original preservada fora do GitHub.
+
 ## Documentação principal
 
 - `docs/ARCHITECTURE.md` — arquitetura oficial.
 - `docs/DATA_GOVERNANCE.md` — governança dos dados.
 - `docs/REPOSITORY_GOVERNANCE.md` — governança do GitHub.
-- `docs/AI_TOOLING.md` — agentes, ferramentas e extensões aprovadas.
+- `docs/AI_TOOLING.md` — agentes, ferramentas, Radar Tecnológico e extensões avaliadas.
 - `docs/MULTI_AGENT_WORKFLOW.md` — fluxo Claude Code + Codex + ChatGPT.
 - `docs/CODEX_SETUP_WINDOWS.md` — instalação e teste do Codex no notebook.
 - `docs/OBSIDIAN.md` — papel do Segundo Cérebro.
-- `docs/BACKLOG.md` — prioridades de implantação.
+- `docs/FREIGHT_LISTENER.md` — especificação canônica da inteligência de ofertas observadas.
+- `docs/BACKLOG.md` — prioridades de implantação e três frentes integradas.
 
 ## Governança do repositório
 
@@ -39,7 +54,7 @@ Nomes de fontes como **CONAB**, **IMEA**, **CEPEA**, **Comex Stat**, **ANTAQ**, 
 A separação oficial é:
 
 - **GitHub** — código, coletores, parsers, schemas, SQL, configurações sem segredo, testes e documentação;
-- **armazenamento externo/RAW** — arquivos originais e históricos das fontes, planilhas, ZIPs, PDFs e demais dados operacionais;
+- **armazenamento externo/RAW** — arquivos originais e históricos das fontes, planilhas, ZIPs, PDFs, mensagens/mídias autorizadas e demais dados operacionais;
 - **BigQuery** — dados estruturados, históricos tratados e camada analítica oficial;
 - **Obsidian** — conhecimento derivado, relações, explicações e memória histórica.
 
@@ -77,12 +92,10 @@ E deve ser classificada explicitamente como:
 
 ## Prioridade atual
 
-1. Consolidar no repositório oficial o código já validado de **CONAB Armazéns**, mantendo os dados reais fora do GitHub.
-2. Executar CONAB Armazéns ponta a ponta contra o BigQuery real.
-3. Validar carga, logs, deduplicação e idempotência.
-4. Conectar o **AgroLog Gateway** à primeira tabela.
-5. Validar o fluxo de engenharia Claude Code + Codex.
-6. Testar a mesma base via OpenAI e Claude.
-7. Expandir para novas fontes somente após essa validação, começando pelo IMEA.
+1. Consolidar e validar **CONAB Armazéns** ponta a ponta no BigQuery real.
+2. Conectar o **AgroLog Gateway** à primeira tabela e validar a mesma consulta via OpenAI e Claude.
+3. Em paralelo, avançar em documentação, benchmark e protótipos isolados das três frentes do **Programa Integrado Radar**.
+4. Iniciar produção da próxima fonte pelo **IMEA** após os gates do núcleo.
+5. Desenvolver o **Freight Listener** primeiro com fixtures artificiais e benchmark de adaptadores; nenhuma conta/canal real entra antes de validação de licença, segurança, termos, privacidade e isolamento.
 
 > A implementação deve evoluir incrementalmente a partir do estado atual do projeto, sem redesenho completo e sem criar uma segunda fonte de verdade.
