@@ -7,6 +7,7 @@ on:
       - 'scripts/diagnose_mdfe_powerbi.py'
       - 'scripts/extract_mdfe_powerbi.py'
       - 'scripts/test_mdfe_filters.py'
+      - 'scripts/export_mdfe_destinations.py'
       - '.github/workflows/diagnose-mdfe-powerbi.yml'
   workflow_dispatch:
 
@@ -29,6 +30,8 @@ jobs:
         run: python scripts/extract_mdfe_powerbi.py
       - name: Inspect filter breakdowns
         run: python scripts/test_mdfe_filters.py
+      - name: Export workbook flows
+        run: python scripts/export_mdfe_destinations.py
       - name: Upload diagnostic artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -37,5 +40,6 @@ jobs:
           path: |
             mdfe_powerbi_diagnostic/
             mdfe_powerbi_extract/
+            mdfe_powerbi_export/
           if-no-files-found: warn
           retention-days: 3
