@@ -1,26 +1,66 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-required=(PROJECT_ID REGION COLLECTOR_SERVICE_ACCOUNT SCHEDULER_SERVICE_ACCOUNT DRIVE_FOLDER_ID)
-for var in "${required[@]}"; do
-  if [[ -z "${!var:-}" ]]; then
-    echo "Variavel obrigatoria ausente: $var" >&2
-    exit 2
-  fi
-done
-
+PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
+REGION="${REGION:-southamerica-east1}"
+DRIVE_FOLDER_ID="${DRIVE_FOLDER_ID:-17AX2iCrQ17Jm86Pp9ijqn3hyEHVaQPqd}"
 OPS_DATASET="${OPS_DATASET:-agrolog_ops}"
 BQ_LOCATION="${BQ_LOCATION:-southamerica-east1}"
 AR_REPOSITORY="${AR_REPOSITORY:-agrolog}"
 IMAGE_NAME="${IMAGE_NAME:-collector}"
 IMAGE_TAG="${IMAGE_TAG:-$(date +%Y%m%d%H%M%S)}"
 TIME_ZONE="${TIME_ZONE:-America/Campo_Grande}"
+COLLECTOR_SA_NAME="${COLLECTOR_SA_NAME:-agrolog-collector}"
+SCHEDULER_SA_NAME="${SCHEDULER_SA_NAME:-agrolog-scheduler}"
+
+if [[ -z "${PROJECT_ID}" || "${PROJECT_ID}" == "(unset)" ]]; then
+  echo "Nenhum projeto GCP configurado. Execute: gcloud config set project SEU_PROJECT_ID" >&2
+  exit 2
+fi
+
+COLLECTOR_SERVICE_ACCOUNT="${COLLECTOR_SERVICE_ACCOUNT:-${COLLECTOR_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
+SCHEDULER_SERVICE_ACCOUNT="${SCHEDULER_SERVICE_ACCOUNT:-${SCHEDULER_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}"
 run_api="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs"
 
 gcloud config set project "${PROJECT_ID}" >/dev/null
 
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com cloudscheduler.googleapis.com bigquery.googleapis.com drive.googleapis.com
+gcloud services enable \
+  run.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  cloudscheduler.googleapis.com \
+  bigquery.googleapis.com \
+  drive.googleapis.com \
+  iam.googleapis.com
+
+ensure_service_account() {
+  local account_id="$1"
+  local display_name="$2"
+  local email="${account_id}@${PROJECT_ID}.iam.gserviceaccount.com"
+  if ! gcloud iam service-accounts describe "${email}" >/dev/null 2>&1; then
+    gcloud iam service-accounts create "${account_id}" --display-name "${display_name}"
+  fi
+}
+
+ensure_project_role() {
+  local principal="$1"
+  local role="$2"
+  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${principal}" \
+    --role="${role}" \
+    --condition=None >/dev/null
+}
+
+ensure_service_account "${COLLECTOR_SA_NAME}" "AgroLog Collector"
+ensure_service_account "${SCHEDULER_SA_NAME}" "AgroLog Scheduler Invoker"
+
+# BigQuery User permite executar jobs e criar o dataset operacional do coletor.
+# Ao criar o dataset, a identidade criadora recebe ownership sobre ele.
+ensure_project_role "${COLLECTOR_SERVICE_ACCOUNT}" "roles/bigquery.user"
+
+# O Scheduler precisa apenas iniciar os Cloud Run Jobs.
+ensure_project_role "${SCHEDULER_SERVICE_ACCOUNT}" "roles/run.invoker"
 
 if ! gcloud artifacts repositories describe "${AR_REPOSITORY}" --location "${REGION}" >/dev/null 2>&1; then
   gcloud artifacts repositories create "${AR_REPOSITORY}" --repository-format=docker --location "${REGION}"
@@ -39,6 +79,7 @@ for group in radar dados conhecimento; do
     --set-env-vars "${common_env},AGROLOG_GROUP=${group}" \
     --max-retries 1 \
     --task-timeout 30m
+
 done
 
 declare -A schedules=(
@@ -71,5 +112,25 @@ for group in radar dados conhecimento; do
   fi
 done
 
-echo "Deploy concluido. Antes do primeiro job, confirme que DRIVE_FOLDER_ID foi compartilhada como Editor com ${COLLECTOR_SERVICE_ACCOUNT}."
-echo "Teste manual: gcloud run jobs execute agrolog-dados --region ${REGION} --wait"
+cat <<EOF
+
+Infraestrutura criada/atualizada.
+
+Projeto: ${PROJECT_ID}
+Regiao: ${REGION}
+Pasta Drive do piloto: ${DRIVE_FOLDER_ID}
+Collector SA: ${COLLECTOR_SERVICE_ACCOUNT}
+Scheduler SA: ${SCHEDULER_SERVICE_ACCOUNT}
+
+PASSO MANUAL UNICO DO DRIVE:
+Compartilhe a pasta 07_AUTOMACAO como Editor com:
+${COLLECTOR_SERVICE_ACCOUNT}
+
+Depois teste:
+gcloud run jobs execute agrolog-dados --region ${REGION} --wait
+
+Se o teste terminar com sucesso, verifique:
+- Drive: 07_AUTOMACAO/RAW/...
+- BigQuery: ${OPS_DATASET}.collector_runs
+- BigQuery: ${OPS_DATASET}.collector_source_state
+EOF
