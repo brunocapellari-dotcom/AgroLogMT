@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import csv
 import json
+import unicodedata
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -15,6 +16,11 @@ DATASET_ID = "4ff8f6c4-25e0-4b90-9178-8fc56ddb86ea"
 REPORT_ID = 10583177
 OUT = Path("mdfe_powerbi_extract")
 OUT.mkdir(exist_ok=True)
+
+
+def norm(value: str) -> str:
+    value = unicodedata.normalize("NFKD", str(value)).encode("ascii", "ignore").decode("ascii")
+    return " ".join(value.upper().split())
 
 
 def resource_key() -> str:
@@ -44,61 +50,34 @@ def agg(source: str, prop: str):
     return {"Aggregation": {"Expression": col(source, prop), "Function": 0}}
 
 
+def literal(value: str):
+    return {"Literal": {"Value": "'" + str(value).replace("'", "''") + "'"}}
+
+
 def in_filter(source: str, prop: str, values: list[str]):
-    return {
-        "Condition": {
-            "In": {
-                "Expressions": [col(source, prop)],
-                "Values": [[{"Literal": {"Value": "'" + str(v).replace("'", "''") + "'"}}] for v in values],
-            }
-        }
-    }
+    return {"Condition": {"In": {"Expressions": [col(source, prop)], "Values": [[literal(v)] for v in values]}}}
 
 
-def build_query(destination: str, ncm: str):
-    query = {
-        "Version": 2,
-        "From": [
-            {"Name": "m", "Entity": "MDFE_SAS_MOVIMENTACAO", "Type": 0},
-            {"Name": "md", "Entity": "MDFE_M_MUNICIPIODESTINO", "Type": 0},
-        ],
-        "Select": [
-            {**col("m", "periodo"), "Name": "MDFE_SAS_MOVIMENTACAO.periodo", "NativeReferenceName": "periodo"},
-            {**agg("m", "CARGAEMTON"), "Name": "MDFE_SAS_MOVIMENTACAO.CARGAEMTON", "NativeReferenceName": "Toneladas"},
-            {**agg("m", "TKU"), "Name": "MDFE_SAS_MOVIMENTACAO.TKU", "NativeReferenceName": "TKU"},
-        ],
-        "Where": [
-            in_filter("m", "SG_UFINI", ["MT"]),
-            in_filter("md", "municipiodestinodesc", [destination]),
-            in_filter("m", "NCM", [ncm]),
-        ],
-        "OrderBy": [{"Direction": 1, "Expression": col("m", "periodo")}],
-    }
-    command = {
-        "SemanticQueryDataShapeCommand": {
-            "Query": query,
-            "Binding": {
-                "Primary": {"Groupings": [{"Projections": [0, 1, 2]}]},
-                "DataReduction": {"DataVolume": 3, "Primary": {"Window": {"Count": 500}}},
-                "Version": 1,
-            },
-            "ExecutionMetricsKind": 1,
-        }
-    }
-    return {"Commands": [command]}
+def command(query: dict, projections: list[int], count: int = 5000):
+    return {"Commands": [{"SemanticQueryDataShapeCommand": {
+        "Query": query,
+        "Binding": {
+            "Primary": {"Groupings": [{"Projections": projections}]},
+            "DataReduction": {"DataVolume": 3, "Primary": {"Window": {"Count": count}}},
+            "Version": 1,
+        },
+        "ExecutionMetricsKind": 1,
+    }}]}
 
 
-def payload(query_obj: dict, visual_id: str = "agrolog-mdfe-extract"):
+def payload(query_obj: dict, visual_id: str):
     return {
         "version": "1.0.0",
         "queries": [{
             "Query": query_obj,
             "CacheKey": json.dumps(query_obj, ensure_ascii=False, separators=(",", ":")),
             "QueryId": "",
-            "ApplicationContext": {
-                "DatasetId": DATASET_ID,
-                "Sources": [{"ReportId": REPORT_ID, "VisualId": visual_id}],
-            },
+            "ApplicationContext": {"DatasetId": DATASET_ID, "Sources": [{"ReportId": REPORT_ID, "VisualId": visual_id}]},
         }],
         "cancelQueries": [],
         "modelId": MODEL_ID,
@@ -114,82 +93,111 @@ def decode(response: dict) -> tuple[list[str], list[list]]:
     descriptor = data["descriptor"]["Select"]
     ds = data["dsr"]["DS"][0]
     value_dicts = ds.get("ValueDicts", {})
-    ph = ds["PH"][0]
-    dm_key = next(k for k in ph if k.startswith("DM"))
-    dm = ph[dm_key]
-    if not dm:
-        return [x.get("Name", x.get("Value", "")) for x in descriptor], []
+    all_rows = []
     struct = None
-    for row in dm:
-        if "S" in row:
-            struct = row["S"]
-            break
+    for ph in ds.get("PH", []):
+        dm_keys = [k for k in ph if k.startswith("DM")]
+        for dm_key in dm_keys:
+            dm = ph[dm_key]
+            if not dm:
+                continue
+            if struct is None:
+                for row in dm:
+                    if "S" in row:
+                        struct = row["S"]
+                        break
+            if struct is None:
+                continue
+            width = len(struct)
+            previous = [None] * width
+            for row in dm:
+                vals = list(row.get("C", []))
+                if not vals and "C" not in row:
+                    continue
+                rmask = int(row.get("R", 0) or 0)
+                nmask = int(row.get("Ø", 0) or 0)
+                expanded = []
+                cursor = 0
+                for i in range(width):
+                    if bit(rmask, i): expanded.append(previous[i])
+                    elif bit(nmask, i): expanded.append(None)
+                    else:
+                        expanded.append(vals[cursor] if cursor < len(vals) else None)
+                        cursor += 1
+                for i, meta in enumerate(struct):
+                    dn = meta.get("DN")
+                    if dn and isinstance(expanded[i], int):
+                        dictionary = value_dicts.get(dn, [])
+                        if 0 <= expanded[i] < len(dictionary): expanded[i] = dictionary[expanded[i]]
+                previous = expanded
+                all_rows.append(expanded)
     if struct is None:
-        raise RuntimeError("Power BI response has no row structure metadata")
-    width = len(struct)
-    previous = [None] * width
-    rows = []
-    for row in dm:
-        vals = list(row.get("C", []))
-        if not vals and "C" not in row:
-            continue
-        rmask = int(row.get("R", 0) or 0)
-        nmask = int(row.get("Ø", 0) or 0)
-        expanded = []
-        cursor = 0
-        for i in range(width):
-            if bit(rmask, i):
-                expanded.append(previous[i])
-            elif bit(nmask, i):
-                expanded.append(None)
-            else:
-                expanded.append(vals[cursor] if cursor < len(vals) else None)
-                cursor += 1
-        for i, meta in enumerate(struct):
-            dn = meta.get("DN")
-            if dn and isinstance(expanded[i], int):
-                dictionary = value_dicts.get(dn, [])
-                if 0 <= expanded[i] < len(dictionary):
-                    expanded[i] = dictionary[expanded[i]]
-        previous = expanded
-        rows.append(expanded)
+        return [x.get("Name", x.get("Value", "")) for x in descriptor], []
     names_by_token = {s.get("N"): idx for idx, s in enumerate(struct)}
-    columns = [None] * width
+    columns = [None] * len(struct)
     for sel in descriptor:
         token = sel.get("Value")
         if token in names_by_token:
             columns[names_by_token[token]] = sel.get("Name") or sel.get("NativeReferenceName") or token
     for i, c in enumerate(columns):
-        if c is None:
-            columns[i] = struct[i].get("N", f"col{i}")
-    return columns, rows
+        if c is None: columns[i] = struct[i].get("N", f"col{i}")
+    return columns, all_rows
 
 
-def run_one(destination: str, ncm: str, label: str):
-    q = build_query(destination, ncm)
-    p = payload(q)
-    (OUT / f"{label}_payload.json").write_text(json.dumps(p, ensure_ascii=False, indent=2), encoding="utf-8")
+def execute(query_obj: dict, label: str):
+    p = payload(query_obj, label)
     endpoint = f"{CLUSTER}/public/reports/querydata?synchronous=true"
     r = session().post(endpoint, json=p, timeout=90)
     (OUT / f"{label}_response.json").write_text(r.text, encoding="utf-8")
     r.raise_for_status()
-    response = r.json()
-    cols, rows = decode(response)
+    cols, rows = decode(r.json())
     with (OUT / f"{label}.csv").open("w", newline="", encoding="utf-8-sig") as f:
-        w = csv.writer(f)
-        w.writerow(cols)
-        w.writerows(rows)
-    print(json.dumps({"label": label, "destination": destination, "ncm": ncm, "columns": cols, "rows": rows[:30], "row_count": len(rows)}, ensure_ascii=False, indent=2))
+        w = csv.writer(f); w.writerow(cols); w.writerows(rows)
     return cols, rows
 
 
+def discover_destinations():
+    q = {
+        "Version": 2,
+        "From": [{"Name":"md","Entity":"MDFE_M_MUNICIPIODESTINO","Type":0}],
+        "Select": [{**col("md","municipiodestinodesc"), "Name":"MDFE_M_MUNICIPIODESTINO.municipiodestinodesc", "NativeReferenceName":"municipiodestinodesc"}],
+        "OrderBy": [{"Direction": 2, "Expression": col("md","municipiodestinodesc")}],
+    }
+    return execute(command(q,[0],5000), "discover_destinations")
+
+
+def build_golden(destination: str):
+    q = {
+        "Version": 2,
+        "From": [
+            {"Name":"m","Entity":"MDFE_SAS_MOVIMENTACAO","Type":0},
+            {"Name":"md","Entity":"MDFE_M_MUNICIPIODESTINO","Type":0},
+            {"Name":"ns","Entity":"MDFE_M_NCMSUBGRUPO","Type":0},
+        ],
+        "Select": [
+            {**col("m","periodo"), "Name":"MDFE_SAS_MOVIMENTACAO.periodo", "NativeReferenceName":"periodo"},
+            {**agg("m","CARGAEMTON"), "Name":"MDFE_SAS_MOVIMENTACAO.CARGAEMTON", "NativeReferenceName":"Toneladas"},
+            {**agg("m","TKU"), "Name":"MDFE_SAS_MOVIMENTACAO.TKU", "NativeReferenceName":"TKU"},
+        ],
+        "Where": [
+            in_filter("m","SG_UFINI",["MT"]),
+            in_filter("md","municipiodestinodesc",[destination]),
+            in_filter("ns","subgrupodesc",["1005-Milho."]),
+        ],
+        "OrderBy": [{"Direction":1,"Expression":col("m","periodo")}],
+    }
+    return execute(command(q,[0,1,2],500), "golden_rondonopolis_milho")
+
+
 def main():
-    # Golden sample against user's manual spreadsheet: milho -> Rondonópolis.
-    # Try canonical spelling first; if empty, try the uppercase spelling used in the workbook.
-    for dest in ["Rondonópolis", "RONDONÓPOLIS", "RONDONOPOLIS"]:
-        cols, rows = run_one(dest, "1005", "golden_rondonopolis_milho_" + dest.lower().replace("ó", "o").replace(" ", "_"))
-        if rows:
-            break
+    _, dest_rows = discover_destinations()
+    candidates = [str(r[0]) for r in dest_rows if r and "RONDON" in norm(r[0])]
+    print(json.dumps({"destination_candidates": candidates[:50], "destination_count": len(dest_rows)}, ensure_ascii=False, indent=2))
+    exact = next((x for x in candidates if norm(x).startswith("RONDONOPOLIS")), None)
+    if not exact:
+        raise RuntimeError("Rondonópolis não encontrado na dimensão de destino")
+    cols, rows = build_golden(exact)
+    print(json.dumps({"destination": exact, "product": "1005-Milho.", "columns": cols, "rows": rows, "row_count": len(rows)}, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
