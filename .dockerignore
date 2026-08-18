@@ -1,0 +1,14 @@
+.git
+.gitignore
+.agrolog
+__pycache__
+*.pyc
+*.pyo
+*.xlsx
+*.xls
+*.zip
+*.pdf
+*.csv
+.env
+.venv
+venv
