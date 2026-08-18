@@ -6,7 +6,7 @@ import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
-from extract_mdfe_powerbi import agg, col, command, discover_destinations, execute, in_filter
+from extract_mdfe_powerbi import agg, col, command, execute, in_filter
 
 OUT = Path("mdfe_powerbi_export")
 OUT.mkdir(exist_ok=True)
@@ -43,21 +43,6 @@ PRODUCTS = [
 def norm(value: str) -> str:
     value = unicodedata.normalize("NFKD", str(value)).encode("ascii", "ignore").decode("ascii")
     return " ".join(value.upper().split())
-
-
-def resolve_destinations() -> dict[str, str]:
-    _, rows = discover_destinations()
-    values = [str(r[0]) for r in rows if r and r[0] is not None]
-    by_norm: dict[str, list[str]] = {}
-    for value in values:
-        by_norm.setdefault(norm(value), []).append(value)
-    resolved = {}
-    for requested, _uf in DESTINATIONS:
-        candidates = by_norm.get(norm(requested), [])
-        if not candidates:
-            raise RuntimeError(f"Destino não encontrado no BI: {requested}")
-        resolved[requested] = candidates[0]
-    return resolved
 
 
 def build_flow_query(destination: str, destination_uf: str, product_desc: str):
@@ -99,32 +84,35 @@ def epoch_ms_to_period(value) -> str:
 
 
 def main():
-    resolved = resolve_destinations()
     all_rows: list[dict] = []
     stats = []
-    for requested, uf in DESTINATIONS:
-        canonical = resolved[requested]
+    failures = []
+    for destination, uf in DESTINATIONS:
         for product, product_desc in PRODUCTS:
-            label = f"flow_{norm(requested).lower().replace(' ', '_')}_{product.lower()}"
-            cols, rows = execute(build_flow_query(canonical, uf, product_desc), label)
+            label = f"flow_{norm(destination).lower().replace(' ', '_')}_{product.lower()}"
+            try:
+                _cols, rows = execute(build_flow_query(destination, uf, product_desc), label)
+            except Exception as exc:
+                failures.append({"destino": destination, "uf": uf, "produto": product, "error": repr(exc)})
+                print(json.dumps(failures[-1], ensure_ascii=False))
+                continue
             count = 0
             for row in rows:
                 if len(row) < 3 or row[0] is None or row[1] is None:
                     continue
-                record = {
+                all_rows.append({
                     "periodo": epoch_ms_to_period(row[0]),
                     "produto": product,
-                    "destino": requested,
+                    "destino": destination,
                     "uf_destino": uf,
                     "municipio_origem": row[1],
                     "volume_t": row[2] if len(row) > 2 else None,
                     "tku": row[3] if len(row) > 3 else None,
                     "mdfes": row[4] if len(row) > 4 else None,
                     "viagens_estimadas": row[5] if len(row) > 5 else None,
-                }
-                all_rows.append(record)
+                })
                 count += 1
-            stats.append({"destino": requested, "uf": uf, "produto": product, "rows": count})
+            stats.append({"destino": destination, "uf": uf, "produto": product, "rows": count})
             print(json.dumps(stats[-1], ensure_ascii=False))
 
     fields = ["periodo", "produto", "destino", "uf_destino", "municipio_origem", "volume_t", "tku", "mdfes", "viagens_estimadas"]
@@ -140,10 +128,11 @@ def main():
         "destinations": [x[0] for x in DESTINATIONS],
         "row_count": len(all_rows),
         "stats": stats,
+        "failures": failures,
         "note": "Somente fluxos identificados nos NCM 1005 (milho) e 1201 (soja). Valores do BI atual podem diferir de snapshots históricos anteriores por revisão retroativa da fonte.",
     }
     (OUT / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({"exported_rows": len(all_rows), "output": str(OUT / 'mdfe_mt_fluxos_destinos.csv')}, ensure_ascii=False))
+    print(json.dumps({"exported_rows": len(all_rows), "failures": len(failures), "output": str(OUT / 'mdfe_mt_fluxos_destinos.csv')}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
