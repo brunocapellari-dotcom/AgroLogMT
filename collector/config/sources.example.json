@@ -1,0 +1,38 @@
+{
+  "sources": [
+    {
+      "source_id": "mapa_sipeagro_alimentacao_animal",
+      "name": "MAPA SIPEAGRO - Alimentacao Animal",
+      "group": "dados",
+      "method": "ckan",
+      "expected_frequency": "weekly",
+      "file_extension": "csv",
+      "options": {
+        "base_url": "https://dados.agricultura.gov.br",
+        "dataset_id": "52a01565-72d6-410e-b21b-64035831a7be",
+        "resource_id": "378b184b-67bd-48fa-9901-17bb7a0700fb"
+      },
+      "notes": "Cadastro oficial de estabelecimentos/produtos de alimentacao animal."
+    },
+    {
+      "source_id": "antt_dados_abertos",
+      "name": "ANTT Dados Abertos",
+      "group": "dados",
+      "method": "http",
+      "url": "https://dados.antt.gov.br/api/3/action/package_list",
+      "expected_frequency": "daily",
+      "file_extension": "json",
+      "notes": "PoC de disponibilidade do catalogo CKAN; datasets individuais devem ter spec propria."
+    },
+    {
+      "source_id": "openalex_agrolog_discovery",
+      "name": "OpenAlex - descoberta de conhecimento",
+      "group": "conhecimento",
+      "method": "http",
+      "url": "https://api.openalex.org/works?search=soybean%20logistics&per-page=25",
+      "expected_frequency": "daily",
+      "file_extension": "json",
+      "notes": "Descoberta bibliografica; material so entra no Obsidian apos triagem/licenca."
+    }
+  ]
+}
