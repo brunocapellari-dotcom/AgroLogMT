@@ -19,26 +19,50 @@ Frequências alvo:
 
 O hash SHA-256 impede que um artefato idêntico seja gravado novamente.
 
-## Pré-requisitos
+## Pré-requisitos mínimos
 
-1. Service account do coletor com BigQuery Job User + Data Editor (ou permissões mínimas equivalentes no dataset).
-2. Service account do Cloud Scheduler com permissão de executar os Cloud Run Jobs.
-3. Pasta raiz no Google Drive compartilhada como Editor com a service account do coletor.
-4. `gcloud` autenticado no projeto correto.
+1. `gcloud` autenticado no projeto correto.
+2. Permissão do usuário para habilitar APIs, criar contas de serviço, implantar Cloud Run Jobs e criar Cloud Scheduler.
+3. Após o script criar a service account `agrolog-collector`, compartilhar a pasta `AGROLOG MT/07_AUTOMACAO` como Editor com o e-mail exibido pelo script.
 
-## Deploy
+O script cria automaticamente as duas contas de serviço do piloto quando ausentes e concede:
+- `roles/bigquery.user` ao coletor, suficiente para jobs e criação do dataset operacional; o criador passa a controlar o dataset criado;
+- `roles/run.invoker` à conta usada pelo Cloud Scheduler para executar os Cloud Run Jobs.
+
+## Deploy simplificado
+
+Se o projeto correto já estiver selecionado no `gcloud`, basta executar na raiz do repositório:
 
 ```bash
-export PROJECT_ID="..."
-export REGION="southamerica-east1"
-export COLLECTOR_SERVICE_ACCOUNT="agrolog-collector@${PROJECT_ID}.iam.gserviceaccount.com"
-export SCHEDULER_SERVICE_ACCOUNT="agrolog-scheduler@${PROJECT_ID}.iam.gserviceaccount.com"
-export DRIVE_FOLDER_ID="..."
-
 bash scripts/deploy_collectors_gcloud.sh
 ```
 
-O script habilita APIs, cria Artifact Registry se necessário, constrói a imagem, cria/atualiza os três Cloud Run Jobs e os três agendamentos.
+Por padrão, o script usa:
+- região `southamerica-east1`;
+- dataset `agrolog_ops`;
+- pasta Drive `AGROLOG MT/07_AUTOMACAO` (`17AX2iCrQ17Jm86Pp9ijqn3hyEHVaQPqd`);
+- service accounts `agrolog-collector` e `agrolog-scheduler`.
+
+Todos esses valores podem ser sobrescritos por variáveis de ambiente.
+
+O script habilita APIs, cria contas de serviço quando necessário, configura permissões, cria Artifact Registry, constrói a imagem, cria/atualiza os três Cloud Run Jobs e os três agendamentos.
+
+## Passo manual do Drive
+
+O Google Cloud IAM não concede acesso ao My Drive. Após a criação da service account do coletor, compartilhe a pasta `07_AUTOMACAO` como Editor com:
+
+`agrolog-collector@<PROJECT_ID>.iam.gserviceaccount.com`
+
+Depois execute um teste manual:
+
+```bash
+gcloud run jobs execute agrolog-dados --region southamerica-east1 --wait
+```
+
+Valide:
+- Drive: `07_AUTOMACAO/RAW/...`;
+- BigQuery: `agrolog_ops.collector_runs`;
+- BigQuery: `agrolog_ops.collector_source_state`.
 
 ## Piloto
 
