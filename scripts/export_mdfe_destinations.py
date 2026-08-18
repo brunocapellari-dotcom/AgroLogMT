@@ -59,8 +59,6 @@ def build_flow_query(destination: str, destination_uf: str, product_desc: str):
             {**col("mo", "municipioorigemdesc"), "Name": "municipio_origem", "NativeReferenceName": "municipio_origem"},
             {**agg("m", "CARGAEMTON"), "Name": "toneladas", "NativeReferenceName": "toneladas"},
             {**agg("m", "TKU"), "Name": "tku", "NativeReferenceName": "tku"},
-            {**agg("m", "CONTCHAVESMDFE"), "Name": "mdfes", "NativeReferenceName": "mdfes"},
-            {**agg("m", "NUMVIAGENS"), "Name": "viagens_estimadas", "NativeReferenceName": "viagens_estimadas"},
         ],
         "Where": [
             in_filter("m", "SG_UFINI", ["MT"]),
@@ -73,7 +71,7 @@ def build_flow_query(destination: str, destination_uf: str, product_desc: str):
             {"Direction": 1, "Expression": col("mo", "municipioorigemdesc")},
         ],
     }
-    return command(q, [0, 1, 2, 3, 4, 5], 5000)
+    return command(q, [0, 1, 2, 3], 5000)
 
 
 def epoch_ms_to_period(value) -> str:
@@ -108,14 +106,12 @@ def main():
                     "municipio_origem": row[1],
                     "volume_t": row[2] if len(row) > 2 else None,
                     "tku": row[3] if len(row) > 3 else None,
-                    "mdfes": row[4] if len(row) > 4 else None,
-                    "viagens_estimadas": row[5] if len(row) > 5 else None,
                 })
                 count += 1
             stats.append({"destino": destination, "uf": uf, "produto": product, "rows": count})
             print(json.dumps(stats[-1], ensure_ascii=False))
 
-    fields = ["periodo", "produto", "destino", "uf_destino", "municipio_origem", "volume_t", "tku", "mdfes", "viagens_estimadas"]
+    fields = ["periodo", "produto", "destino", "uf_destino", "municipio_origem", "volume_t", "tku"]
     with (OUT / "mdfe_mt_fluxos_destinos.csv").open("w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
@@ -129,7 +125,7 @@ def main():
         "row_count": len(all_rows),
         "stats": stats,
         "failures": failures,
-        "note": "Somente fluxos identificados nos NCM 1005 (milho) e 1201 (soja). Valores do BI atual podem diferir de snapshots históricos anteriores por revisão retroativa da fonte.",
+        "note": "Somente fluxos identificados nos NCM 1005 (milho) e 1201 (soja). Valores do BI atual podem diferir de snapshots históricos anteriores por revisão retroativa da fonte. MDF-e e viagens serão extraídos em etapa específica como medidas do modelo, sem bloquear a carga de toneladas/TKU.",
     }
     (OUT / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({"exported_rows": len(all_rows), "failures": len(failures), "output": str(OUT / 'mdfe_mt_fluxos_destinos.csv')}, ensure_ascii=False))
