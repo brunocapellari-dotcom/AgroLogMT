@@ -1,0 +1,48 @@
+{
+  "sources": [
+    {
+      "source_id": "mapa_sipeagro_alimentacao_animal",
+      "name": "MAPA SIPEAGRO - Alimentacao Animal",
+      "group": "dados",
+      "method": "ckan",
+      "expected_frequency": "weekly",
+      "file_extension": "csv",
+      "options": {
+        "base_url": "https://dados.agricultura.gov.br",
+        "dataset_id": "52a01565-72d6-410e-b21b-64035831a7be",
+        "resource_id": "378b184b-67bd-48fa-9901-17bb7a0700fb"
+      },
+      "notes": "Piloto de arquivo estruturado oficial via CKAN."
+    },
+    {
+      "source_id": "antt_catalogo_dados_abertos",
+      "name": "ANTT - Catalogo Dados Abertos",
+      "group": "dados",
+      "method": "http",
+      "url": "https://dados.antt.gov.br/api/3/action/package_list",
+      "expected_frequency": "daily",
+      "file_extension": "json",
+      "notes": "Piloto de endpoint publico; datasets operacionais terao specs proprias."
+    },
+    {
+      "source_id": "conab_noticias",
+      "name": "CONAB - Noticias",
+      "group": "radar",
+      "method": "http",
+      "url": "https://www.gov.br/conab/pt-br/assuntos/noticias",
+      "expected_frequency": "daily",
+      "file_extension": "html",
+      "notes": "Piloto RAW do Radar; classificacao semantica entra na etapa de parsing/analise."
+    },
+    {
+      "source_id": "openalex_agrolog_discovery",
+      "name": "OpenAlex - descoberta de conhecimento",
+      "group": "conhecimento",
+      "method": "http",
+      "url": "https://api.openalex.org/works?search=soybean%20logistics&per-page=25",
+      "expected_frequency": "daily",
+      "file_extension": "json",
+      "notes": "Descoberta bibliografica; nenhum item entra no Obsidian sem triagem/licenca."
+    }
+  ]
+}
