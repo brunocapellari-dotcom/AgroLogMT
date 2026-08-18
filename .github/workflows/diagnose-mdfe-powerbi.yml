@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/diagnose_mdfe_powerbi.py'
+      - 'scripts/extract_mdfe_powerbi.py'
       - '.github/workflows/diagnose-mdfe-powerbi.yml'
   workflow_dispatch:
 
@@ -23,11 +24,15 @@ jobs:
       - run: python -m pip install --disable-pip-version-check requests
       - name: Diagnose public ANTT Power BI
         run: python scripts/diagnose_mdfe_powerbi.py
+      - name: Extract golden sample
+        run: python scripts/extract_mdfe_powerbi.py
       - name: Upload diagnostic artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: mdfe-powerbi-diagnostic
-          path: mdfe_powerbi_diagnostic/
+          path: |
+            mdfe_powerbi_diagnostic/
+            mdfe_powerbi_extract/
           if-no-files-found: warn
           retention-days: 3
