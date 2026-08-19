@@ -26,12 +26,12 @@ O hash SHA-256 impede que um artefato idêntico seja gravado novamente.
 3. Após o script criar a service account `agrolog-collector`, compartilhar a pasta `AGROLOG MT/07_AUTOMACAO` como Editor com o e-mail exibido pelo script.
 
 O script cria automaticamente as duas contas de serviço do piloto quando ausentes e concede:
-- `roles/bigquery.user` ao coletor, suficiente para jobs e criação do dataset operacional; o criador passa a controlar o dataset criado;
+- `roles/bigquery.user` ao coletor, suficiente para jobs e criação do dataset operacional;
 - `roles/run.invoker` à conta usada pelo Cloud Scheduler para executar os Cloud Run Jobs.
 
 ## Deploy simplificado
 
-Se o projeto correto já estiver selecionado no `gcloud`, basta executar na raiz do repositório:
+Na raiz do repositório:
 
 ```bash
 bash scripts/deploy_collectors_gcloud.sh
@@ -43,9 +43,18 @@ Por padrão, o script usa:
 - pasta Drive `AGROLOG MT/07_AUTOMACAO` (`17AX2iCrQ17Jm86Pp9ijqn3hyEHVaQPqd`);
 - service accounts `agrolog-collector` e `agrolog-scheduler`.
 
-Todos esses valores podem ser sobrescritos por variáveis de ambiente.
+O script habilita as APIs necessárias, cria contas de serviço, Secret Manager, Artifact Registry, constrói a imagem, cria/atualiza os Cloud Run Jobs e os agendamentos.
 
-O script habilita APIs, cria contas de serviço quando necessário, configura permissões, cria Artifact Registry, constrói a imagem, cria/atualiza os três Cloud Run Jobs e os três agendamentos.
+## Segredos de APIs externas
+
+Credenciais e chaves não entram no GitHub, no JSON de fontes, em URLs observadas ou arquivos RAW. O deploy usa Google Secret Manager e concede `roles/secretmanager.secretAccessor` somente à service account do coletor.
+
+Secrets do grupo `dados`:
+- `agrolog-ana-identificador` -> `ANA_IDENTIFICADOR`;
+- `agrolog-ana-senha` -> `ANA_SENHA`;
+- `agrolog-api-data-gov-key` -> `DATA_GOV_API_KEY`.
+
+Na primeira execução, se um secret ainda não tiver versão habilitada, o script solicita o valor no terminal de forma oculta. Depois, reutiliza o Secret Manager sem pedir novamente.
 
 ## ANA HidroWebService
 
@@ -58,18 +67,27 @@ Estações iniciais do Arco Norte:
 - Itaituba — 17730000;
 - Santarém — 17900000.
 
-O token de autenticação informado pela ANA é reutilizado em memória por até 55 minutos dentro do mesmo processo, reduzindo chamadas de autenticação e permanecendo abaixo da validade oficial de 60 minutos.
+O token é reutilizado em memória por até 55 minutos dentro do mesmo processo.
 
-### Segredos ANA
+## USDA FAS Open Data / api.data.gov
 
-O identificador e a senha nunca devem ser gravados no GitHub, em `sources.pilot.json`, em imagens de container, logs ou arquivos RAW. O deploy usa Google Secret Manager:
+A chave `api.data.gov` do projeto é injetada apenas no runtime como `DATA_GOV_API_KEY` e enviada no header `X-Api-Key`, evitando segredo em URL, manifesto ou log.
 
-- `agrolog-ana-identificador` -> variável de runtime `ANA_IDENTIFICADOR`;
-- `agrolog-ana-senha` -> variável de runtime `ANA_SENHA`.
+O primeiro uso é o USDA Foreign Agricultural Service Open Data, que expõe três famílias de dados:
+- **PSD** — Production, Supply and Distribution: produção, consumo, comércio, estoques e demais atributos de oferta e demanda mundial;
+- **ESR** — Export Sales Report: vendas semanais de exportação dos Estados Unidos;
+- **GATS** — Global Agricultural Trade System: comércio exterior Census/UN Trade.
 
-Na primeira execução do deploy, se os secrets ainda não tiverem uma versão habilitada, o script solicita os valores no terminal; a senha é lida de forma oculta. Se o ambiente não for interativo, os valores podem ser fornecidos temporariamente pelas variáveis `ANA_IDENTIFICADOR` e `ANA_SENHA` somente durante o deploy. O script envia os valores por stdin ao Secret Manager e não os imprime.
+O lote inicial coleta endpoints leves de catálogo e controle de atualização:
+- PSD commodities;
+- PSD countries;
+- PSD commodity attributes;
+- ESR commodities;
+- ESR data release dates;
+- GATS Census export data release dates;
+- GATS Census import data release dates.
 
-A service account `agrolog-collector` recebe `roles/secretmanager.secretAccessor` somente nos dois secrets ANA. As variáveis secretas são injetadas somente no Cloud Run Job `agrolog-dados`.
+A estratégia é usar os `dataReleaseDates` para detectar publicação ou revisão e só então disparar cargas maiores. Depois da primeira execução real, serão criadas specs por commodity para soja, milho, algodão e demais produtos priorizados, com histórico e revisões preservados.
 
 ## Passo manual do Drive
 
@@ -77,35 +95,33 @@ O Google Cloud IAM não concede acesso ao My Drive. Após a criação da service
 
 `agrolog-collector@<PROJECT_ID>.iam.gserviceaccount.com`
 
-Depois execute um teste manual:
+Depois execute:
 
 ```bash
 gcloud run jobs execute agrolog-dados --region southamerica-east1 --wait
 ```
 
 Valide:
-- Drive: `07_AUTOMACAO/RAW/...`;
+- Drive: `07_AUTOMACAO/RAW/dados/ana_hidroweb_*/...`;
+- Drive: `07_AUTOMACAO/RAW/dados/usda_fas_*/...`;
 - BigQuery: `agrolog_ops.collector_runs`;
 - BigQuery: `agrolog_ops.collector_source_state`.
 
-Para ANA, confirme também a criação de artefatos em `RAW/dados/ana_hidroweb_*/...` e manifeste `status=updated` ou `unchanged`, nunca credenciais.
-
 ## Piloto
 
-A configuração inicial contém fontes pequenas para validar o ciclo completo:
-- MAPA SIPEAGRO Alimentação Animal (Dados, CKAN/CSV);
-- catálogo ANTT Dados Abertos (Dados, API/JSON);
-- ANA HidroWebService para cinco estações do Arco Norte (Dados, API/JSON autenticada);
-- CONAB Notícias (Radar, HTML RAW);
-- OpenAlex (Conhecimento, API/JSON).
-
-O objetivo é validar execução, Drive, BigQuery, idempotência e logs antes de importar o catálogo completo.
+A configuração contém fontes pequenas para validar o ciclo completo:
+- MAPA SIPEAGRO Alimentação Animal;
+- catálogo ANTT Dados Abertos;
+- ANA HidroWebService para cinco estações do Arco Norte;
+- USDA FAS PSD/ESR/GATS em catálogos e release dates;
+- CONAB Notícias;
+- OpenAlex.
 
 ## Limites desta etapa
 
-- A API ANA é coletada inicialmente como JSON RAW auditável. A normalização dos registros de 15 minutos para tabela analítica e atualização automática da planilha hidrométrica são a etapa seguinte após validar a primeira resposta real do endpoint.
-- Cada chamada da série telemétrica adotada cobre no máximo 30 dias. Backfill anterior à janela corrente deve ser paginado/ancorado somente depois de validar no Swagger/API o parâmetro temporal histórico suportado, sem inventar parâmetros.
-- Radar ainda preserva HTML RAW; análise semântica/notícia estruturada entra no parser específico.
+- A API ANA é coletada inicialmente como JSON RAW auditável; normalização dos registros e atualização automática da planilha entram após validar a primeira resposta real.
+- Cada chamada ANA da série adotada cobre no máximo 30 dias.
+- A integração USDA atual prepara aquisição, catálogo e detecção de atualização; carga histórica completa por commodity e normalizadores PSD/ESR/GATS entram após validar a chave no Cloud Run.
+- Radar ainda preserva HTML RAW; análise semântica entra no parser específico.
 - Conhecimento ainda preserva descoberta RAW; a nota Markdown Obsidian precisa do pipeline de triagem/síntese.
 - PDF/XLSX/CSV ficam no Drive quando a fonte expõe o artefato diretamente; parsing em planilha temática/BigQuery é responsabilidade do normalizador da fonte.
-- Detecção de lacuna já existe no núcleo, mas a alimentação automática das referências observadas por fonte será integrada aos normalizadores.
