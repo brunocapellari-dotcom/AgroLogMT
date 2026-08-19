@@ -1,0 +1,35 @@
+name: Test ANA HidroWebService
+
+on:
+  push:
+    paths:
+      - 'collector/adapters.py'
+      - 'collector/config/sources.pilot.json'
+      - 'scripts/deploy_collectors_gcloud.sh'
+      - 'tests/test_ana_hidroweb_adapter.py'
+      - '.github/workflows/test-ana-hidroweb.yml'
+  pull_request:
+    paths:
+      - 'collector/adapters.py'
+      - 'collector/config/sources.pilot.json'
+      - 'scripts/deploy_collectors_gcloud.sh'
+      - 'tests/test_ana_hidroweb_adapter.py'
+      - '.github/workflows/test-ana-hidroweb.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile adapter
+        run: python -m py_compile collector/adapters.py
+      - name: Validate source config JSON
+        run: python -m json.tool collector/config/sources.pilot.json >/dev/null
+      - name: Validate deploy shell
+        run: bash -n scripts/deploy_collectors_gcloud.sh
+      - name: Run ANA adapter unit tests
+        run: python -m unittest discover -s tests -p 'test_ana_hidroweb_adapter.py' -v
