@@ -44,6 +44,47 @@ class HttpAdapter:
             )
 
 
+class ApiDataGovAdapter:
+    """Coleta APIs federais protegidas por chave api.data.gov.
+
+    A chave nunca pertence ao SourceSpec ou ao GitHub. O SourceSpec informa apenas
+    o nome da variavel de ambiente que, em producao, deve vir do Secret Manager.
+    O header X-Api-Key evita colocar segredo na URL, nos manifestos e nos logs.
+    """
+
+    DEFAULT_API_KEY_ENV = "DATA_GOV_API_KEY"
+
+    def fetch(self, spec: SourceSpec) -> AcquisitionResult:
+        if not spec.url:
+            raise ValueError(f"Fonte {spec.source_id} sem URL")
+
+        key_env = str(spec.options.get("api_key_env", self.DEFAULT_API_KEY_ENV))
+        api_key = os.environ.get(key_env)
+        if not api_key:
+            raise RuntimeError(f"Chave api.data.gov ausente na variavel de ambiente: {key_env}")
+
+        timeout = int(spec.options.get("timeout_seconds", 60))
+        headers = {
+            "User-Agent": "AgroLogMT/0.1 (+api-data-gov)",
+            "Accept": "application/json",
+            "X-Api-Key": api_key,
+        }
+        safe_headers = spec.options.get("headers", {})
+        if safe_headers:
+            headers.update({str(k): str(v) for k, v in safe_headers.items()})
+
+        request = Request(spec.url, headers=headers)
+        with urlopen(request, timeout=timeout) as response:
+            payload = response.read()
+            return AcquisitionResult(
+                payload=payload,
+                observed_url=response.geturl(),
+                content_type=response.headers.get("Content-Type"),
+                etag=response.headers.get("ETag"),
+                last_modified=response.headers.get("Last-Modified"),
+            )
+
+
 class CkanResourceAdapter:
     """Resolve um recurso CKAN e baixa o arquivo publicado pela fonte."""
 
@@ -213,6 +254,8 @@ def get_adapter(method: str) -> Adapter:
     normalized = method.strip().lower()
     if normalized in {"http", "http_file", "json_api", "api"}:
         return HttpAdapter()
+    if normalized in {"api_data_gov", "data_gov_api", "api.data.gov"}:
+        return ApiDataGovAdapter()
     if normalized in {"ckan", "ckan_resource"}:
         return CkanResourceAdapter()
     if normalized in {"ana_hidroweb", "ana_hidrowebservice", "hidrowebservice"}:
