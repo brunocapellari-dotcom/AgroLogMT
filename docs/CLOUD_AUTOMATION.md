@@ -47,6 +47,30 @@ Todos esses valores podem ser sobrescritos por variáveis de ambiente.
 
 O script habilita APIs, cria contas de serviço quando necessário, configura permissões, cria Artifact Registry, constrói a imagem, cria/atualiza os três Cloud Run Jobs e os três agendamentos.
 
+## ANA HidroWebService
+
+O grupo `dados` inclui o conector para a API oficial HidroWebService da ANA. A implementação usa a rota de autenticação `EstacoesTelemetricas/OAUth/v1` e a rota `EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v1`, com janela de consulta de até 30 dias por requisição.
+
+Estações iniciais do Arco Norte:
+- Porto Velho — 15400000;
+- Humaitá — 15630000;
+- Itacoatiara — 16030000;
+- Itaituba — 17730000;
+- Santarém — 17900000.
+
+O token de autenticação informado pela ANA é reutilizado em memória por até 55 minutos dentro do mesmo processo, reduzindo chamadas de autenticação e permanecendo abaixo da validade oficial de 60 minutos.
+
+### Segredos ANA
+
+O identificador e a senha nunca devem ser gravados no GitHub, em `sources.pilot.json`, em imagens de container, logs ou arquivos RAW. O deploy usa Google Secret Manager:
+
+- `agrolog-ana-identificador` -> variável de runtime `ANA_IDENTIFICADOR`;
+- `agrolog-ana-senha` -> variável de runtime `ANA_SENHA`.
+
+Na primeira execução do deploy, se os secrets ainda não tiverem uma versão habilitada, o script solicita os valores no terminal; a senha é lida de forma oculta. Se o ambiente não for interativo, os valores podem ser fornecidos temporariamente pelas variáveis `ANA_IDENTIFICADOR` e `ANA_SENHA` somente durante o deploy. O script envia os valores por stdin ao Secret Manager e não os imprime.
+
+A service account `agrolog-collector` recebe `roles/secretmanager.secretAccessor` somente nos dois secrets ANA. As variáveis secretas são injetadas somente no Cloud Run Job `agrolog-dados`.
+
 ## Passo manual do Drive
 
 O Google Cloud IAM não concede acesso ao My Drive. Após a criação da service account do coletor, compartilhe a pasta `07_AUTOMACAO` como Editor com:
@@ -64,11 +88,14 @@ Valide:
 - BigQuery: `agrolog_ops.collector_runs`;
 - BigQuery: `agrolog_ops.collector_source_state`.
 
+Para ANA, confirme também a criação de artefatos em `RAW/dados/ana_hidroweb_*/...` e manifeste `status=updated` ou `unchanged`, nunca credenciais.
+
 ## Piloto
 
-A configuração inicial contém quatro fontes pequenas para validar o ciclo completo:
+A configuração inicial contém fontes pequenas para validar o ciclo completo:
 - MAPA SIPEAGRO Alimentação Animal (Dados, CKAN/CSV);
 - catálogo ANTT Dados Abertos (Dados, API/JSON);
+- ANA HidroWebService para cinco estações do Arco Norte (Dados, API/JSON autenticada);
 - CONAB Notícias (Radar, HTML RAW);
 - OpenAlex (Conhecimento, API/JSON).
 
@@ -76,6 +103,8 @@ O objetivo é validar execução, Drive, BigQuery, idempotência e logs antes de
 
 ## Limites desta etapa
 
+- A API ANA é coletada inicialmente como JSON RAW auditável. A normalização dos registros de 15 minutos para tabela analítica e atualização automática da planilha hidrométrica são a etapa seguinte após validar a primeira resposta real do endpoint.
+- Cada chamada da série telemétrica adotada cobre no máximo 30 dias. Backfill anterior à janela corrente deve ser paginado/ancorado somente depois de validar no Swagger/API o parâmetro temporal histórico suportado, sem inventar parâmetros.
 - Radar ainda preserva HTML RAW; análise semântica/notícia estruturada entra no parser específico.
 - Conhecimento ainda preserva descoberta RAW; a nota Markdown Obsidian precisa do pipeline de triagem/síntese.
 - PDF/XLSX/CSV ficam no Drive quando a fonte expõe o artefato diretamente; parsing em planilha temática/BigQuery é responsabilidade do normalizador da fonte.
