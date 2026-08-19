@@ -14,6 +14,7 @@ COLLECTOR_SA_NAME="${COLLECTOR_SA_NAME:-agrolog-collector}"
 SCHEDULER_SA_NAME="${SCHEDULER_SA_NAME:-agrolog-scheduler}"
 ANA_IDENTIFIER_SECRET="${ANA_IDENTIFIER_SECRET:-agrolog-ana-identificador}"
 ANA_PASSWORD_SECRET="${ANA_PASSWORD_SECRET:-agrolog-ana-senha}"
+DATA_GOV_API_KEY_SECRET="${DATA_GOV_API_KEY_SECRET:-agrolog-api-data-gov-key}"
 
 if [[ -z "${PROJECT_ID}" || "${PROJECT_ID}" == "(unset)" ]]; then
   echo "Nenhum projeto GCP configurado. Execute: gcloud config set project SEU_PROJECT_ID" >&2
@@ -119,11 +120,13 @@ ensure_project_role "${COLLECTOR_SERVICE_ACCOUNT}" "roles/bigquery.user"
 # O Scheduler precisa apenas iniciar os Cloud Run Jobs.
 ensure_project_role "${SCHEDULER_SERVICE_ACCOUNT}" "roles/run.invoker"
 
-# Credenciais da ANA ficam somente no Secret Manager e sao injetadas no job de Dados.
+# Credenciais e chaves externas ficam somente no Secret Manager e sao injetadas no job de Dados.
 add_secret_version_if_missing "${ANA_IDENTIFIER_SECRET}" "ANA_IDENTIFICADOR" "Identificador da API ANA" "hidden"
 add_secret_version_if_missing "${ANA_PASSWORD_SECRET}" "ANA_SENHA" "Senha da API ANA" "hidden"
+add_secret_version_if_missing "${DATA_GOV_API_KEY_SECRET}" "DATA_GOV_API_KEY" "Chave api.data.gov / USDA FAS" "hidden"
 bind_secret_access "${ANA_IDENTIFIER_SECRET}"
 bind_secret_access "${ANA_PASSWORD_SECRET}"
+bind_secret_access "${DATA_GOV_API_KEY_SECRET}"
 
 if ! gcloud artifacts repositories describe "${AR_REPOSITORY}" --location "${REGION}" >/dev/null 2>&1; then
   gcloud artifacts repositories create "${AR_REPOSITORY}" --repository-format=docker --location "${REGION}"
@@ -137,7 +140,7 @@ for group in radar dados conhecimento; do
   job="agrolog-${group}"
   extra_args=()
   if [[ "${group}" == "dados" ]]; then
-    extra_args+=(--set-secrets "ANA_IDENTIFICADOR=${ANA_IDENTIFIER_SECRET}:latest,ANA_SENHA=${ANA_PASSWORD_SECRET}:latest")
+    extra_args+=(--set-secrets "ANA_IDENTIFICADOR=${ANA_IDENTIFIER_SECRET}:latest,ANA_SENHA=${ANA_PASSWORD_SECRET}:latest,DATA_GOV_API_KEY=${DATA_GOV_API_KEY_SECRET}:latest")
   fi
   gcloud run jobs deploy "${job}" \
     --image "${IMAGE}" \
@@ -190,6 +193,7 @@ Pasta Drive do piloto: ${DRIVE_FOLDER_ID}
 Collector SA: ${COLLECTOR_SERVICE_ACCOUNT}
 Scheduler SA: ${SCHEDULER_SERVICE_ACCOUNT}
 ANA secrets: ${ANA_IDENTIFIER_SECRET}, ${ANA_PASSWORD_SECRET}
+api.data.gov secret: ${DATA_GOV_API_KEY_SECRET}
 
 PASSO MANUAL UNICO DO DRIVE:
 Compartilhe a pasta 07_AUTOMACAO como Editor com:
@@ -200,6 +204,7 @@ gcloud run jobs execute agrolog-dados --region ${REGION} --wait
 
 Se o teste terminar com sucesso, verifique:
 - Drive: 07_AUTOMACAO/RAW/dados/ana_hidroweb_*/...
+- Drive: 07_AUTOMACAO/RAW/dados/usda_fas_*/...
 - BigQuery: ${OPS_DATASET}.collector_runs
 - BigQuery: ${OPS_DATASET}.collector_source_state
 EOF
