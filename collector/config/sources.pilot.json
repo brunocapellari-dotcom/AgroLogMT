@@ -25,6 +25,91 @@
       "notes": "Piloto de endpoint publico; datasets operacionais terao specs proprias."
     },
     {
+      "source_id": "ana_hidroweb_porto_velho_15400000",
+      "name": "ANA HidroWeb - Porto Velho 15400000",
+      "group": "dados",
+      "method": "ana_hidroweb",
+      "expected_frequency": "hourly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "station_code": "15400000",
+        "filter_type": "DATA_LEITURA",
+        "search_range": "DIAS_30",
+        "identifier_env": "ANA_IDENTIFICADOR",
+        "password_env": "ANA_SENHA"
+      },
+      "notes": "Serie telemetrica adotada oficial ANA; chuva, cota e vazao quando disponiveis. Janela maxima da rota: 30 dias."
+    },
+    {
+      "source_id": "ana_hidroweb_humaita_15630000",
+      "name": "ANA HidroWeb - Humaita 15630000",
+      "group": "dados",
+      "method": "ana_hidroweb",
+      "expected_frequency": "hourly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "station_code": "15630000",
+        "filter_type": "DATA_LEITURA",
+        "search_range": "DIAS_30",
+        "identifier_env": "ANA_IDENTIFICADOR",
+        "password_env": "ANA_SENHA"
+      },
+      "notes": "Serie telemetrica adotada oficial ANA; chuva, cota e vazao quando disponiveis. Janela maxima da rota: 30 dias."
+    },
+    {
+      "source_id": "ana_hidroweb_itacoatiara_16030000",
+      "name": "ANA HidroWeb - Itacoatiara 16030000",
+      "group": "dados",
+      "method": "ana_hidroweb",
+      "expected_frequency": "hourly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "station_code": "16030000",
+        "filter_type": "DATA_LEITURA",
+        "search_range": "DIAS_30",
+        "identifier_env": "ANA_IDENTIFICADOR",
+        "password_env": "ANA_SENHA"
+      },
+      "notes": "Serie telemetrica adotada oficial ANA; chuva, cota e vazao quando disponiveis. Janela maxima da rota: 30 dias."
+    },
+    {
+      "source_id": "ana_hidroweb_itaituba_17730000",
+      "name": "ANA HidroWeb - Itaituba 17730000",
+      "group": "dados",
+      "method": "ana_hidroweb",
+      "expected_frequency": "hourly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "station_code": "17730000",
+        "filter_type": "DATA_LEITURA",
+        "search_range": "DIAS_30",
+        "identifier_env": "ANA_IDENTIFICADOR",
+        "password_env": "ANA_SENHA"
+      },
+      "notes": "Serie telemetrica adotada oficial ANA; chuva, cota e vazao quando disponiveis. Janela maxima da rota: 30 dias."
+    },
+    {
+      "source_id": "ana_hidroweb_santarem_17900000",
+      "name": "ANA HidroWeb - Santarem 17900000",
+      "group": "dados",
+      "method": "ana_hidroweb",
+      "expected_frequency": "hourly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "station_code": "17900000",
+        "filter_type": "DATA_LEITURA",
+        "search_range": "DIAS_30",
+        "identifier_env": "ANA_IDENTIFICADOR",
+        "password_env": "ANA_SENHA"
+      },
+      "notes": "Serie telemetrica adotada oficial ANA; chuva, cota e vazao quando disponiveis. Janela maxima da rota: 30 dias."
+    },
+    {
       "source_id": "conab_noticias",
       "name": "CONAB - Noticias",
       "group": "radar",
