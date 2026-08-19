@@ -27,6 +27,15 @@ As melhorias derivadas do Radar GitHub são incorporadas como três frentes comp
 
 Os componentes open source avaliados são peças substituíveis. Eles não substituem as fontes canônicas do projeto apenas por oferecerem função semelhante.
 
+### APIs autenticadas de dados
+
+O coletor mantém segredos exclusivamente no Google Secret Manager, nunca no GitHub ou nas URLs de coleta. Integrações autenticadas iniciais:
+
+- **ANA HidroWebService** — telemetria hidrológica oficial das estações priorizadas do Arco Norte;
+- **USDA FAS Open Data via api.data.gov** — PSD, ESR e GATS, com chave enviada pelo header `X-Api-Key`.
+
+A aquisição preserva RAW e manifestos; normalização e tabelas analíticas entram por fonte depois da validação real do endpoint.
+
 ### Freight Listener
 
 O Freight Listener é o módulo para transformar mensagens e mídias de **canais autorizados** em observações estruturadas de ofertas de frete. A oferta anunciada é tratada como `observado` com subtipo `oferta_frete_observada`; isso não comprova contratação, execução nem frete efetivamente pago. O módulo inclui normalização, deduplicação, reoferta, reajuste, persistência e sinais agregados, com PII minimizada e evidência original preservada fora do GitHub.
@@ -41,6 +50,7 @@ O Freight Listener é o módulo para transformar mensagens e mídias de **canais
 - `docs/CODEX_SETUP_WINDOWS.md` — instalação e teste do Codex no notebook.
 - `docs/OBSIDIAN.md` — papel do Segundo Cérebro.
 - `docs/FREIGHT_LISTENER.md` — especificação canônica da inteligência de ofertas observadas.
+- `docs/CLOUD_AUTOMATION.md` — execução contínua, Secret Manager e APIs autenticadas.
 - `docs/BACKLOG.md` — prioridades de implantação e três frentes integradas.
 
 ## Governança do repositório
@@ -49,7 +59,7 @@ O GitHub é a fonte oficial para código, configurações, SQL, schemas, documen
 
 ## Separação entre código e dados
 
-Nomes de fontes como **CONAB**, **IMEA**, **CEPEA**, **Comex Stat**, **ANTAQ**, **ANP** ou **USDA** podem aparecer na árvore do repositório para identificar qual origem um coletor, parser, schema, configuração ou teste atende. Isso não significa que os arquivos reais dessas fontes devam ser armazenados no GitHub.
+Nomes de fontes como **CONAB**, **IMEA**, **CEPEA**, **Comex Stat**, **ANTAQ**, **ANP**, **ANA** ou **USDA** podem aparecer na árvore do repositório para identificar qual origem um coletor, parser, schema, configuração ou teste atende. Isso não significa que os arquivos reais dessas fontes devam ser armazenados no GitHub.
 
 A separação oficial é:
 
@@ -94,8 +104,9 @@ E deve ser classificada explicitamente como:
 
 1. Consolidar e validar **CONAB Armazéns** ponta a ponta no BigQuery real.
 2. Conectar o **AgroLog Gateway** à primeira tabela e validar a mesma consulta via OpenAI e Claude.
-3. Em paralelo, avançar em documentação, benchmark e protótipos isolados das três frentes do **Programa Integrado Radar**.
-4. Iniciar produção da próxima fonte pelo **IMEA** após os gates do núcleo.
-5. Desenvolver o **Freight Listener** primeiro com fixtures artificiais e benchmark de adaptadores; nenhuma conta/canal real entra antes de validação de licença, segurança, termos, privacidade e isolamento.
+3. Validar as integrações autenticadas **ANA HidroWebService** e **USDA FAS Open Data** no job `agrolog-dados`, preservando segredos no Secret Manager.
+4. Em paralelo, avançar em documentação, benchmark e protótipos isolados das três frentes do **Programa Integrado Radar**.
+5. Iniciar produção da próxima fonte pelo **IMEA** após os gates do núcleo.
+6. Desenvolver o **Freight Listener** primeiro com fixtures artificiais e benchmark de adaptadores; nenhuma conta/canal real entra antes de validação de licença, segurança, termos, privacidade e isolamento.
 
 > A implementação deve evoluir incrementalmente a partir do estado atual do projeto, sem redesenho completo e sem criar uma segunda fonte de verdade.
