@@ -12,6 +12,8 @@ IMAGE_TAG="${IMAGE_TAG:-$(date +%Y%m%d%H%M%S)}"
 TIME_ZONE="${TIME_ZONE:-America/Campo_Grande}"
 COLLECTOR_SA_NAME="${COLLECTOR_SA_NAME:-agrolog-collector}"
 SCHEDULER_SA_NAME="${SCHEDULER_SA_NAME:-agrolog-scheduler}"
+ANA_IDENTIFIER_SECRET="${ANA_IDENTIFIER_SECRET:-agrolog-ana-identificador}"
+ANA_PASSWORD_SECRET="${ANA_PASSWORD_SECRET:-agrolog-ana-senha}"
 
 if [[ -z "${PROJECT_ID}" || "${PROJECT_ID}" == "(unset)" ]]; then
   echo "Nenhum projeto GCP configurado. Execute: gcloud config set project SEU_PROJECT_ID" >&2
@@ -32,7 +34,8 @@ gcloud services enable \
   cloudscheduler.googleapis.com \
   bigquery.googleapis.com \
   drive.googleapis.com \
-  iam.googleapis.com
+  iam.googleapis.com \
+  secretmanager.googleapis.com
 
 ensure_service_account() {
   local account_id="$1"
@@ -52,6 +55,60 @@ ensure_project_role() {
     --condition=None >/dev/null
 }
 
+ensure_secret() {
+  local secret_name="$1"
+  if ! gcloud secrets describe "${secret_name}" >/dev/null 2>&1; then
+    gcloud secrets create "${secret_name}" --replication-policy=automatic >/dev/null
+  fi
+}
+
+secret_has_enabled_version() {
+  local secret_name="$1"
+  [[ -n "$(gcloud secrets versions list "${secret_name}" --filter='state=ENABLED' --format='value(name)' --limit=1 2>/dev/null)" ]]
+}
+
+add_secret_version_if_missing() {
+  local secret_name="$1"
+  local env_name="$2"
+  local prompt_label="$3"
+  local secret_mode="$4"
+
+  ensure_secret "${secret_name}"
+  if secret_has_enabled_version "${secret_name}"; then
+    return 0
+  fi
+
+  local value="${!env_name:-}"
+  if [[ -z "${value}" ]]; then
+    if [[ ! -t 0 ]]; then
+      echo "Secret ${secret_name} ainda nao possui versao. Execute o deploy em terminal interativo ou defina ${env_name} somente durante o deploy." >&2
+      exit 2
+    fi
+    if [[ "${secret_mode}" == "hidden" ]]; then
+      read -r -s -p "${prompt_label}: " value
+      echo
+    else
+      read -r -p "${prompt_label}: " value
+    fi
+  fi
+
+  if [[ -z "${value}" ]]; then
+    echo "Valor vazio para ${secret_name}; deploy interrompido." >&2
+    exit 2
+  fi
+
+  printf '%s' "${value}" | gcloud secrets versions add "${secret_name}" --data-file=- >/dev/null
+  unset value
+}
+
+bind_secret_access() {
+  local secret_name="$1"
+  gcloud secrets add-iam-policy-binding "${secret_name}" \
+    --member="serviceAccount:${COLLECTOR_SERVICE_ACCOUNT}" \
+    --role="roles/secretmanager.secretAccessor" \
+    --condition=None >/dev/null
+}
+
 ensure_service_account "${COLLECTOR_SA_NAME}" "AgroLog Collector"
 ensure_service_account "${SCHEDULER_SA_NAME}" "AgroLog Scheduler Invoker"
 
@@ -61,6 +118,12 @@ ensure_project_role "${COLLECTOR_SERVICE_ACCOUNT}" "roles/bigquery.user"
 
 # O Scheduler precisa apenas iniciar os Cloud Run Jobs.
 ensure_project_role "${SCHEDULER_SERVICE_ACCOUNT}" "roles/run.invoker"
+
+# Credenciais da ANA ficam somente no Secret Manager e sao injetadas no job de Dados.
+add_secret_version_if_missing "${ANA_IDENTIFIER_SECRET}" "ANA_IDENTIFICADOR" "Identificador da API ANA" "plain"
+add_secret_version_if_missing "${ANA_PASSWORD_SECRET}" "ANA_SENHA" "Senha da API ANA" "hidden"
+bind_secret_access "${ANA_IDENTIFIER_SECRET}"
+bind_secret_access "${ANA_PASSWORD_SECRET}"
 
 if ! gcloud artifacts repositories describe "${AR_REPOSITORY}" --location "${REGION}" >/dev/null 2>&1; then
   gcloud artifacts repositories create "${AR_REPOSITORY}" --repository-format=docker --location "${REGION}"
@@ -72,11 +135,16 @@ common_env="AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_OPS_DATASET=${OPS_DATASET}
 
 for group in radar dados conhecimento; do
   job="agrolog-${group}"
+  extra_args=()
+  if [[ "${group}" == "dados" ]]; then
+    extra_args+=(--set-secrets "ANA_IDENTIFICADOR=${ANA_IDENTIFIER_SECRET}:latest,ANA_SENHA=${ANA_PASSWORD_SECRET}:latest")
+  fi
   gcloud run jobs deploy "${job}" \
     --image "${IMAGE}" \
     --region "${REGION}" \
     --service-account "${COLLECTOR_SERVICE_ACCOUNT}" \
     --set-env-vars "${common_env},AGROLOG_GROUP=${group}" \
+    "${extra_args[@]}" \
     --max-retries 1 \
     --task-timeout 30m
 
@@ -121,6 +189,7 @@ Regiao: ${REGION}
 Pasta Drive do piloto: ${DRIVE_FOLDER_ID}
 Collector SA: ${COLLECTOR_SERVICE_ACCOUNT}
 Scheduler SA: ${SCHEDULER_SERVICE_ACCOUNT}
+ANA secrets: ${ANA_IDENTIFIER_SECRET}, ${ANA_PASSWORD_SECRET}
 
 PASSO MANUAL UNICO DO DRIVE:
 Compartilhe a pasta 07_AUTOMACAO como Editor com:
@@ -130,7 +199,7 @@ Depois teste:
 gcloud run jobs execute agrolog-dados --region ${REGION} --wait
 
 Se o teste terminar com sucesso, verifique:
-- Drive: 07_AUTOMACAO/RAW/...
+- Drive: 07_AUTOMACAO/RAW/dados/ana_hidroweb_*/...
 - BigQuery: ${OPS_DATASET}.collector_runs
 - BigQuery: ${OPS_DATASET}.collector_source_state
 EOF
