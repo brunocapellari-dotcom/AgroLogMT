@@ -110,6 +110,104 @@
       "notes": "Serie telemetrica adotada oficial ANA; chuva, cota e vazao quando disponiveis. Janela maxima da rota: 30 dias."
     },
     {
+      "source_id": "usda_fas_psd_commodities",
+      "name": "USDA FAS PSD - Commodities",
+      "group": "dados",
+      "method": "api_data_gov",
+      "url": "https://api.fas.usda.gov/api/psd/commodities",
+      "expected_frequency": "monthly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "api_key_env": "DATA_GOV_API_KEY"
+      },
+      "notes": "Catalogo canonico de commodities e codigos PSD. Usado para descobrir e validar codigos antes das cargas historicas."
+    },
+    {
+      "source_id": "usda_fas_psd_countries",
+      "name": "USDA FAS PSD - Countries",
+      "group": "dados",
+      "method": "api_data_gov",
+      "url": "https://api.fas.usda.gov/api/psd/countries",
+      "expected_frequency": "monthly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "api_key_env": "DATA_GOV_API_KEY"
+      },
+      "notes": "Catalogo de paises e codigos PSD."
+    },
+    {
+      "source_id": "usda_fas_psd_attributes",
+      "name": "USDA FAS PSD - Commodity Attributes",
+      "group": "dados",
+      "method": "api_data_gov",
+      "url": "https://api.fas.usda.gov/api/psd/commodityAttributes",
+      "expected_frequency": "monthly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "api_key_env": "DATA_GOV_API_KEY"
+      },
+      "notes": "Dicionario dos atributos de oferta e demanda do PSD, como producao, consumo, comercio e estoques."
+    },
+    {
+      "source_id": "usda_fas_esr_release_dates",
+      "name": "USDA FAS ESR - Data Release Dates",
+      "group": "dados",
+      "method": "api_data_gov",
+      "url": "https://api.fas.usda.gov/api/esr/datareleasedates",
+      "expected_frequency": "weekly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "api_key_env": "DATA_GOV_API_KEY"
+      },
+      "notes": "Controle de atualizacao das vendas semanais de exportacao dos EUA por commodity; deve disparar cargas de ESR somente quando houver revisao/publicacao nova."
+    },
+    {
+      "source_id": "usda_fas_esr_commodities",
+      "name": "USDA FAS ESR - Commodities",
+      "group": "dados",
+      "method": "api_data_gov",
+      "url": "https://api.fas.usda.gov/api/esr/commodities",
+      "expected_frequency": "monthly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "api_key_env": "DATA_GOV_API_KEY"
+      },
+      "notes": "Catalogo canonico de commodities ESR para mapear soja, milho, algodao e demais produtos de interesse."
+    },
+    {
+      "source_id": "usda_fas_gats_census_exports_release_dates",
+      "name": "USDA FAS GATS - Census Export Release Dates",
+      "group": "dados",
+      "method": "api_data_gov",
+      "url": "https://api.fas.usda.gov/api/gats/census/data/exports/dataReleaseDates",
+      "expected_frequency": "daily",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "api_key_env": "DATA_GOV_API_KEY"
+      },
+      "notes": "Controle de publicacao/revisao dos dados mensais de exportacao Census/GATS."
+    },
+    {
+      "source_id": "usda_fas_gats_census_imports_release_dates",
+      "name": "USDA FAS GATS - Census Import Release Dates",
+      "group": "dados",
+      "method": "api_data_gov",
+      "url": "https://api.fas.usda.gov/api/gats/census/data/imports/dataReleaseDates",
+      "expected_frequency": "daily",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "api_key_env": "DATA_GOV_API_KEY"
+      },
+      "notes": "Controle de publicacao/revisao dos dados mensais de importacao Census/GATS."
+    },
+    {
       "source_id": "conab_noticias",
       "name": "CONAB - Noticias",
       "group": "radar",
