@@ -120,7 +120,7 @@ ensure_project_role "${COLLECTOR_SERVICE_ACCOUNT}" "roles/bigquery.user"
 ensure_project_role "${SCHEDULER_SERVICE_ACCOUNT}" "roles/run.invoker"
 
 # Credenciais da ANA ficam somente no Secret Manager e sao injetadas no job de Dados.
-add_secret_version_if_missing "${ANA_IDENTIFIER_SECRET}" "ANA_IDENTIFICADOR" "Identificador da API ANA" "plain"
+add_secret_version_if_missing "${ANA_IDENTIFIER_SECRET}" "ANA_IDENTIFICADOR" "Identificador da API ANA" "hidden"
 add_secret_version_if_missing "${ANA_PASSWORD_SECRET}" "ANA_SENHA" "Senha da API ANA" "hidden"
 bind_secret_access "${ANA_IDENTIFIER_SECRET}"
 bind_secret_access "${ANA_PASSWORD_SECRET}"
