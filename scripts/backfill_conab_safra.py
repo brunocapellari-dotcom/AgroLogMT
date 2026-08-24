@@ -9,7 +9,12 @@ from urllib.request import Request, urlopen
 
 from collector.cloud_store import DriveBigQueryStore
 from collector.conab_safra_bigquery import ConabSafraBigQueryLoader
-from collector.conab_safra_history import SafraPublication, discover_publications
+from collector.conab_safra_history import (
+    SafraPublication,
+    discover_archive_by_pattern,
+    discover_publications,
+    publication_plausible_for_safra,
+)
 from collector.conab_safra_pipeline import build_canonical_rows
 from collector.models import RunManifest, SourceSpec
 from collector.orchestrator import COLLECTOR_VERSION
@@ -34,19 +39,49 @@ def select_publications(
     return selected
 
 
+def availability_status(item: SafraPublication) -> tuple[bool, str]:
+    if not item.data_publicacao:
+        return False, "blocked_missing_original_publication_time"
+    if not publication_plausible_for_safra(item.safra, item.data_publicacao):
+        return False, "blocked_suspected_site_migration_timestamp"
+    return True, "ready"
+
+
 def build_plan(publications: list[SafraPublication]) -> list[dict[str, object]]:
-    return [
-        {
+    plan = []
+    for item in publications:
+        verified, status = availability_status(item)
+        plan.append({
             "safra": item.safra,
             "levantamento": item.levantamento,
             "data_publicacao": item.data_publicacao,
-            "availability_verified": bool(item.data_publicacao),
+            "availability_verified": verified,
+            "availability_basis": "official_page_timestamp_plausibility_checked" if verified else None,
             "item_url": item.item_url,
             "attachment_url": item.attachment_url,
-            "execution_status": "ready" if item.data_publicacao else "blocked_missing_original_publication_time",
-        }
-        for item in publications
-    ]
+            "execution_status": status,
+        })
+    return plan
+
+
+def merge_publications(*groups: list[SafraPublication]) -> list[SafraPublication]:
+    chosen: dict[tuple[str | None, int | None], SafraPublication] = {}
+    for group in groups:
+        for item in group:
+            key = (item.safra, item.levantamento)
+            previous = chosen.get(key)
+            if previous is None:
+                chosen[key] = item
+                continue
+            previous_ok, _ = availability_status(previous)
+            current_ok, _ = availability_status(item)
+            if current_ok and not previous_ok:
+                chosen[key] = item
+    return sorted(
+        chosen.values(),
+        key=lambda item: (item.safra or "", item.levantamento or 0),
+        reverse=True,
+    )
 
 
 def _download(url: str, timeout: int = 120) -> tuple[bytes, str, str | None, str | None]:
@@ -56,11 +91,13 @@ def _download(url: str, timeout: int = 120) -> tuple[bytes, str, str | None, str
 
 
 def execute_item(item: SafraPublication, store: DriveBigQueryStore) -> dict[str, object]:
-    if not item.data_publicacao:
+    verified, status = availability_status(item)
+    if not verified:
         return {
-            "status": "blocked_missing_original_publication_time",
+            "status": status,
             "safra": item.safra,
             "levantamento": item.levantamento,
+            "data_publicacao": item.data_publicacao,
             "item_url": item.item_url,
         }
 
@@ -87,7 +124,7 @@ def execute_item(item: SafraPublication, store: DriveBigQueryStore) -> dict[str,
         last_modified=last_modified,
         publication_override=item.data_publicacao,
         availability_verified=True,
-        availability_basis="official_page_timestamp",
+        availability_basis="official_page_timestamp_plausibility_checked",
     )
     if not rows or stats.get("current_quality_flagged"):
         return {
@@ -131,7 +168,7 @@ def execute_item(item: SafraPublication, store: DriveBigQueryStore) -> dict[str,
         extra={
             "historical_backfill": True,
             "availability_verified": True,
-            "availability_basis": "official_page_timestamp",
+            "availability_basis": "official_page_timestamp_plausibility_checked",
             "safra": item.safra,
             "levantamento": item.levantamento,
             "item_url": item.item_url,
@@ -158,10 +195,18 @@ def main() -> int:
     parser.add_argument("--min-levantamento", type=int)
     parser.add_argument("--max-levantamento", type=int)
     parser.add_argument("--max-items", type=int)
+    parser.add_argument("--archive-start-year", type=int)
+    parser.add_argument("--archive-end-year", type=int)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    publications = discover_publications(max_items=args.max_items)
+    listing = discover_publications(max_items=args.max_items)
+    archive: list[SafraPublication] = []
+    if args.archive_start_year is not None or args.archive_end_year is not None:
+        if args.archive_start_year is None or args.archive_end_year is None:
+            parser.error("--archive-start-year e --archive-end-year devem ser usados juntos")
+        archive = discover_archive_by_pattern(start_year=args.archive_start_year, end_year=args.archive_end_year)
+    publications = merge_publications(listing, archive)
     selected = select_publications(
         publications,
         safra=args.safra,
@@ -169,7 +214,17 @@ def main() -> int:
         max_levantamento=args.max_levantamento,
     )
     if args.dry_run:
-        print(json.dumps({"mode": "dry_run", "items": build_plan(selected)}, ensure_ascii=False, indent=2))
+        plan = build_plan(selected)
+        print(json.dumps({
+            "mode": "dry_run",
+            "items": plan,
+            "summary": {
+                "total": len(plan),
+                "ready": sum(item["execution_status"] == "ready" for item in plan),
+                "blocked_missing_publication_time": sum(item["execution_status"] == "blocked_missing_original_publication_time" for item in plan),
+                "blocked_suspected_migration": sum(item["execution_status"] == "blocked_suspected_site_migration_timestamp" for item in plan),
+            },
+        }, ensure_ascii=False, indent=2))
         return 0
 
     store = DriveBigQueryStore()
