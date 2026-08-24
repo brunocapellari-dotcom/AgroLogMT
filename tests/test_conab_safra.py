@@ -33,7 +33,9 @@ class ConabSafraParserTests(unittest.TestCase):
     def test_product_normalization(self) -> None:
         self.assertEqual(canonical_product_id("SOJA"), "soja")
         self.assertEqual(canonical_product_id("ALGODÃO - PLUMA"), "algodao_pluma")
+        self.assertEqual(canonical_product_id("MILHO 1ª SAFRA"), "milho_1_safra")
         self.assertEqual(canonical_product_id("MILHO 2ª SAFRA"), "milho_2_safra")
+        self.assertEqual(canonical_product_id("MILHO 3ª SAFRA"), "milho_3_safra")
 
     def test_identity_quality_gate(self) -> None:
         sheet = self._sheet()
