@@ -8,8 +8,11 @@ on:
   pull_request:
     paths:
       - "scripts/generate_soy_mt_beta.py"
+      - "scripts/generate_soy_mt_beta_v02.py"
       - "scripts/probe_conab_storage_layout.py"
       - "tests/test_soy_mt_beta.py"
+      - "tests/test_soy_mt_beta_v02.py"
+      - "models/agroclimate.py"
       - ".github/workflows/soy-mt-beta.yml"
 
 permissions:
@@ -18,7 +21,7 @@ permissions:
 jobs:
   snapshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -28,14 +31,14 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python scripts/probe_conab_storage_layout.py
-      - name: Generate live Soja MT beta snapshot
+      - name: Generate live Soja MT Beta V0.2 snapshot
         env:
           PYTHONPATH: ${{ github.workspace }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           SAMPLE_POINTS=7
           if [ "$EVENT_NAME" = "pull_request" ]; then SAMPLE_POINTS=3; fi
-          python scripts/generate_soy_mt_beta.py \
+          python scripts/generate_soy_mt_beta_v02.py \
             --climate-sample-points "$SAMPLE_POINTS" \
             --out-json soy_mt_beta.json \
             --out-md soy_mt_beta.md
