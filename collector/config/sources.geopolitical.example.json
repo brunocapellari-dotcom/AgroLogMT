@@ -13,7 +13,25 @@
         "parser": "gdelt_doc",
         "timeout_seconds": 60
       },
-      "notes": "Sinal OSINT/noticioso. O registro observado e a publicacao capturada; o conteudo nao e tratado como fato confirmado sem corroboracao."
+      "notes": "Radar noticioso global. Cada artigo e sinal OSINT observado; a manchete nao e tratada como fato confirmado sem corroboracao."
+    },
+    {
+      "source_id": "reliefweb_conflict_reports",
+      "name": "ReliefWeb - Conflict and Humanitarian Reports",
+      "group": "radar",
+      "method": "http_env_query",
+      "enabled": false,
+      "url": "https://api.reliefweb.int/v2/reports?profile=list&preset=latest&limit=100&query%5Bvalue%5D=conflict%20war%20hostilities%20displacement",
+      "expected_frequency": "hourly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "parser": "reliefweb",
+        "query_param_name": "appname",
+        "query_env_var": "RELIEFWEB_APPNAME",
+        "timeout_seconds": 60
+      },
+      "notes": "Desativado por padrao. A API ReliefWeb exige appname pre-aprovado desde 2025-11-01. Ao habilitar, definir RELIEFWEB_APPNAME fora do GitHub. Relatorios entram como curated_report."
     },
     {
       "source_id": "ucdp_ged_candidate_26_0_7",

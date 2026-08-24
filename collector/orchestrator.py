@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Callable
 
 from .adapters import Adapter, get_adapter
 from .models import RunManifest, SourceSpec, utc_now_iso
 from .storage import LocalStore, sha256_bytes
 
-COLLECTOR_VERSION = "0.1.0"
+COLLECTOR_VERSION = "0.2.0"
+
+
+@dataclass
+class CollectionOutcome:
+    manifest: RunManifest
+    payload: bytes | None = None
 
 
 class CollectorEngine:
@@ -15,6 +22,17 @@ class CollectorEngine:
         self.adapter_resolver = adapter_resolver
 
     def run_source(self, spec: SourceSpec) -> RunManifest:
+        return self._run_source(spec, capture_payload=False).manifest
+
+    def run_source_capture(self, spec: SourceSpec) -> CollectionOutcome:
+        """Executa a mesma coleta preservando o payload em memoria para parsing imediato.
+
+        O RAW continua sendo persistido pelo store configurado. Esta variante evita
+        reler o artefato por caminho local e permite stores como Drive/GCS.
+        """
+        return self._run_source(spec, capture_payload=True)
+
+    def _run_source(self, spec: SourceSpec, *, capture_payload: bool) -> CollectionOutcome:
         started = utc_now_iso()
         manifest = RunManifest(
             source_id=spec.source_id,
@@ -26,13 +44,16 @@ class CollectorEngine:
             data_coleta=started,
             evidence_class=spec.evidence_class,
         )
+        payload: bytes | None = None
         try:
             if not spec.enabled:
                 manifest.status = "disabled"
-                return manifest
+                return CollectionOutcome(manifest=manifest)
 
             adapter = self.adapter_resolver(spec.method)
             result = adapter.fetch(spec)
+            if capture_payload:
+                payload = result.payload
             digest = sha256_bytes(result.payload)
             state = self.store.load_state(spec.source_id)
             changed = state.get("last_sha256") != digest
@@ -58,11 +79,11 @@ class CollectorEngine:
             state["last_raw_artifact_ref"] = manifest.raw_artifact_ref
             self.store.save_state(spec.source_id, state)
             manifest.status = "updated" if changed else "unchanged"
-            return manifest
+            return CollectionOutcome(manifest=manifest, payload=payload)
         except Exception as exc:  # noqa: BLE001 - manifesto precisa registrar falha operacional
             manifest.status = "error"
             manifest.error = f"{type(exc).__name__}: {exc}"
-            return manifest
+            return CollectionOutcome(manifest=manifest, payload=payload)
         finally:
             manifest.finished_at = utc_now_iso()
             self.store.write_manifest(manifest)

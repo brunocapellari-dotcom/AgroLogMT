@@ -1,0 +1,23 @@
+name: Test Geopolitical Watch
+
+on:
+  pull_request:
+    paths:
+      - "collector/geopolitical*.py"
+      - "collector/adapters.py"
+      - "collector/config/sources.geopolitical.example.json"
+      - "scripts/run_geopolitical_watch.py"
+      - "tests/test_geopolitical*.py"
+      - ".github/workflows/test-geopolitical-watch.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run Geopolitical Watch tests
+        run: python -m unittest tests.test_geopolitical_watch tests.test_geopolitical_reports

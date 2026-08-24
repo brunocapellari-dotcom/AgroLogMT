@@ -4,7 +4,7 @@ import json
 import os
 from dataclasses import dataclass
 from typing import Protocol
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from .models import SourceSpec
@@ -79,6 +79,46 @@ class EnvHeaderHttpAdapter:
         return HttpAdapter().fetch(child_spec)
 
 
+class EnvQueryHttpAdapter:
+    """HTTP com um parametro de query carregado do ambiente sem versionar o valor."""
+
+    def fetch(self, spec: SourceSpec) -> AcquisitionResult:
+        if not spec.url:
+            raise ValueError(f"Fonte {spec.source_id} sem URL")
+        param_name = str(spec.options.get("query_param_name", "")).strip()
+        env_var = str(spec.options.get("query_env_var", "")).strip()
+        if not param_name or not env_var:
+            raise ValueError("http_env_query exige options.query_param_name e options.query_env_var")
+
+        value = os.environ.get(env_var)
+        if not value:
+            raise RuntimeError(f"Variavel de ambiente obrigatoria ausente: {env_var}")
+
+        parts = urlsplit(spec.url)
+        query = parse_qsl(parts.query, keep_blank_values=True)
+        query = [(key, item) for key, item in query if key != param_name]
+        query.append((param_name, value))
+        url = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+        child_spec = SourceSpec(
+            source_id=spec.source_id,
+            name=spec.name,
+            group=spec.group,
+            method="http",
+            enabled=spec.enabled,
+            url=url,
+            expected_frequency=spec.expected_frequency,
+            file_extension=spec.file_extension,
+            evidence_class=spec.evidence_class,
+            source_timezone=spec.source_timezone,
+            notes=spec.notes,
+            options={
+                "timeout_seconds": spec.options.get("timeout_seconds", 60),
+                "headers": spec.options.get("headers", {}),
+            },
+        )
+        return HttpAdapter().fetch(child_spec)
+
+
 class CkanResourceAdapter:
     """Resolve um recurso CKAN e baixa o arquivo publicado pela fonte."""
 
@@ -137,6 +177,8 @@ def get_adapter(method: str) -> Adapter:
         return HttpAdapter()
     if normalized in {"http_env_header", "api_env_header"}:
         return EnvHeaderHttpAdapter()
+    if normalized in {"http_env_query", "api_env_query"}:
+        return EnvQueryHttpAdapter()
     if normalized in {"ckan", "ckan_resource"}:
         return CkanResourceAdapter()
     raise NotImplementedError(
