@@ -1,0 +1,50 @@
+{
+  "contract_version": "1.0",
+  "source_id": "mdic_comexstat_open_data",
+  "authority": "MDIC/SECEX",
+  "frequency": "monthly",
+  "coverage_start": "1997-01",
+  "evidence_class": "observado",
+  "canonical_rules": [
+    "Preservar ano e mes como competencia mensal e registrar data_publicacao/data_coleta separadamente.",
+    "Base NCM e base Municipio-SH4 possuem semanticas geograficas diferentes e nao devem ser reconciliadas como se medissem a mesma UF.",
+    "SG_UF_NCM em exportacao representa UF produtora/origem do produto conforme metodologia do modulo geral.",
+    "SG_UF_MUN/CO_MUN representam domicilio fiscal da empresa declarante, nao origem fisica da mercadoria.",
+    "CO_URF identifica Unidade da Receita Federal e nao deve ser convertido automaticamente em porto fisico.",
+    "KG_LIQUIDO e VL_FOB sao observados; toneladas e US$/t sao derivados e devem registrar methodology_id.",
+    "Historico deve ser append-only por vintage de arquivo anual; revisoes do ano corrente nao sobrescrevem silenciosamente snapshots anteriores."
+  ],
+  "datasets": {
+    "ncm_export": {
+      "url_template": "https://balanca.mdic.gov.br/balanca/bd/comexstat-bd/ncm/EXP_{year}.csv",
+      "delimiter": ";",
+      "columns": ["CO_ANO", "CO_MES", "CO_NCM", "CO_UNID", "CO_PAIS", "SG_UF_NCM", "CO_VIA", "CO_URF", "QT_ESTAT", "KG_LIQUIDO", "VL_FOB"],
+      "target": "comercio_exterior.comexstat_ncm_export"
+    },
+    "ncm_import": {
+      "url_template": "https://balanca.mdic.gov.br/balanca/bd/comexstat-bd/ncm/IMP_{year}.csv",
+      "delimiter": ";",
+      "columns": ["CO_ANO", "CO_MES", "CO_NCM", "CO_UNID", "CO_PAIS", "SG_UF_NCM", "CO_VIA", "CO_URF", "QT_ESTAT", "KG_LIQUIDO", "VL_FOB", "VL_FRETE", "VL_SEGURO"],
+      "target": "comercio_exterior.comexstat_ncm_import"
+    },
+    "municipio_sh4_export": {
+      "url_template": "https://balanca.mdic.gov.br/balanca/bd/comexstat-bd/mun/EXP_{year}_MUN.csv",
+      "delimiter": ";",
+      "columns": ["CO_ANO", "CO_MES", "SH4", "CO_PAIS", "SG_UF_MUN", "CO_MUN", "KG_LIQUIDO", "VL_FOB"],
+      "target": "comercio_exterior.comexstat_municipio_sh4_export"
+    },
+    "municipio_sh4_import": {
+      "url_template": "https://balanca.mdic.gov.br/balanca/bd/comexstat-bd/mun/IMP_{year}_MUN.csv",
+      "delimiter": ";",
+      "columns": ["CO_ANO", "CO_MES", "SH4", "CO_PAIS", "SG_UF_MUN", "CO_MUN", "KG_LIQUIDO", "VL_FOB"],
+      "target": "comercio_exterior.comexstat_municipio_sh4_import"
+    }
+  },
+  "ingestion_requirements": {
+    "mode": "streaming_or_chunked",
+    "reason": "Arquivos anuais podem ser grandes; nao usar o adaptador bytes-in-memory do coletor generico em producao.",
+    "point_in_time": true,
+    "preserve_raw_hash": true,
+    "validate_against_official_totals": true
+  }
+}
