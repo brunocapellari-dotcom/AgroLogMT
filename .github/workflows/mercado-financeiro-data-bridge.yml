@@ -1,0 +1,32 @@
+name: Mercado Financeiro Data Bridge
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'tools/mercado_financeiro_bridge/**'
+      - '.github/workflows/mercado-financeiro-data-bridge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acquire-official-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download official CVM/B3 sources
+        run: python tools/mercado_financeiro_bridge/download_official.py
+      - name: Upload bridge artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mercado-financeiro-data-bridge
+          path: mf_bridge_out/
+          if-no-files-found: error
+          retention-days: 7
