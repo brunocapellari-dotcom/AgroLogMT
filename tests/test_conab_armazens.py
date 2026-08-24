@@ -22,6 +22,7 @@ class ConabArmazensParserTests(unittest.TestCase):
         self.assertEqual(parsed.rows[0]["municipio"], "Lucas do Rio Verde")
         self.assertEqual(parsed.rows[0]["uf"], "MT")
         self.assertAlmostEqual(parsed.rows[0]["capacidade_estatica_t"], 12345.5)
+        self.assertAlmostEqual(parsed.rows[1]["capacidade_estatica_t"], 8000.0)
         self.assertEqual(parsed.rows[0]["warehouse_id"], "cda:12345")
         self.assertEqual(parsed.rows[0]["evidence_class"], "observado")
 
