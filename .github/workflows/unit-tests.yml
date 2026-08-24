@@ -10,6 +10,10 @@ on:
       - "contracts/**"
       - "scripts/**"
       - "sql/**"
+      - "ckan_connector/**"
+      - "socrata_connector/**"
+      - "cftc_cot/**"
+      - "usda_agtransport/**"
       - "docs/N6_*.md"
       - "requirements*.txt"
       - ".github/workflows/unit-tests.yml"
@@ -26,14 +30,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Run standard-library unit tests
+      - name: Install connector runtime dependencies
+        run: python -m pip install "requests>=2.31,<3"
+      - name: Run unit tests
         run: python -m unittest discover -s tests -v
       - name: Run synthetic N6 promotion harness
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python scripts/run_n6_synthetic_backtest.py
-      - name: Compile N6 Python scripts
-        run: python -m py_compile scripts/validate_conab_n6.py scripts/validate_gateway_n6.py scripts/run_n6_synthetic_backtest.py scripts/inspect_n6_bigquery_readiness.py scripts/probe_news_signal_writer.py models/point_in_time.py models/readiness.py models/baselines.py models/feature_matrix.py models/training_dataset.py models/evaluation.py models/promotion.py
+      - name: Compile N6 and connector Python scripts
+        run: python -m py_compile scripts/validate_conab_n6.py scripts/validate_gateway_n6.py scripts/run_n6_synthetic_backtest.py scripts/inspect_n6_bigquery_readiness.py scripts/probe_news_signal_writer.py models/point_in_time.py models/readiness.py models/baselines.py models/feature_matrix.py models/training_dataset.py models/evaluation.py models/promotion.py ckan_connector/client.py ckan_connector/portals.py socrata_connector/client.py cftc_cot/client.py cftc_cot/datasets.py usda_agtransport/client.py usda_agtransport/datasets.py
       - name: Validate shell syntax
         run: bash -n scripts/preflight_n6_gcp.sh scripts/deploy_collectors_gcloud.sh scripts/deploy_gateway_gcloud.sh scripts/homologate_n6_core.sh
       - name: Validate JSON contracts/config
