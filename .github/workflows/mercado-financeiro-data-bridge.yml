@@ -22,11 +22,91 @@ jobs:
           python-version: '3.12'
       - name: Download official CVM/B3 sources
         run: python tools/mercado_financeiro_bridge/download_official.py
-      - name: Upload bridge artifact
+      - name: Upload manifest
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mercado-financeiro-data-bridge
-          path: mf_bridge_out/
+          name: mf-manifest
+          path: mf_bridge_out/manifest.json
           if-no-files-found: error
+          retention-days: 7
+      - name: Upload CVM DFP 2026
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cvm-dfp-2026
+          path: mf_bridge_out/dfp_cia_aberta_2026.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload CVM DFP 2025
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cvm-dfp-2025
+          path: mf_bridge_out/dfp_cia_aberta_2025.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload CVM FRE 2026
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cvm-fre-2026
+          path: mf_bridge_out/fre_cia_aberta_2026.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload CVM FRE 2025
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cvm-fre-2025
+          path: mf_bridge_out/fre_cia_aberta_2025.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload CVM ITR 2026
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cvm-itr-2026
+          path: mf_bridge_out/itr_cia_aberta_2026.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload B3 PriceReport 20260824
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b3-pricereport-20260824
+          path: mf_bridge_out/PR260824.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload B3 PriceReport 20260821
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b3-pricereport-20260821
+          path: mf_bridge_out/PR260821.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload B3 InstrumentReport 20260824
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b3-instrumentreport-20260824
+          path: mf_bridge_out/IN260824.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload B3 InstrumentReport 20260821
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b3-instrumentreport-20260821
+          path: mf_bridge_out/IN260821.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload B3 COTAHIST 2025
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b3-cotahist-2025
+          path: mf_bridge_out/COTAHIST_A2025.ZIP
+          if-no-files-found: ignore
           retention-days: 7
