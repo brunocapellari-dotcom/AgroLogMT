@@ -39,15 +39,12 @@ que as outras três ficam bloqueadas por credencial nesta rodada.
 
 ## Relação com `socrata_connector` e `usda_agtransport`
 
-O cliente Socrata genérico (allowlist de host, retries, metadados, query
-SoQL) foi extraído para `socrata_connector/`, no mesmo molde de
-`ckan_connector` (Issue #19). `cftc_cot` consome esse pacote em vez de
-reimplementar um cliente próprio. `usda_agtransport/client.py` (Issue #20,
-PR #29, ainda não mesclada) implementa a mesma lógica de forma duplicada
-porque foi escrita antes desta extração e não foi editada aqui (branch de
-PR de outra sessão, ainda em revisão, sem coordenação). Quando a PR #29 for
-mesclada, migrar `usda_agtransport` para consumir `socrata_connector` é a
-próxima ação recomendada para eliminar essa duplicação remanescente.
+O cliente Socrata genérico (allowlist de host, retries, metadados e query
+SoQL) é canônico em `socrata_connector/`, no mesmo princípio de
+`ckan_connector`. `cftc_cot` consome esse pacote para o host CFTC e
+`usda_agtransport/client.py` usa um adapter fino sobre a mesma implementação
+para o host oficial `agtransport.usda.gov`. Assim, CFTC e USDA compartilham
+uma única responsabilidade de transporte SODA sem duplicar cliente HTTP.
 
 ## Datasets/contratos avaliados
 
