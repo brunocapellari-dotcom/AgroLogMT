@@ -4,6 +4,8 @@
 
 Levar todos os domínios oficiais do AgroLog MT ao N6 — pós-doutorado aplicado — por evidência reproduzível, não por volume de material armazenado.
 
+O estado operacional dos gates e do ciclo em execução é mantido em `docs/N6_EXECUTION_STATUS.md`. Este documento define os critérios científicos; o arquivo de execução não substitui estes critérios.
+
 ## Gates obrigatórios de promoção
 
 Um domínio só recebe N6 quando todos os gates abaixo forem aprovados:
@@ -61,12 +63,19 @@ A fonte canônica do inventário de modelos é `models/registry.json`. Todo mode
 
 Backtests, previsões e estudos de impacto devem reconstruir apenas informação que estava disponível na data de corte. `data_referencia` não substitui `data_publicacao` nem `data_coleta`. Revisões posteriores de safra, estoque ou indicadores não podem contaminar previsões históricas.
 
+A implementação de referência é `models/point_in_time.py`: quando publicação e coleta existem, considera-se conservadoramente que o registro só estava disponível após ambas terem ocorrido.
+
+## Classes de evidência
+
+O contrato canônico separa: `observado`, `estimado`, `projetado`, `inferido`, `sinal_qualitativo` e `negociado_autorizado`. Essas classes não são intercambiáveis e devem permanecer visíveis nos datasets e produtos analíticos.
+
 ## Estado do ciclo N6-01
 
 ### Implementado no repositório
 
 - contrato canônico de metadados de dados;
 - dicionário inicial de métricas;
+- classes de evidência completas;
 - especificação da fonte CONAB Armazéns;
 - parser tolerante a encoding/delimitador e preservação do payload original;
 - deduplicação intra-snapshot e identificadores estáveis;
@@ -76,9 +85,16 @@ Backtests, previsões e estudos de impacto devem reconstruir apenas informação
 - tabela de auditoria de carga;
 - view de snapshot mais recente;
 - primeira superfície controlada do AgroLog Gateway para armazenagem;
+- request logs estruturados do Gateway;
+- preflight GCP e script único de homologação P0/P1;
+- validadores CONAB e Gateway x BigQuery;
+- adapter GOV.BR para descoberta do último anexo oficial de safra;
+- source spec CONAB Safra preparada e desabilitada até P0/P1;
+- contratos de migração IMEA, Comex Stat e clima/hidrologia;
+- primitives point-in-time sem look-ahead;
 - registro dos seis primeiros modelos;
 - métricas e rolling-origin para backtests;
-- testes unitários do parser, consultas e framework de backtest.
+- testes unitários e CI do parser, consultas, adapters, point-in-time e framework de backtest.
 
 ### Gate que continua obrigatoriamente aberto
 
