@@ -16,12 +16,24 @@ def _dt(value: Any) -> datetime | None:
 
 
 def available_at(row: dict[str, Any]) -> datetime | None:
-    """Momento conservador em que um registro podia ser usado.
+    """Momento em que um registro podia ser conhecido no mundo real.
 
-    Usa o maior valor entre data_publicacao e data_coleta quando ambos existem.
-    Isso impede assumir que um dado estava disponível antes de o pipeline tê-lo
-    coletado, sem confundir data_referencia com disponibilidade informacional.
+    Regra padrão conservadora: usa o maior valor entre `data_publicacao` e
+    `data_coleta`. Isso impede que uma fonte recém-coletada seja tratada como
+    disponível antes de o pipeline tê-la observado.
+
+    Exceção explícita para backfill histórico verificável: quando
+    `availability_verified=true` e `data_disponibilidade` existe, esse timestamp
+    representa evidência documental de que o artefato já estava publicamente
+    disponível naquele momento. `data_coleta` continua preservando quando o
+    AgroLog efetivamente baixou o arquivo; não é reescrita para simular coleta
+    antiga.
     """
+    verified = row.get("availability_verified") is True
+    historical_availability = _dt(row.get("data_disponibilidade"))
+    if verified and historical_availability is not None:
+        return historical_availability
+
     publication = _dt(row.get("data_publicacao"))
     collection = _dt(row.get("data_coleta"))
     if publication and collection:
