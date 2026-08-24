@@ -14,6 +14,26 @@ class PointInTimeTests(unittest.TestCase):
         }
         self.assertEqual(available_at(row), datetime(2026, 8, 13, 14, 30, tzinfo=timezone.utc))
 
+    def test_verified_historical_availability_allows_archival_backtest(self) -> None:
+        row = {
+            "data_publicacao": "2020-06-10T12:00:00+00:00",
+            "data_coleta": "2026-08-24T18:00:00+00:00",
+            "data_disponibilidade": "2020-06-10T12:00:00+00:00",
+            "availability_verified": True,
+            "availability_basis": "official_page_timestamp",
+        }
+        self.assertEqual(available_at(row), datetime(2020, 6, 10, 12, 0, tzinfo=timezone.utc))
+        self.assertEqual(row["data_coleta"], "2026-08-24T18:00:00+00:00")
+
+    def test_unverified_historical_timestamp_cannot_override_collection(self) -> None:
+        row = {
+            "data_publicacao": "2020-06-10T12:00:00+00:00",
+            "data_coleta": "2026-08-24T18:00:00+00:00",
+            "data_disponibilidade": "2020-06-10T12:00:00+00:00",
+            "availability_verified": False,
+        }
+        self.assertEqual(available_at(row), datetime(2026, 8, 24, 18, 0, tzinfo=timezone.utc))
+
     def test_future_revision_does_not_leak(self) -> None:
         rows = [
             {"produto": "soja", "safra": "2025/26", "valor": 50, "data_publicacao": "2026-07-01T12:00:00+00:00", "data_coleta": "2026-07-01T12:10:00+00:00", "revision": 1},
