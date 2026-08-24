@@ -1,6 +1,19 @@
 {
-  "registry_version": "0.1.0",
+  "registry_version": "0.2.0",
   "promotion_rule": "Nenhum modelo recebe status production_validated sem baseline, validação temporal, out-of-sample, análise de estabilidade e auditoria independente.",
+  "evaluation_framework": {
+    "status": "implemented_waiting_real_datasets",
+    "components": [
+      "point_in_time_selection",
+      "feature_matrix_with_provenance",
+      "baseline_library",
+      "regression_skill_vs_baseline",
+      "brier_skill_vs_baseline",
+      "fold_stability",
+      "promotion_gate"
+    ],
+    "warning": "Harness sintético valida somente o encadeamento técnico; não constitui evidência de desempenho de nenhum modelo."
+  },
   "models": [
     {
       "model_id": "ALMT-SOY-YIELD-001",
