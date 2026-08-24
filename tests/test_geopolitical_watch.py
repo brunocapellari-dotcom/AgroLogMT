@@ -99,6 +99,7 @@ class GeopoliticalWatchTests(unittest.TestCase):
         self.assertIn("trade", impacts)
         self.assertIn("agriculture", impacts)
         self.assertIn("energy", impacts)
+        self.assertEqual(infer_agrolog_impact_areas("A new report was published"), ())
 
     def test_env_header_adapter_requires_secret_outside_git(self) -> None:
         spec = SourceSpec(
