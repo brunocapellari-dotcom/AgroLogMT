@@ -52,7 +52,7 @@ class GeopoliticalReportTests(unittest.TestCase):
                     {
                         "id": "12345",
                         "fields": {
-                            "title": "Conflict situation report: port and fuel disruption",
+                            "title": "Conflict situation report: port and oil disruption",
                             "url": "https://reliefweb.int/report/test",
                             "origin": "https://ocha.example/report.pdf",
                             "date": {"created": "2026-08-24T09:00:00+00:00"},
