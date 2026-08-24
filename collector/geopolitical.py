@@ -112,7 +112,7 @@ def infer_agrolog_impact_areas(text: str) -> tuple[ImpactArea, ...]:
     normalized = _normalize_text(text)
     matches: list[ImpactArea] = []
     for area, keywords in _IMPACT_KEYWORDS.items():
-        if any(_normalize_text(keyword) in normalized for keyword in keywords):
+        if any(_contains_phrase(normalized, keyword) for keyword in keywords):
             matches.append(area)
     return tuple(matches)
 
@@ -274,7 +274,7 @@ def score_cluster(cluster: EventCluster) -> int:
     corroboration_bonus = min(15, max(0, cluster.source_count - 1) * 5)
     impact_bonus = 5 if event.impact_areas else 0
     normalized_title = _normalize_text(event.title)
-    escalation_bonus = 10 if any(term in normalized_title for term in _ESCALATION_TERMS) else 0
+    escalation_bonus = 10 if any(_contains_phrase(normalized_title, term) for term in _ESCALATION_TERMS) else 0
     return min(100, base + fatality_bonus + corroboration_bonus + impact_bonus + escalation_bonus)
 
 
@@ -298,6 +298,15 @@ def _choose_canonical(events: list[GeopoliticalEvent]) -> GeopoliticalEvent:
             len(event.title),
         ),
     )
+
+
+def _contains_phrase(normalized_text: str, phrase: str) -> bool:
+    text_tokens = _TOKEN_RE.findall(normalized_text)
+    phrase_tokens = _TOKEN_RE.findall(_normalize_text(phrase))
+    if not phrase_tokens or len(phrase_tokens) > len(text_tokens):
+        return False
+    width = len(phrase_tokens)
+    return any(text_tokens[index : index + width] == phrase_tokens for index in range(len(text_tokens) - width + 1))
 
 
 def _normalize_text(value: str) -> str:
