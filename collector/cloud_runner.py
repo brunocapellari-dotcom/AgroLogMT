@@ -8,6 +8,8 @@ from .cli import load_sources
 from .cloud_store import DriveBigQueryStore
 from .conab_armazens import SOURCE_ID as CONAB_ARMAZENS_SOURCE_ID
 from .conab_armazens_pipeline import run_conab_armazens_pipeline
+from .conab_safra import SOURCE_ID as CONAB_SAFRA_SOURCE_ID
+from .conab_safra_pipeline import run_conab_safra_pipeline
 from .orchestrator import CollectorEngine
 
 
@@ -29,6 +31,12 @@ def main() -> int:
     for spec in selected:
         if spec.source_id == CONAB_ARMAZENS_SOURCE_ID:
             code, payload = run_conab_armazens_pipeline(spec, store)
+            print(json.dumps(payload, ensure_ascii=False, sort_keys=True), flush=True)
+            if code:
+                failed += 1
+            continue
+        if spec.source_id == CONAB_SAFRA_SOURCE_ID:
+            code, payload = run_conab_safra_pipeline(spec, store)
             print(json.dumps(payload, ensure_ascii=False, sort_keys=True), flush=True)
             if code:
                 failed += 1
