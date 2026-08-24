@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import json
 from dataclasses import asdict, dataclass
 from typing import Any
 from urllib.parse import quote
-from urllib.request import Request, urlopen
 
 BASE_URL = "https://servicodados.ibge.gov.br/api/v1/localidades"
 
@@ -57,14 +55,24 @@ def parse_municipalities(payload: list[dict[str, Any]]) -> list[Municipality]:
 
 
 def fetch_municipalities(uf: str = "MT", timeout: int = 60) -> tuple[str, list[Municipality]]:
+    """Consulta a API oficial de Localidades com TLS e compressão HTTP tratados pelo cliente."""
     uf = uf.strip().upper()
     if len(uf) != 2 or not uf.isalpha():
         raise ValueError("UF inválida")
+
+    import requests
+
     url = f"{BASE_URL}/estados/{quote(uf)}/municipios"
-    request = Request(url, headers={"User-Agent": "AgroLogMT/0.1 (+IBGE Localidades)"})
-    with urlopen(request, timeout=timeout) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-        observed_url = response.geturl()
+    response = requests.get(
+        url,
+        headers={"User-Agent": "AgroLogMT/0.1 (+IBGE Localidades)", "Accept": "application/json"},
+        timeout=(20, timeout),
+        allow_redirects=True,
+    )
+    response.raise_for_status()
+    if not response.url.lower().startswith("https://"):
+        raise RuntimeError("IBGE Localidades redirecionou para transporte não HTTPS")
+    payload = response.json()
     if not isinstance(payload, list):
         raise ValueError("resposta IBGE Localidades inesperada")
-    return observed_url, parse_municipalities(payload)
+    return response.url, parse_municipalities(payload)
