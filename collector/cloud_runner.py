@@ -11,6 +11,7 @@ from .conab_armazens_pipeline import run_conab_armazens_pipeline
 from .conab_safra import SOURCE_ID as CONAB_SAFRA_SOURCE_ID
 from .conab_safra_pipeline import run_conab_safra_pipeline
 from .ibge_pipeline import SOURCE_ID as IBGE_SOURCE_ID, run_ibge_pipeline
+from .imea_operational_pipeline import SOURCE_ID as IMEA_OPERATIONAL_SOURCE_ID, run_imea_operational_pipeline
 from .nasa_power_pipeline import SOURCE_ID as NASA_POWER_SOURCE_ID, run_nasa_power_pipeline
 from .orchestrator import CollectorEngine
 
@@ -39,6 +40,8 @@ def main() -> int:
             code, payload = run_ibge_pipeline(spec, store)
         elif spec.source_id == NASA_POWER_SOURCE_ID:
             code, payload = run_nasa_power_pipeline(spec, store)
+        elif spec.source_id == IMEA_OPERATIONAL_SOURCE_ID:
+            code, payload = run_imea_operational_pipeline(spec, store)
         else:
             manifest = engine.run_source(spec)
             print(json.dumps(manifest.to_dict(), ensure_ascii=False, sort_keys=True), flush=True)
