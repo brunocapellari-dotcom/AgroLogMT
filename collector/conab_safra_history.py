@@ -22,6 +22,7 @@ class SafraPublication:
     safra: str | None
     levantamento: int | None
     data_publicacao: str | None = None
+    availability_basis: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -46,8 +47,7 @@ def _normalize_publication_time(value: str) -> str | None:
     cleaned = " ".join(unescape(value).split())
     if not cleaned:
         return None
-    candidates = [cleaned, cleaned.replace("Z", "+00:00")]
-    for candidate in candidates:
+    for candidate in (cleaned, cleaned.replace("Z", "+00:00")):
         try:
             parsed = datetime.fromisoformat(candidate)
             if parsed.tzinfo is None:
@@ -56,16 +56,16 @@ def _normalize_publication_time(value: str) -> str | None:
         except ValueError:
             pass
     match = re.search(r"(\d{2})/(\d{2})/(\d{4})(?:\s+(\d{1,2})[:h](\d{2}))?", cleaned)
-    if match:
-        day, month, year = map(int, match.group(1, 2, 3))
-        hour = int(match.group(4) or 0)
-        minute = int(match.group(5) or 0)
-        try:
-            parsed = datetime(year, month, day, hour, minute, tzinfo=GOVBR_PUBLICATION_TZ)
-            return parsed.astimezone(timezone.utc).isoformat()
-        except ValueError:
-            return None
-    return None
+    if not match:
+        return None
+    day, month, year = map(int, match.group(1, 2, 3))
+    hour = int(match.group(4) or 0)
+    minute = int(match.group(5) or 0)
+    try:
+        parsed = datetime(year, month, day, hour, minute, tzinfo=GOVBR_PUBLICATION_TZ)
+    except ValueError:
+        return None
+    return parsed.astimezone(timezone.utc).isoformat()
 
 
 def _visible_text(html: str) -> str:
@@ -76,7 +76,6 @@ def _visible_text(html: str) -> str:
 
 
 def extract_publication_time(html: str) -> str | None:
-    """Extrai timestamp exibido como publicação no GOV.BR; nunca inventa data ausente."""
     meta_patterns = [
         r'<meta[^>]+(?:property|name)=["\'](?:article:published_time|DC\.date\.issued|date|publication_date)["\'][^>]+content=["\']([^"\']+)["\']',
         r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\'](?:article:published_time|DC\.date\.issued|date|publication_date)["\']',
@@ -87,33 +86,18 @@ def extract_publication_time(html: str) -> str | None:
             normalized = _normalize_publication_time(match.group(1))
             if normalized:
                 return normalized
-
     visible = _visible_text(html)
-    match = re.search(
-        r"Publicado\s+em\s+(\d{2}/\d{2}/\d{4}(?:\s+\d{1,2}[h:]\d{2})?)",
-        visible,
-        flags=re.IGNORECASE,
-    )
-    if match:
-        return _normalize_publication_time(match.group(1))
-    return None
+    match = re.search(r"Publicado\s+em\s+(\d{2}/\d{2}/\d{4}(?:\s+\d{1,2}[h:]\d{2})?)", visible, flags=re.IGNORECASE)
+    return _normalize_publication_time(match.group(1)) if match else None
 
 
 def publication_plausible_for_safra(safra: str | None, data_publicacao: str | None) -> bool:
-    """Rejeita timestamps de migração tardia como se fossem disponibilidade original.
-
-    Para a safra AAAA/BB de grãos, os levantamentos normalmente pertencem à janela
-    entre setembro do ano inicial e outubro do ano final. A janela é deliberadamente
-    larga; seu objetivo é detectar migrações de site de anos posteriores, não impor
-    calendário mensal exato da CONAB.
-    """
     if not safra or not data_publicacao:
         return False
     match = re.fullmatch(r"(\d{4})/(\d{2})", safra)
     if not match:
         return False
-    start_year = int(match.group(1))
-    end_two = int(match.group(2))
+    start_year = int(match.group(1)); end_two = int(match.group(2))
     end_year = (start_year // 100) * 100 + end_two
     if end_year < start_year:
         end_year += 100
@@ -128,13 +112,44 @@ def publication_plausible_for_safra(safra: str | None, data_publicacao: str | No
     return lower <= published.astimezone(timezone.utc) <= upper
 
 
+def _nested_canonical_candidates(html: str, observed_url: str) -> list[str]:
+    """Find GOV.BR child pages that repeat the levantamento slug and may preserve original metadata."""
+    base_path = urlsplit(observed_url).path.rstrip("/")
+    slug = base_path.rsplit("/", 1)[-1]
+    host = urlsplit(observed_url).hostname
+    out: list[str] = []
+    seen: set[str] = set()
+    explicit = observed_url.rstrip("/") + "/" + slug
+    out.append(explicit); seen.add(explicit)
+    for link in extract_html_links(html, observed_url):
+        absolute = unescape(urljoin(observed_url, link)).split("#", 1)[0].split("?", 1)[0].rstrip("/")
+        if urlsplit(absolute).hostname != host:
+            continue
+        path = urlsplit(absolute).path.rstrip("/")
+        segments = [segment for segment in path.split("/") if segment]
+        if len(segments) >= 2 and segments[-1] == slug and segments[-2] == slug and absolute not in seen:
+            out.append(absolute); seen.add(absolute)
+    return out
+
+
+def _resolve_publication_time(html: str, observed_url: str, safra: str | None) -> tuple[str | None, str | None, str]:
+    direct = extract_publication_time(html)
+    if publication_plausible_for_safra(safra, direct):
+        return direct, "official_page_timestamp", observed_url
+    for candidate in _nested_canonical_candidates(html, observed_url):
+        try:
+            nested_html, nested_observed = _get_text(candidate)
+        except (HTTPError, URLError, TimeoutError, OSError):
+            continue
+        nested = extract_publication_time(nested_html)
+        if publication_plausible_for_safra(safra, nested):
+            return nested, "official_nested_page_timestamp", nested_observed
+    return direct, None, observed_url
+
+
 def _publication_from_item(item_url: str) -> SafraPublication | None:
     item_html, item_observed = _get_text(item_url)
-    links = [
-        unescape(urljoin(item_observed, link))
-        for link in extract_html_links(item_html, item_observed)
-        if urlsplit(link).hostname == urlsplit(item_observed).hostname
-    ]
+    links = [unescape(urljoin(item_observed, link)) for link in extract_html_links(item_html, item_observed) if urlsplit(link).hostname in {None, urlsplit(item_observed).hostname}]
     try:
         attachment = select_first_matching_link(
             links,
@@ -147,13 +162,15 @@ def _publication_from_item(item_url: str) -> SafraPublication | None:
         attachment = attachment[:-5] + "/@@download/file"
     elif re.search(r"\.xlsx(?:$|[?#])", attachment, flags=re.IGNORECASE):
         attachment = attachment.split("#", 1)[0].split("?", 1)[0].rstrip("/") + "/@@download/file"
-    safra, levantamento = _parse_identity(item_url)
+    safra, levantamento = _parse_identity(item_observed)
+    publication_time, basis, canonical_url = _resolve_publication_time(item_html, item_observed, safra)
     return SafraPublication(
-        item_url=item_observed,
+        item_url=canonical_url,
         attachment_url=attachment,
         safra=safra,
         levantamento=levantamento,
-        data_publicacao=extract_publication_time(item_html),
+        data_publicacao=publication_time,
+        availability_basis=basis,
     )
 
 
@@ -163,14 +180,13 @@ def discover_publications(listing_url: str = DEFAULT_LISTING, *, max_items: int 
     item_links: list[str] = []
     seen: set[str] = set()
     for link in extract_html_links(html, observed):
-        if urlsplit(link).hostname != host:
+        if urlsplit(link).hostname not in {None, host}:
             continue
-        clean = link.split("#", 1)[0].split("?", 1)[0].rstrip("/")
+        clean = urljoin(observed, link).split("#", 1)[0].split("?", 1)[0].rstrip("/")
         if not re.search(r"/\d+[oº]-levantamento-safra-\d{4}-\d{2}$", clean, flags=re.IGNORECASE):
             continue
         if clean not in seen:
-            seen.add(clean)
-            item_links.append(clean)
+            seen.add(clean); item_links.append(clean)
 
     def sort_key(url: str) -> tuple[int, int, int]:
         safra, levantamento = _parse_identity(url)
@@ -182,26 +198,10 @@ def discover_publications(listing_url: str = DEFAULT_LISTING, *, max_items: int 
     item_links.sort(key=sort_key, reverse=True)
     if max_items is not None:
         item_links = item_links[:max_items]
-
-    publications: list[SafraPublication] = []
-    for item_url in item_links:
-        item = _publication_from_item(item_url)
-        if item is not None:
-            publications.append(item)
-    return publications
+    return [item for item_url in item_links if (item := _publication_from_item(item_url)) is not None]
 
 
-def discover_archive_by_pattern(
-    *,
-    start_year: int,
-    end_year: int,
-    timeout_errors_are_fatal: bool = False,
-) -> list[SafraPublication]:
-    """Varre URLs oficiais previsíveis para safras que já saíram da página de listagem.
-
-    404 é tratado como ausência esperada. Erros transitórios de rede podem ser ignorados
-    para inventário parcial, mas nunca são convertidos em publicação inexistente no banco.
-    """
+def discover_archive_by_pattern(*, start_year: int, end_year: int, timeout_errors_are_fatal: bool = False) -> list[SafraPublication]:
     if start_year > end_year:
         raise ValueError("start_year deve ser <= end_year")
     publications: list[SafraPublication] = []
@@ -226,6 +226,5 @@ def discover_archive_by_pattern(
                 continue
             key = (item.safra, item.levantamento)
             if key not in seen:
-                seen.add(key)
-                publications.append(item)
+                seen.add(key); publications.append(item)
     return publications
