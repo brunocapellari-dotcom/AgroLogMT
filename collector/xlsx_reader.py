@@ -1,0 +1,134 @@
+from __future__ import annotations
+
+import io
+import re
+import zipfile
+from dataclasses import dataclass
+from typing import Any
+from xml.etree import ElementTree as ET
+
+_NS_MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+_NS_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+_NS_PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
+_CELL_REF = re.compile(r"^([A-Z]+)([0-9]+)$")
+
+
+@dataclass(frozen=True)
+class XlsxSheet:
+    name: str
+    rows: list[list[Any]]
+
+
+def _column_index(reference: str) -> int:
+    match = _CELL_REF.match(reference.upper())
+    if not match:
+        raise ValueError(f"referencia XLSX invalida: {reference!r}")
+    letters = match.group(1)
+    value = 0
+    for char in letters:
+        value = value * 26 + (ord(char) - ord("A") + 1)
+    return value - 1
+
+
+def _shared_strings(archive: zipfile.ZipFile) -> list[str]:
+    if "xl/sharedStrings.xml" not in archive.namelist():
+        return []
+    root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+    values: list[str] = []
+    for item in root.findall(f"{{{_NS_MAIN}}}si"):
+        parts = [node.text or "" for node in item.iter(f"{{{_NS_MAIN}}}t")]
+        values.append("".join(parts))
+    return values
+
+
+def _sheet_targets(archive: zipfile.ZipFile) -> list[tuple[str, str]]:
+    workbook = ET.fromstring(archive.read("xl/workbook.xml"))
+    relationships = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+    rel_map = {
+        rel.attrib["Id"]: rel.attrib["Target"]
+        for rel in relationships.findall(f"{{{_NS_PKG_REL}}}Relationship")
+    }
+    out: list[tuple[str, str]] = []
+    sheets = workbook.find(f"{{{_NS_MAIN}}}sheets")
+    if sheets is None:
+        return out
+    for sheet in sheets.findall(f"{{{_NS_MAIN}}}sheet"):
+        rel_id = sheet.attrib.get(f"{{{_NS_REL}}}id")
+        target = rel_map.get(rel_id or "")
+        if not target:
+            continue
+        if target.startswith("/"):
+            path = target.lstrip("/")
+        else:
+            path = "xl/" + target.lstrip("./")
+        out.append((sheet.attrib.get("name", "Sheet"), path))
+    return out
+
+
+def _parse_cell(cell: ET.Element, shared: list[str]) -> Any:
+    cell_type = cell.attrib.get("t")
+    if cell_type == "inlineStr":
+        text = cell.find(f"{{{_NS_MAIN}}}is")
+        if text is None:
+            return ""
+        return "".join(node.text or "" for node in text.iter(f"{{{_NS_MAIN}}}t"))
+
+    value_node = cell.find(f"{{{_NS_MAIN}}}v")
+    if value_node is None or value_node.text is None:
+        return None
+    raw = value_node.text
+    if cell_type == "s":
+        index = int(raw)
+        return shared[index] if 0 <= index < len(shared) else raw
+    if cell_type in {"str", "e"}:
+        return raw
+    if cell_type == "b":
+        return raw == "1"
+    try:
+        number = float(raw)
+        return int(number) if number.is_integer() else number
+    except ValueError:
+        return raw
+
+
+def _parse_sheet(xml: bytes, shared: list[str]) -> list[list[Any]]:
+    root = ET.fromstring(xml)
+    sheet_data = root.find(f"{{{_NS_MAIN}}}sheetData")
+    if sheet_data is None:
+        return []
+    rows: list[list[Any]] = []
+    for row in sheet_data.findall(f"{{{_NS_MAIN}}}row"):
+        cells: dict[int, Any] = {}
+        for cell in row.findall(f"{{{_NS_MAIN}}}c"):
+            reference = cell.attrib.get("r")
+            if not reference:
+                continue
+            cells[_column_index(reference)] = _parse_cell(cell, shared)
+        if not cells:
+            rows.append([])
+            continue
+        width = max(cells) + 1
+        values = [None] * width
+        for index, value in cells.items():
+            values[index] = value
+        while values and values[-1] is None:
+            values.pop()
+        rows.append(values)
+    return rows
+
+
+def read_xlsx(payload: bytes) -> list[XlsxSheet]:
+    """Le workbook XLSX sem Excel/LibreOffice e sem avaliar formulas.
+
+    O leitor preserva valores armazenados no arquivo. Datas formatadas permanecem
+    como numeros seriais; a interpretacao semantica fica a cargo do parser de dominio.
+    Isso evita inferir unidade/data a partir apenas de estilo visual.
+    """
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        shared = _shared_strings(archive)
+        sheets: list[XlsxSheet] = []
+        for name, path in _sheet_targets(archive):
+            if path not in archive.namelist():
+                raise ValueError(f"worksheet ausente no XLSX: {path}")
+            sheets.append(XlsxSheet(name=name, rows=_parse_sheet(archive.read(path), shared)))
+        return sheets

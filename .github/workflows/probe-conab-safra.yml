@@ -1,0 +1,37 @@
+name: probe-conab-safra
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "collector/xlsx_reader.py"
+      - "collector/conab_safra.py"
+      - "collector/adapters.py"
+      - "collector/config/sources.pilot.json"
+      - "scripts/probe_conab_safra_live.py"
+      - ".github/workflows/probe-conab-safra.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  live-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Probe latest official CONAB Safra XLSX
+        env:
+          PYTHONPATH: .
+        run: python scripts/probe_conab_safra_live.py --out conab_safra_probe.json
+      - name: Upload probe report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conab-safra-probe
+          path: conab_safra_probe.json
+          if-no-files-found: error
+          retention-days: 7

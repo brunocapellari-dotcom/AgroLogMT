@@ -45,6 +45,9 @@ O **Geopolitical Watch** é um projeto independente. Ele pode fornecer eventos, 
 - `docs/MULTI_AGENT_WORKFLOW.md` — fluxo Claude Code + Codex + ChatGPT.
 - `docs/CODEX_SETUP_WINDOWS.md` — instalação e teste do Codex no notebook.
 - `docs/OBSIDIAN.md` — papel do Segundo Cérebro.
+- `docs/N6_PROGRAM.md` — programa científico N6 e gates de promoção.
+- `docs/N6_EXECUTION_STATUS.md` — estado operacional e evidências do ciclo N6.
+- `docs/SOY_MT_DATAMART.md` — contrato do primeiro Data Mart vertical.
 - `docs/FREIGHT_LISTENER.md` — especificação canônica da inteligência de ofertas observadas.
 - `docs/EXTERNAL_GEOPOLITICAL_INTELLIGENCE.md` — contrato de consumo do Geopolitical Watch como provedor externo.
 - `docs/BACKLOG.md` — prioridades de implantação e três frentes integradas.
@@ -74,8 +77,11 @@ A árvore deve evoluir incrementalmente conforme os módulos reais forem incorpo
 - `collector/` — motor de coleta/normalização e componentes específicos de fonte;
 - `historical/` — reconstruções e cargas históricas;
 - `gateway/` — API/MCP AgroLog Gateway;
+- `models/` — registros, primitives quantitativas e modelos;
+- `contracts/` — contratos canônicos de dados/fontes;
 - `sql/` — consultas, views e transformações SQL;
 - `tests/` — testes automatizados, validações e fixtures pequenos/artificiais;
+- `scripts/` — deploy, homologação, QA e utilitários operacionais;
 - `bootstrap/` — instruções de sincronização e implantação inicial;
 - `AGENTS.md` — instruções de trabalho do Codex;
 - `.mcp.json` — configuração de MCP compartilhada do projeto.
@@ -91,17 +97,23 @@ Toda informação deve preservar, quando aplicável:
 
 E deve ser classificada explicitamente como:
 
-- dado observado;
-- inferência;
-- estimativa;
-- informação negociada/autorizada.
+- `observado`;
+- `estimado`;
+- `projetado`;
+- `inferido`;
+- `sinal_qualitativo`;
+- `negociado_autorizado`.
+
+`data_referencia` não é data de disponibilidade. Estudos históricos e backtests devem usar apenas vintages efetivamente disponíveis no momento de corte.
 
 ## Prioridade atual
 
-1. Consolidar e validar **CONAB Armazéns** ponta a ponta no BigQuery real.
-2. Conectar o **AgroLog Gateway** à primeira tabela e validar a mesma consulta via OpenAI e Claude.
-3. Em paralelo, avançar em documentação, benchmark e protótipos isolados das três frentes do **Programa Integrado Radar**.
-4. Iniciar produção da próxima fonte pelo **IMEA** após os gates do núcleo.
-5. Desenvolver o **Freight Listener** primeiro com fixtures artificiais e benchmark de adaptadores; nenhuma conta/canal real entra antes de validação de licença, segurança, termos, privacidade e isolamento.
+1. Homologar **CONAB Armazéns** e o **AgroLog Gateway** no GCP real com `scripts/homologate_n6_core.sh`.
+2. Manter **CONAB Safra** tecnicamente pronta, com parser/live probe point-in-time, mas desabilitada em produção até o gate P0/P1.
+3. Migrar incrementalmente o trabalho comprovado do **IMEA Agro v1.2** para a arquitetura N6 atual.
+4. Implementar **Comex Stat** com ingestão streaming/chunked e sem confundir URF com porto.
+5. Integrar **clima/hidrologia** preservando a natureza da evidência (estação, produto modelado, reanálise, forecast).
+6. Materializar o **Data Mart Soja MT** somente após QA das tabelas canônicas de origem.
+7. Treinar, validar e auditar os primeiros modelos N6 apenas com datasets point-in-time homologados.
 
 > A implementação deve evoluir incrementalmente a partir do estado atual do projeto, sem redesenho completo e sem criar uma segunda fonte de verdade.

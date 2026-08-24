@@ -76,26 +76,20 @@ O contrato canônico separa: `observado`, `estimado`, `projetado`, `inferido`, `
 - contrato canônico de metadados de dados;
 - dicionário inicial de métricas;
 - classes de evidência completas;
-- especificação da fonte CONAB Armazéns;
-- parser tolerante a encoding/delimitador e preservação do payload original;
-- deduplicação intra-snapshot e identificadores estáveis;
-- quality flags e quality score;
-- loader BigQuery idempotente por snapshot;
-- histórico de snapshots sem interpretar ausência como exclusão;
-- tabela de auditoria de carga;
-- view de snapshot mais recente;
-- primeira superfície controlada do AgroLog Gateway para armazenagem;
-- request logs estruturados do Gateway;
+- CONAB Armazéns: aquisição, parser, QA, deduplicação, snapshots, loader BigQuery, auditoria, view latest e Gateway;
 - preflight GCP e script único de homologação P0/P1;
 - validadores CONAB e Gateway x BigQuery;
-- adapter GOV.BR para descoberta do último anexo oficial de safra;
-- source spec CONAB Safra preparada e desabilitada até P0/P1;
-- contratos de migração IMEA, Comex Stat e clima/hidrologia;
 - primitives point-in-time sem look-ahead;
+- CONAB Safra: adapter GOV.BR, leitor XLSX, parser produto × UF/Brasil, quality gates, testes e live probe contra o workbook oficial;
+- contratos de migração IMEA, Comex Stat e clima/hidrologia;
 - registro dos seis primeiros modelos;
 - métricas e rolling-origin para backtests;
-- testes unitários e CI do parser, consultas, adapters, point-in-time e framework de backtest.
+- testes unitários e CI.
 
 ### Gate que continua obrigatoriamente aberto
 
 A primeira carga real no BigQuery e o deploy do Gateway precisam ser executados em ambiente GCP autenticado e produzir evidência operacional. Código pronto não equivale a execução real. Nenhum módulo deve ser marcado N6 antes desses testes e das validações empíricas subsequentes.
+
+### Regra durante o gate externo
+
+Enquanto o GCP não estiver acessível à sessão de engenharia, as próximas fontes podem avançar em contratos, parsers, testes, descoberta histórica e probes públicos. Elas permanecem desabilitadas para produção até seus respectivos gates operacionais.

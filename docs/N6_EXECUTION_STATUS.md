@@ -4,12 +4,12 @@ Este documento registra o estado operacional do caminho crítico N6. `docs/N6_PR
 
 ## Regra de estado
 
-- **DONE**: implementado e validável sem depender de evidência externa ausente.
+- **DONE**: implementado e validado no nível correspondente sem depender de evidência externa ausente.
 - **READY**: código/contrato pronto; execução depende do ambiente produtivo ou de gate anterior.
 - **BLOCKED-GCP**: exige credenciais/execução no GCP real e não pode ser declarado concluído por revisão de código.
-- **GATED**: não deve entrar em produção antes de P0/P1, embora contrato/testes possam avançar.
+- **GATED**: não deve entrar em produção antes de P0/P1, embora contrato/testes/PoCs possam avançar.
 
-## Ciclo N6-01 — 15 passos
+## Ciclo N6-01 — núcleo e primeira vertical
 
 | # | Passo | Estado | Evidência/saída |
 |---:|---|---|---|
@@ -25,7 +25,7 @@ Este documento registra o estado operacional do caminho crítico N6. `docs/N6_PR
 | 10 | Implantar AgroLog Gateway | READY / BLOCKED-GCP | `scripts/deploy_gateway_gcloud.sh` |
 | 11 | Validar Gateway ponta a ponta | READY / BLOCKED-GCP | `scripts/validate_gateway_n6.py` compara Gateway x BigQuery |
 | 12 | Fechar P0/P1 | BLOCKED-GCP | somente após PASS dos validadores e comparação OpenAI/Codex x Claude |
-| 13 | CONAB Safra point-in-time | GATED, preparação avançada | adapter GOV.BR de último anexo + source spec desabilitada + `models/point_in_time.py` |
+| 13 | CONAB Safra point-in-time | DONE no parser/probe; GATED para produção | adapter GOV.BR + XLSX reader + parser produto×UF/BR + live probe + testes |
 | 14 | IMEA + Comex Stat | GATED, contratos prontos | `contracts/imea_agro.v1.json`, Issue #1 migrada, `contracts/comexstat.v1.json` |
 | 15 | Clima/hidrologia + Data Mart Soja MT | GATED, contrato pronto | `contracts/climate_hydrology.v1.json` + `docs/SOY_MT_DATAMART.md` |
 
@@ -43,23 +43,61 @@ O comando executa preflight, deploy do coletor, duas execuções CONAB, validaç
 
 `models/point_in_time.py` estabelece que disponibilidade informacional é determinada por `data_publicacao` e `data_coleta`, usando o momento conservador em que a informação realmente poderia ser conhecida. `data_referencia` não é tratada como data de disponibilidade. Revisão futura não pode contaminar backtest histórico.
 
-## Expansões já preparadas
+## CONAB Safra — PoC vivo aprovado
 
-### CONAB Safra
+A fonte `conab_safra_graos_xlsx` permanece `enabled=false` em produção até P0/P1. Fora da produção, porém, o parser foi testado contra o XLSX oficial vivo do 11º Levantamento da safra 2025/26.
 
-O coletor possui um adapter GOV.BR que descobre o levantamento mais recente e seu XLSX oficial sem hardcode mensal. A source spec permanece `enabled=false` até P0/P1. A etapa seguinte após homologação é desenvolver o parser de domínio sobre snapshots reais preservados e registrar cada publicação/vintage.
+### Componentes implementados
 
-### IMEA
+- adapter GOV.BR que localiza o levantamento e o anexo XLSX oficiais sem hardcode mensal;
+- leitor XLSX próprio em ZIP/XML, sem Excel/LibreOffice e sem avaliação de fórmulas;
+- parser de domínio de `produto × UF` e `Brasil - Total por Produto`;
+- preservação das duas safras publicadas no workbook como `previous` e `current` dentro do mesmo vintage;
+- área em mil ha, produtividade em kg/ha, produção em mil t e variações publicadas;
+- IDs canônicos iniciais de produtos;
+- quality gate de não-negatividade e identidade área × produtividade ≈ produção;
+- tolerância de QA para arredondamento publicado em linhas de pequeno volume, evitando falso positivo percentual;
+- workflow de live probe que consulta a fonte real sem versionar o workbook no GitHub.
+
+### Evidência do probe em 24/08/2026
+
+- arquivo oficial observado: XLSX do 11º Levantamento 2025/26;
+- tamanho: 986.085 bytes;
+- 76 planilhas;
+- 2.184 registros extraídos considerando `previous` + `current`;
+- 1.092 registros `current`;
+- 28 geografias canônicas (27 UFs + Brasil);
+- 59 IDs de produto no conjunto corrente;
+- após ajustar o quality gate para a precisão publicada do workbook, **0 registros correntes ficaram com inconsistência material** de área × produtividade × produção.
+
+O primeiro probe havia marcado 46 linhas pequenas por erro percentual aparente provocado pelo arredondamento de área e produção. A revisão do gate manteve o limiar percentual, mas acrescentou tolerância absoluta material; o live probe seguinte passou com zero flags correntes.
+
+Controles sentinela aprovados no workbook real:
+
+| Geo | Produto | Safra | Área mil ha | Produtividade kg/ha | Produção mil t | QA |
+|---|---|---:|---:|---:|---:|---|
+| MT | soja | 25/26 | 13.006,2 | 3.969 | 51.621,6 | score 1,0 |
+| MT | milho 2ª safra | 25/26 | 7.546,6 | 7.604 | 57.384,3 | score 1,0 |
+| MT | algodão pluma | 25/26 | 1.393,3 | 2.023,332 | 2.819,1 | score 1,0 |
+| BR | soja | 25/26 | 48.610,3 | 3.712,455 | 180.463,5 | score 1,0 |
+
+Os valores acima são leitura da publicação corrente e não substituem o armazenamento de cada publicação/vintage histórico.
+
+## IMEA
 
 O trabalho pré-produção preservado em `bootstrap/v3-conab-imea` foi recuperado como insumo de migração, não como segunda fonte canônica. O contrato atual define snapshots, indicadores confiáveis, custo de produção, Oferta & Demanda e Estimativas. O merge bruto do branch histórico é proibido; parsers/QA úteis devem ser migrados incrementalmente.
 
-### Comex Stat
+## Comex Stat
 
 O contrato atual separa NCM de Município-SH4, preserva semântica geográfica e proíbe converter URF automaticamente em porto. A ingestão de arquivos anuais deverá ser streaming/chunked; o coletor genérico bytes-in-memory não deve ser usado para microdados grandes.
 
-### Clima e hidrologia
+## Clima e hidrologia
 
 O contrato inicial separa observação ANA, produto modelado NASA POWER e reanálise ERA5/AgERA5. Forecast/reanálise/estação não podem ser misturados sem subtype, e backtests devem preservar initialization/availability quando aplicável.
+
+## Regra de materialização do Data Mart Soja MT
+
+`docs/SOY_MT_DATAMART.md` continua sendo o contrato. A tabela/view integrada só deve ser materializada quando as fontes necessárias tiverem tabelas canônicas e QA aprovado. Antes disso, não criar SQL fictício nem tabelas vazias apenas para demonstrar arquitetura.
 
 ## Próximo gate após P0/P1
 
