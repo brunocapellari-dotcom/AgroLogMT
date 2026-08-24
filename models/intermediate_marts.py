@@ -116,6 +116,27 @@ FROM {source}
     return IntermediateMartSql("soy_mt_climate", target_name, sql)
 
 
+def yield_target_sql(project_id: str) -> IntermediateMartSql:
+    source = _qualify(project_id, "agro.ibge_pam_soy_mt_yield")
+    target_name = "marts_soy_mt.yield_target_v1"
+    target = _qualify(project_id, target_name)
+    sql = f"""CREATE OR REPLACE VIEW {target} AS
+SELECT
+  snapshot_id, record_id, source_id, geo_level, geo_id, geo_code_ibge,
+  product_id, metric_id, year, value AS produtividade_kg_ha, unit,
+  data_referencia, data_publicacao, data_coleta, data_disponibilidade,
+  availability_verified, availability_basis, point_in_time_feature_eligible,
+  target_role, competencia, evidence_class, methodology_id,
+  source_hash, quality_score, quality_flags
+FROM {source}
+WHERE product_id='soja'
+  AND geo_id='MT'
+  AND target_role='realized_label_not_point_in_time_feature'
+  AND point_in_time_feature_eligible=FALSE
+""".strip()
+    return IntermediateMartSql("soy_mt_yield_target", target_name, sql)
+
+
 def build_sql_bundle(project_id: str, *, soybean_ncm_codes: tuple[str, ...], climate_source: str = "clima.nasa_power_daily") -> tuple[IntermediateMartSql, ...]:
     return (
         production_sql(project_id), storage_sql(project_id), market_sql(project_id),

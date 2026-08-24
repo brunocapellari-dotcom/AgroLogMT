@@ -1,0 +1,46 @@
+{
+  "contract_version": "SOY_MT_DATAMART_V0_1",
+  "mart_id": "marts_soy_mt_v0_1",
+  "as_of": "2026-08-24",
+  "materialization_rule": "todos os 5 blocos obrigatorios devem ter tabela cloud verificada, QA pass e point-in-time ready quando aplicavel",
+  "blocks": [
+    {
+      "block_id": "production",
+      "required_for_v1": true,
+      "tables_all": ["agro.conab_safra_graos"],
+      "mart_target": "marts_soy_mt.production_v1"
+    },
+    {
+      "block_id": "storage",
+      "required_for_v1": true,
+      "tables_all": ["logistica.armazens_conab", "referencia.v_municipios_ibge_latest"],
+      "mart_target": "marts_soy_mt.storage_v1"
+    },
+    {
+      "block_id": "market",
+      "required_for_v1": true,
+      "tables_all": ["mercado.imea_indicadores_operacionais"],
+      "mart_target": "marts_soy_mt.market_v1"
+    },
+    {
+      "block_id": "trade",
+      "required_for_v1": true,
+      "tables_all": ["comercio_exterior.comexstat_ncm_export"],
+      "mart_target": "marts_soy_mt.trade_v1"
+    },
+    {
+      "block_id": "climate",
+      "required_for_v1": true,
+      "tables_any": ["clima.nasa_power_daily", "clima.agera5_daily", "clima.era5_land_daily"],
+      "mart_target": "marts_soy_mt.climate_v1"
+    }
+  ],
+  "model_targets": [
+    {
+      "target_id": "yield_realized",
+      "source_table": "agro.ibge_pam_soy_mt_yield",
+      "role": "realized_label_not_point_in_time_feature",
+      "model_id": "ALMT-SOY-YIELD-001"
+    }
+  ]
+}
