@@ -1,0 +1,55 @@
+name: soy-mt-readiness-pam
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "contracts/soy_mt_datamart_v01.json"
+      - "contracts/soy_mt_readiness_evidence_2026-08-24.json"
+      - "scripts/build_soy_mt_readiness_manifest.py"
+      - "scripts/probe_ibge_pam_pipeline.py"
+      - "collector/ibge_pam.py"
+      - "collector/ibge_pam_bigquery.py"
+      - "models/intermediate_marts.py"
+      - "tests/test_soy_mt_readiness_manifest.py"
+      - "tests/test_ibge_pam_collector.py"
+      - "tests/test_intermediate_marts.py"
+      - ".github/workflows/soy-mt-readiness-pam.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Focused unit tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python -m unittest -v \
+            tests.test_soy_mt_readiness_manifest \
+            tests.test_ibge_pam_collector \
+            tests.test_intermediate_marts
+      - name: Build deterministic Soja MT readiness manifest
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/build_soy_mt_readiness_manifest.py --out soy_mt_readiness_manifest.json
+      - name: Probe live PAM canonical pipeline without cloud writes
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/probe_ibge_pam_pipeline.py --out ibge_pam_canonical_probe.json
+      - name: Upload evidence artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: soy-mt-readiness-pam-${{ github.run_id }}
+          path: |
+            soy_mt_readiness_manifest.json
+            ibge_pam_canonical_probe.json
+          if-no-files-found: error
+          retention-days: 30
