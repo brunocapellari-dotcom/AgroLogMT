@@ -16,12 +16,8 @@ TABLE_ID = 1612
 MT_UF_CODE = 51
 YIELD_VARIABLE = 112
 SOY_CATEGORY = 2713
-PRIMARY_URL = (
-    "https://apisidra.ibge.gov.br/values/t/1612/n3/51/v/112/p/all/c81/2713?formato=json"
-)
-FALLBACK_URL = (
-    "https://api.sidra.ibge.gov.br/values/t/1612/n3/51/v/112/p/all/c81/2713?formato=json"
-)
+PRIMARY_URL = "https://apisidra.ibge.gov.br/values/t/1612/n3/51/v/112/p/all/c81/2713?formato=json"
+FALLBACK_URL = "https://api.sidra.ibge.gov.br/values/t/1612/n3/51/v/112/p/all/c81/2713?formato=json"
 
 
 @dataclass(frozen=True)
@@ -71,10 +67,10 @@ def _number(value: object) -> float | None:
     elif "," in text:
         text = text.replace(",", ".")
     try:
-        value_float = float(text)
+        parsed = float(text)
     except ValueError:
         return None
-    return value_float if math.isfinite(value_float) else None
+    return parsed if math.isfinite(parsed) else None
 
 
 def parse_sidra_rows(payload: list[dict]) -> list[YieldObservation]:
@@ -87,13 +83,7 @@ def parse_sidra_rows(payload: list[dict]) -> list[YieldObservation]:
         period = str(row.get("D3N") or row.get("D3C") or "").strip()
         product = str(row.get("D4N") or "").strip()
         value = _number(row.get("V"))
-        if geo != "Mato Grosso":
-            continue
-        if "Rendimento" not in variable:
-            continue
-        if "Soja" not in product:
-            continue
-        if value is None:
+        if geo != "Mato Grosso" or "Rendimento" not in variable or "Soja" not in product or value is None:
             continue
         try:
             year = int(period)
@@ -120,8 +110,7 @@ def linear_trend_at_horizon(values: list[float], horizon: int) -> float:
         return y_mean
     slope = sum((x - x_mean) * (values[x] - y_mean) for x in range(n)) / denom
     intercept = y_mean - slope * x_mean
-    target_x = (n - 1) + horizon
-    return intercept + slope * target_x
+    return intercept + slope * ((n - 1) + horizon)
 
 
 def _metric_payload(metrics: RegressionMetrics) -> dict:
@@ -134,9 +123,7 @@ def _metric_payload(metrics: RegressionMetrics) -> dict:
     }
 
 
-def lagged_hurdle(
-    observations: list[YieldObservation], *, label_lag_years: int = 2, min_train: int = 5
-) -> dict:
+def lagged_hurdle(observations: list[YieldObservation], *, label_lag_years: int = 2, min_train: int = 5) -> dict:
     values = [item.yield_kg_ha for item in observations]
     years = [item.year for item in observations]
     folds: list[LaggedFold] = []
@@ -161,8 +148,6 @@ def lagged_hurdle(
     actual = [fold.actual for fold in folds]
     ma = [fold.moving_average_5 for fold in folds]
     trend = [fold.linear_trend_horizon for fold in folds]
-    ma_metrics = regression_metrics(actual, ma)
-    trend_metrics = regression_metrics(actual, trend)
     return {
         "model_id": "ALMT-SOY-YIELD-001",
         "status": "research_only",
@@ -171,8 +156,8 @@ def lagged_hurdle(
         "min_train": min_train,
         "folds": [asdict(fold) for fold in folds],
         "metrics": {
-            "moving_average_5": _metric_payload(ma_metrics),
-            "linear_trend_horizon": _metric_payload(trend_metrics),
+            "moving_average_5": _metric_payload(regression_metrics(actual, ma)),
+            "linear_trend_horizon": _metric_payload(regression_metrics(actual, trend)),
         },
     }
 
@@ -182,6 +167,16 @@ def build_snapshot(*, label_lag_years: int = 2, min_train: int = 5) -> dict:
     observations = parse_sidra_rows(payload)
     hurdle = lagged_hurdle(observations, label_lag_years=label_lag_years, min_train=min_train)
     latest = observations[-1]
+    values = [item.yield_kg_ha for item in observations]
+    current_baseline = {
+        "target_year": latest.year + label_lag_years,
+        "last_realized_label_year": latest.year,
+        "moving_average_5_kg_ha": mean(values[-5:]),
+        "linear_trend_horizon_kg_ha": linear_trend_at_horizon(values, label_lag_years),
+        "evidence_class": "projetado",
+        "status": "research_only_hurdle_only",
+        "interpretation": "baseline historico para comparacao; nao e previsao N6 promovida",
+    }
     return {
         "dataset": "IBGE PAM Soja MT realized annual yield target",
         "table_id": TABLE_ID,
@@ -198,6 +193,7 @@ def build_snapshot(*, label_lag_years: int = 2, min_train: int = 5) -> dict:
         "latest_yield_kg_ha": latest.yield_kg_ha,
         "observations": [asdict(item) for item in observations],
         "hurdle": hurdle,
+        "current_baseline": current_baseline,
         "limitations": [
             "PAM e uma serie anual final/revisavel e deve ser usada como target realizado, nao como feature contemporanea antes de sua publicacao.",
             "O hurdle usa lag conservador de labels para evitar assumir disponibilidade imediata da PAM do ano anterior.",
@@ -221,6 +217,7 @@ def main() -> int:
         "n_years": snapshot["n_years"],
         "folds": len(snapshot["hurdle"]["folds"]),
         "metrics": snapshot["hurdle"]["metrics"],
+        "current_baseline": snapshot["current_baseline"],
         "status": snapshot["hurdle"]["status"],
     }, ensure_ascii=False, indent=2))
     return 0
