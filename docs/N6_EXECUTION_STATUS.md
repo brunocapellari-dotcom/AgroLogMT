@@ -56,6 +56,7 @@ A fonte `conab_safra_graos_xlsx` permanece `enabled=false` em produção até P0
 - área em mil ha, produtividade em kg/ha, produção em mil t e variações publicadas;
 - IDs canônicos iniciais de produtos;
 - quality gate de não-negatividade e identidade área × produtividade ≈ produção;
+- tolerância de QA para arredondamento publicado em linhas de pequeno volume, evitando falso positivo percentual;
 - workflow de live probe que consulta a fonte real sem versionar o workbook no GitHub.
 
 ### Evidência do probe em 24/08/2026
@@ -67,7 +68,9 @@ A fonte `conab_safra_graos_xlsx` permanece `enabled=false` em produção até P0
 - 1.092 registros `current`;
 - 28 geografias canônicas (27 UFs + Brasil);
 - 59 IDs de produto no conjunto corrente;
-- 46 registros correntes receberam quality flag e permanecem sujeitos a revisão por produto/agregação antes de carga canônica.
+- após ajustar o quality gate para a precisão publicada do workbook, **0 registros correntes ficaram com inconsistência material** de área × produtividade × produção.
+
+O primeiro probe havia marcado 46 linhas pequenas por erro percentual aparente provocado pelo arredondamento de área e produção. A revisão do gate manteve o limiar percentual, mas acrescentou tolerância absoluta material; o live probe seguinte passou com zero flags correntes.
 
 Controles sentinela aprovados no workbook real:
 
