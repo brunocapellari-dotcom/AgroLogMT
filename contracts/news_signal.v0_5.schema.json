@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agrologmt.local/contracts/news_signal.v0_5.schema.json",
+  "title": "AgroLog NEWS_SIGNAL v0.5",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "signal_id",
+    "idempotency_key",
+    "source_id",
+    "dataset_id",
+    "variable",
+    "scope",
+    "signal_class",
+    "evidence_class",
+    "data_referencia",
+    "data_coleta",
+    "rule_version",
+    "baseline_version",
+    "evidence_genealogy_key",
+    "transformation_type",
+    "materiality_score",
+    "upstream_evidence_ids",
+    "upstream_dataset_ids",
+    "transformation_chain",
+    "parent_signal_ids",
+    "extra"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.5"},
+    "signal_id": {"type": "string", "pattern": "^news_signal:[a-f0-9]{24}$"},
+    "idempotency_key": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "source_id": {"type": "string", "minLength": 1},
+    "dataset_id": {"type": "string", "minLength": 1},
+    "variable": {"type": "string", "minLength": 1},
+    "scope": {"type": "string", "minLength": 1},
+    "signal_class": {
+      "enum": ["RELEASE_CHANGE", "LEVEL_BREAK", "EXTREME", "MOMENTUM", "REVERSAL", "REGIME_SHIFT", "CROSS_SOURCE_CONFIRMATION", "DATA_RELATION"]
+    },
+    "evidence_class": {
+      "enum": ["observado", "inferido", "estimado", "projetado", "sinal_qualitativo", "negociado_autorizado"]
+    },
+    "data_referencia": {"type": "string", "minLength": 1},
+    "data_coleta": {"type": "string", "minLength": 1},
+    "data_publicacao": {"type": ["string", "null"]},
+    "competencia": {"type": ["string", "null"]},
+    "source_url": {"type": ["string", "null"]},
+    "source_observation_id": {"type": ["string", "null"]},
+    "upstream_evidence_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "upstream_dataset_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "transformation_chain": {"type": "array", "items": {"type": "string"}},
+    "transformation_type": {
+      "enum": ["RAW_OBSERVATION", "AGGREGATION", "DIFFERENCE", "RATIO", "PERCENTILE", "ZSCORE", "FORECAST", "OTHER"]
+    },
+    "parent_signal_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "primary_observation_hash": {"type": ["string", "null"]},
+    "rule_version": {"type": "string", "minLength": 1},
+    "baseline_version": {"type": "string", "minLength": 1},
+    "evidence_genealogy_key": {"type": "string", "minLength": 1},
+    "materiality_score": {"type": "number", "minimum": 0, "maximum": 100},
+    "unit": {"type": ["string", "null"]},
+    "value": {"type": ["number", "string", "null"]},
+    "previous_value": {"type": ["number", "string", "null"]},
+    "summary": {"type": ["string", "null"]},
+    "raw_artifact_ref": {"type": ["string", "null"]},
+    "extra": {"type": "object"}
+  }
+}
