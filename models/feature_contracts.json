@@ -1,0 +1,100 @@
+{
+  "contract_version": "1.0",
+  "global_rules": {
+    "point_in_time_required": true,
+    "availability_fields": ["data_publicacao", "data_coleta"],
+    "reference_date_is_not_availability": true,
+    "future_revision_prohibited": true,
+    "target_leakage_prohibited": true,
+    "baseline_required": true,
+    "out_of_sample_required": true,
+    "promotion_requires_stability": true
+  },
+  "models": [
+    {
+      "model_id": "ALMT-SOY-YIELD-001",
+      "target_metric": "agro.produtividade",
+      "target_unit": "kg/ha",
+      "entity_grain": ["geo_id", "safra"],
+      "minimum_history": {"seasons": 8},
+      "features": [
+        "clima.precipitacao",
+        "clima.temperatura_media",
+        "clima.balanco_hidrico",
+        "clima.umidade_solo",
+        "agro.plantio_progresso"
+      ],
+      "optional_features": ["remote_sensing.ndvi", "remote_sensing.evi", "solo.textura", "solo.agua_disponivel"],
+      "baselines": ["moving_average_5_seasons", "linear_trend"],
+      "validation": ["leave_one_season_out", "rolling_origin_point_in_time"],
+      "promotion_metrics": ["MAE", "RMSE", "MAPE"],
+      "leakage_guards": [
+        "Nenhuma observacao posterior ao cutoff da previsao pode entrar como feature.",
+        "Produtividade final da safra corrente nunca pode ser feature da propria previsao.",
+        "Reanalise publicada posteriormente nao substitui informacao disponivel no cutoff sem flag experimental."
+      ]
+    },
+    {
+      "model_id": "ALMT-SOY-BALANCE-001",
+      "target_metric": "estoque_final",
+      "target_unit": "t",
+      "entity_grain": ["geo_id", "safra", "vintage"],
+      "minimum_history": {"seasons": 5},
+      "features": ["estoque_inicial", "agro.producao", "entradas", "industria.esmagamento_soja", "comex.exportacao_soja", "outras_saidas"],
+      "baselines": ["last_official_vintage"],
+      "validation": ["accounting_identity_reconciliation", "vintage_backtest"],
+      "promotion_metrics": ["component_error", "ending_stock_error"],
+      "identity": "estoque_inicial + producao + entradas - esmagamento - exportacao - outras_saidas = estoque_final",
+      "leakage_guards": ["Cada componente deve usar apenas o vintage conhecido no cutoff."]
+    },
+    {
+      "model_id": "ALMT-SOY-PARITY-001",
+      "target_metric": "capacidade_pagamento_interior",
+      "target_unit": "BRL/sc",
+      "entity_grain": ["origem_geo_id", "corredor_id", "data_referencia"],
+      "minimum_history": {"days": 500},
+      "features": ["mercado.cbot_soja", "mercado.premio_soja", "macro.cambio_brl_usd", "custos_portuarios", "logistica.frete_rodoviario_oferta", "custos_comerciais"],
+      "baselines": ["deterministic_parity"],
+      "validation": ["daily_walk_forward"],
+      "promotion_metrics": ["MAE_vs_physical_price", "component_error"],
+      "identity": "CBOT + premio + cambio - custos_portuarios - transporte - custos_comerciais",
+      "leakage_guards": ["Usar cotacoes e premios com timestamp anterior ou igual ao cutoff."]
+    },
+    {
+      "model_id": "ALMT-SOY-EXPORT30-001",
+      "target_metric": "quant.exportacao_30d",
+      "target_unit": "t",
+      "entity_grain": ["geo_id", "cutoff_date"],
+      "minimum_history": {"years": 7},
+      "features": ["portos.lineup_soja", "portos.movimentacao_soja", "mercado.comercializacao_soja", "estoque_disponivel", "mercado.premio_soja", "macro.cambio_brl_usd", "congestionamento_portuario"],
+      "baselines": ["same_period_last_year", "seasonal_mean_5_years"],
+      "validation": ["weekly_rolling_origin", "monthly_rolling_origin"],
+      "promotion_metrics": ["MAE", "RMSE", "MAPE"],
+      "leakage_guards": ["Movimentacao realizada depois do cutoff nao pode entrar em features.", "Line-up deve manter status programado e timestamp de observacao."]
+    },
+    {
+      "model_id": "ALMT-FREIGHT-PRESSURE-001",
+      "target_metric": "quant.pressao_frete",
+      "target_unit": "indice",
+      "entity_grain": ["rota_id", "produto_id", "data_referencia"],
+      "minimum_history": {"years": 3},
+      "features": ["logistica.fluxo_rodoviario", "agro.colheita_progresso", "comex.exportacao_soja", "portos.lineup_soja", "logistica.diesel_s10", "logistica.frete_rodoviario_oferta", "backhaul_signal", "congestionamento", "capacidade_intermodal"],
+      "baselines": ["route_seasonality", "cargo_demand_index"],
+      "validation": ["route_walk_forward"],
+      "promotion_metrics": ["directional_accuracy", "stability_by_regime", "MAE_vs_authorized_freight_reference"],
+      "leakage_guards": ["Oferta de frete nao pode ser rotulada como frete efetivamente pago.", "Frete real pago so entra com fonte autorizada e timestamp auditavel."]
+    },
+    {
+      "model_id": "ALMT-AGROCLIMATE-RISK-001",
+      "target_metric": "quant.risco_agroclimatico",
+      "target_unit": "probabilidade",
+      "entity_grain": ["geo_id", "crop_stage", "cutoff_date"],
+      "minimum_history": {"years": 15, "seasons": 10},
+      "features": ["clima.precipitacao", "clima.temperatura_media", "clima.et0", "clima.umidade_solo", "crop_stage", "forecast_ensemble"],
+      "baselines": ["climatology_probability", "historical_event_frequency"],
+      "validation": ["hindcast_point_in_time", "season_region_holdout"],
+      "promotion_metrics": ["Brier", "calibration", "reliability", "ROC_AUC_when_applicable"],
+      "leakage_guards": ["Forecast deve preservar initialization_time e lead_time.", "Reanalise posterior nao substitui forecast historico no backtest.", "Fenologia usada deve ser a conhecida ou estimavel no cutoff."]
+    }
+  ]
+}
