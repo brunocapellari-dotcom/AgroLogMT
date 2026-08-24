@@ -1,0 +1,355 @@
+{
+  "items": [
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/11o-levantamento-safra-2025-26/site_previsao_de_safra-por-produto-ago-2026.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2026-08-13T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/11o-levantamento-safra-2025-26/11o-levantamento-safra-2025-26",
+      "levantamento": 11,
+      "safra": "2025/26"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/10o-levantamento-safra-2025-26/site_previsao_de_safra-por-produto-jul-2026.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2026-07-14T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/10o-levantamento-safra-2025-26/10o-levantamento-safra-2025-26",
+      "levantamento": 10,
+      "safra": "2025/26"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/9o-levantamento-safra-2025-26/site_previsao_de_safra-por-produto-jun-2026.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2026-06-11T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/9o-levantamento-safra-2025-26/9o-levantamento-safra-2025-26",
+      "levantamento": 9,
+      "safra": "2025/26"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/8o-levantamento-safra-2025-26/site_previsao_de_safra-por-produto-mai-2026.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2026-05-14T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/8o-levantamento-safra-2025-26/8o-levantamento-safra-2025-26",
+      "levantamento": 8,
+      "safra": "2025/26"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/7o-levantamento-safra-2025-26/site_previsao_de_safra-por-produto-abr-2026.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2026-04-14T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/7o-levantamento-safra-2025-26/7o-levantamento-safra-2025-26",
+      "levantamento": 7,
+      "safra": "2025/26"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/6o-levantamento-safra-2025-26/site_previsao_de_safra-por-produto-mar-2026.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2026-03-13T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/6o-levantamento-safra-2025-26/6o-levantamento-safra-2025-26",
+      "levantamento": 6,
+      "safra": "2025/26"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/5o-levantamento-safra-2025-26/site_previsao_de_safra-por-produto-fev-2026.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2026-02-12T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/5o-levantamento-safra-2025-26/5o-levantamento-safra-2025-26",
+      "levantamento": 5,
+      "safra": "2025/26"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/3o-levantamento-safra-2025-26/site_previsao_de_safra-por-produto-dez-2025.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2025-12-11T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/3o-levantamento-safra-2025-26/3o-levantamento-safra-2025-26",
+      "levantamento": 3,
+      "safra": "2025/26"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/2o-levantamento-safra-2025-26/site_previsao_de_safra-por-produto-nov-2025.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2025-11-13T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/2o-levantamento-safra-2025-26/2o-levantamento-safra-2025-26",
+      "levantamento": 2,
+      "safra": "2025/26"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/1o-levantamento-safra-2025-26/site_previsao_de_safra-por-produto-out-2025.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2025-10-14T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/1o-levantamento-safra-2025-26/1o-levantamento-safra-2025-26",
+      "levantamento": 1,
+      "safra": "2025/26"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/12o-levantamento-safra-2024-25/site_previsao_de_safra-por-produto-set-2025.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2025-09-11T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/12o-levantamento-safra-2024-25/12o-levantamento-safra-2024-25",
+      "levantamento": 12,
+      "safra": "2024/25"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/11o-levantamento-safra-2024-25/site_previsao_de_safra-por-produto-ago-2025.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2025-08-14T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/11o-levantamento-safra-2024-25/11o-levantamento-safra-2024-25",
+      "levantamento": 11,
+      "safra": "2024/25"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/10o-levantamento-safra-2024-25/site_previsao_de_safra-por-produto-jul-2025.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2025-07-10T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/10o-levantamento-safra-2024-25/10o-levantamento-safra-2024-25",
+      "levantamento": 10,
+      "safra": "2024/25"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/5o-levantamento-safra-2024-25/site_previsao_de_safra-por-produto-fev-2025.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2025-02-13T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/5o-levantamento-safra-2024-25/5o-levantamento-safra-2024-25",
+      "levantamento": 5,
+      "safra": "2024/25"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/12o-levantamento-safra-2022-23/site_previsao_de_safra-por-produto-set-2023.xlsx/@@download/file",
+      "availability_basis": "official_nested_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2023-09-01T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/12o-levantamento-safra-2022-23/12o-levantamento-safra-2022-23",
+      "levantamento": 12,
+      "safra": "2022/23"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/11o-levantamento-safra-2022-23/site_previsao_de_safra-por-produto-ago-2023.xlsx/@@download/file",
+      "availability_basis": "official_nested_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2023-08-10T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/11o-levantamento-safra-2022-23/11o-levantamento-safra-2022-23",
+      "levantamento": 11,
+      "safra": "2022/23"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/10o-levantamento-safra-2022-23/site_previsao_de_safra-por-produto-jul-2023.xlsx/@@download/file",
+      "availability_basis": "official_nested_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2023-07-10T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/10o-levantamento-safra-2022-23/10o-levantamento-safra-2022-23",
+      "levantamento": 10,
+      "safra": "2022/23"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/9o-levantamento-safra-2022-23/site_previsao_de_safra-por-produto-jun-2023.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2023-06-10T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/9o-levantamento-safra-2022-23/9o-levantamento-safra-2022-23",
+      "levantamento": 9,
+      "safra": "2022/23"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/8o-levantamento-safra-2022-23/site_previsao_de_safra-por-produto-mai-2023.xlsx/@@download/file",
+      "availability_basis": "official_nested_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2023-05-10T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/8o-levantamento-safra-2022-23/8o-levantamento-safra-2022-23",
+      "levantamento": 8,
+      "safra": "2022/23"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/7o-levantamento-safra-2022-23/site_previsao_de_safra-por-produto-abr-2023.xlsx/@@download/file",
+      "availability_basis": "official_nested_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2023-04-10T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/7o-levantamento-safra-2022-23/7o-levantamento-safra-2022-23",
+      "levantamento": 7,
+      "safra": "2022/23"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/6o-levantamento-safra-2022-23/site_previsao_de_safra-por-produto-mar-2023.xlsx/@@download/file",
+      "availability_basis": "official_nested_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2023-03-10T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/6o-levantamento-safra-2022-23/6o-levantamento-safra-2022-23",
+      "levantamento": 6,
+      "safra": "2022/23"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/5o-levantamento-safra-2022-23/site_previsao_de_safra-por-produto-fev-2023.xlsx/@@download/file",
+      "availability_basis": "official_nested_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2023-02-10T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/5o-levantamento-safra-2022-23/5o-levantamento-safra-2022-23",
+      "levantamento": 5,
+      "safra": "2022/23"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/4o-levantamento-safra-2022-23/site_previsao_de_safra-por-produto-jan-2023.xlsx/@@download/file",
+      "availability_basis": "official_nested_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2023-01-10T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/4o-levantamento-safra-2022-23/4o-levantamento-safra-2022-23",
+      "levantamento": 4,
+      "safra": "2022/23"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/3o-levantamento-safra-2022-23/site_previsao_de_safra-por-produto-dez-2022.xlsx/@@download/file",
+      "availability_basis": "official_nested_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2022-12-10T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/3o-levantamento-safra-2022-23/3o-levantamento-safra-2022-23",
+      "levantamento": 3,
+      "safra": "2022/23"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/2o-levantamento-safra-2022-23/site_previsao_de_safra-por-produto-nov-2022.xlsx/@@download/file",
+      "availability_basis": "official_nested_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2022-11-10T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/2o-levantamento-safra-2022-23/2o-levantamento-safra-2022-23",
+      "levantamento": 2,
+      "safra": "2022/23"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/1o-levantamento-safra-2022-23/site_previsao_de_safra-por-produto-out-2022.xlsx/@@download/file",
+      "availability_basis": "official_nested_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2022-10-10T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/1o-levantamento-safra-2022-23/1o-levantamento-safra-2022-23",
+      "levantamento": 1,
+      "safra": "2022/23"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/12o-levantamento-safra-2021-22/site_previsao_de_safra-por-produto-set-2022.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2022-09-08T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/12o-levantamento-safra-2021-22/12o-levantamento-safra-2021-22",
+      "levantamento": 12,
+      "safra": "2021/22"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/11o-levantamento-safra-2021-22/site_previsao_de_safra-por-produto-ago-2022.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2022-08-11T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/11o-levantamento-safra-2021-22/11o-levantamento-safra-2021-22",
+      "levantamento": 11,
+      "safra": "2021/22"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/10o-levantamento-safra-2021-22/site_previsao_de_safra-por-produto-jul-2022.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2022-07-07T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/10o-levantamento-safra-2021-22/10o-levantamento-safra-2021-22",
+      "levantamento": 10,
+      "safra": "2021/22"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/9o-levantamento-safra-2021-22/site_previsao_de_safra-por-produto-jun-2022.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2022-06-08T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/9o-levantamento-safra-2021-22/9o-levantamento-safra-2021-22",
+      "levantamento": 9,
+      "safra": "2021/22"
+    },
+    {
+      "attachment_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/8o-levantamento-safra-2021-22/site_previsao_de_safra-por-produto-mai-2022.xlsx/@@download/file",
+      "availability_basis": "official_page_timestamp",
+      "availability_verified": true,
+      "data_publicacao": "2022-05-12T12:00:00+00:00",
+      "execution_status": "ready",
+      "item_url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos/8o-levantamento-safra-2021-22/8o-levantamento-safra-2021-22",
+      "levantamento": 8,
+      "safra": "2021/22"
+    }
+  ],
+  "ranges_merged": [
+    "2010-2013",
+    "2014-2017",
+    "2018-2021",
+    "2022-2025"
+  ],
+  "registry_version": "CONAB_VINTAGE_REGISTRY_V1",
+  "source_id": "conab_safra_graos_xlsx",
+  "summary": {
+    "blocked": 0,
+    "by_safra": {
+      "2021/22": {
+        "blocked": 0,
+        "levantamentos": [8, 9, 10, 11, 12],
+        "ready": 5
+      },
+      "2022/23": {
+        "blocked": 0,
+        "levantamentos": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "ready": 12
+      },
+      "2024/25": {
+        "blocked": 0,
+        "levantamentos": [5, 10, 11, 12],
+        "ready": 4
+      },
+      "2025/26": {
+        "blocked": 0,
+        "levantamentos": [1, 2, 3, 5, 6, 7, 8, 9, 10, 11],
+        "ready": 10
+      }
+    },
+    "ready": 31,
+    "ready_by_availability_basis": {
+      "official_nested_page_timestamp": 11,
+      "official_page_timestamp": 20
+    },
+    "season_start_year_max": 2025,
+    "season_start_year_min": 2021,
+    "vintages": 31
+  }
+}
