@@ -4,7 +4,7 @@ import json
 import os
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable
+from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -25,6 +25,7 @@ class AnaStation:
     river: str | None
     basin_code: str | None
     operating: str | None
+    station_type: str | None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -77,31 +78,14 @@ def _int(value: Any) -> int | None:
 def _iso(value: Any) -> str | None:
     if value in (None, ""):
         return None
-    text = str(value).strip()
-    formats = (
-        "%Y-%m-%dT%H:%M:%S.%f%z",
-        "%Y-%m-%dT%H:%M:%S%z",
-        "%Y-%m-%dT%H:%M:%S.%f",
-        "%Y-%m-%dT%H:%M:%S",
-        "%d/%m/%Y %H:%M:%S",
-        "%d/%m/%Y %H:%M",
-    )
-    parsed: datetime | None = None
-    normalized = text.replace("Z", "+00:00")
+    text = str(value).strip().replace("Z", "+00:00")
     try:
-        parsed = datetime.fromisoformat(normalized)
+        parsed = datetime.fromisoformat(text)
     except ValueError:
-        for fmt in formats:
-            try:
-                parsed = datetime.strptime(normalized, fmt)
-                break
-            except ValueError:
-                continue
-    if parsed is None:
         return None
     if parsed.tzinfo is None:
-        # A API não documenta timezone por registro; não inventar offset local.
-        # Usamos UTC somente como envelope técnico e marcamos a origem no método.
+        # A documentação ANA não declara timezone por registro de medição.
+        # Manter tratamento técnico explícito até o runtime validar a semântica temporal.
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc).isoformat()
 
@@ -114,7 +98,7 @@ def _records(payload: Any) -> list[dict[str, Any]]:
             value = payload.get(key)
             if isinstance(value, list):
                 return [row for row in value if isinstance(row, dict)]
-        if any(key.lower() in {"codigoestacao", "codigo_da_estacao", "codestacao"} for key in payload):
+        if any(str(key).lower() in {"codigoestacao", "codigo_da_estacao", "codestacao"} for key in payload):
             return [payload]
     return []
 
@@ -127,13 +111,14 @@ def parse_stations(payload: Any) -> list[AnaStation]:
             continue
         rows.append(AnaStation(
             station_code=str(code).strip(),
-            name=_first(row, "Nome", "NomeEstacao", "Estacao", "nomeestacao"),
-            uf=_first(row, "UF", "UF_Estacao", "SiglaUF", "uf_estacao"),
+            name=_first(row, "Estacao_Nome", "Nome", "NomeEstacao", "Estacao", "nomeestacao"),
+            uf=_first(row, "UF_Estacao", "UF", "SiglaUF", "uf_estacao"),
             latitude=_float(_first(row, "Latitude", "latitude")),
             longitude=_float(_first(row, "Longitude", "longitude")),
-            river=_first(row, "Rio", "NomeRio", "rio"),
-            basin_code=str(_first(row, "CodigoBacia", "CodBacia", "codigobacia") or "") or None,
+            river=_first(row, "Rio_Nome", "NomeRio", "Rio", "rio"),
+            basin_code=str(_first(row, "codigobacia", "CodigoBacia", "CodBacia") or "") or None,
             operating=str(_first(row, "Operando", "EmOperacao", "StatusEstacao", "operando") or "") or None,
+            station_type=str(_first(row, "Tipo_Estacao", "TipoEstacao", "tipo_estacao") or "") or None,
         ))
     return rows
 
@@ -150,25 +135,18 @@ def parse_telemetry(payload: Any) -> list[AnaTelemetry]:
             measurement_time=measured,
             update_time=_iso(_first(row, "Data_Atualizacao", "DataAtualizacao", "data_atualizacao")),
             rainfall_mm=_float(_first(row, "Chuva_Adotada", "ChuvaAdotada", "chuva_adotada")),
-            rainfall_status=_int(_first(row, "Status_Chuva_Adotada", "StatusChuvaAdotada", "status_chuva_adotada")),
+            rainfall_status=_int(_first(row, "Chuva_Adotada_Status", "Status_Chuva_Adotada", "StatusChuvaAdotada", "status_chuva_adotada")),
             river_level_cm=_float(_first(row, "Cota_Adotada", "CotaAdotada", "cota_adotada")),
-            river_level_status=_int(_first(row, "Status_Cota_Adotada", "StatusCotaAdotada", "status_cota_adotada")),
+            river_level_status=_int(_first(row, "Cota_Adotada_Status", "Status_Cota_Adotada", "StatusCotaAdotada", "status_cota_adotada")),
             discharge_m3_s=_float(_first(row, "Vazao_Adotada", "VazaoAdotada", "vazao_adotada")),
-            discharge_status=_int(_first(row, "Status_Vazao_Adotada", "StatusVazaoAdotada", "status_vazao_adotada")),
+            discharge_status=_int(_first(row, "Vazao_Adotada_Status", "Status_Vazao_Adotada", "StatusVazaoAdotada", "status_vazao_adotada")),
         ))
     rows.sort(key=lambda item: (item.station_code, item.measurement_time))
     return rows
 
 
 class AnaHidroWebServiceClient:
-    def __init__(
-        self,
-        *,
-        identifier: str | None = None,
-        password: str | None = None,
-        base_url: str = BASE_URL,
-        timeout: int = 60,
-    ) -> None:
+    def __init__(self, *, identifier: str | None = None, password: str | None = None, base_url: str = BASE_URL, timeout: int = 60) -> None:
         self.identifier = identifier or os.environ.get("ANA_HIDRO_IDENTIFICADOR")
         self.password = password or os.environ.get("ANA_HIDRO_SENHA")
         if not self.identifier or not self.password:
@@ -208,10 +186,7 @@ class AnaHidroWebServiceClient:
         now = datetime.now(timezone.utc)
         if not force_refresh and self._token and self._token_at and now - self._token_at < TOKEN_TTL:
             return self._token
-        payload = self._json(
-            AUTH_PATH,
-            headers={"Identificador": self.identifier, "Senha": self.password},
-        )
+        payload = self._json(AUTH_PATH, headers={"Identificador": self.identifier, "Senha": self.password})
         self._token = self._token_from_payload(payload)
         self._token_at = now
         return self._token
@@ -222,27 +197,14 @@ class AnaHidroWebServiceClient:
     def stations(self, *, station_code: str | None = None, basin_code: str | None = None, uf: str | None = None) -> list[AnaStation]:
         if not any((station_code, basin_code, uf)):
             raise ValueError("ANA inventário exige ao menos estação, bacia ou UF")
-        payload = self.authorized_json(
-            INVENTORY_PATH,
-            params={"CodigoDaEstacao": station_code, "CodigoDaBacia": basin_code, "UF": uf},
-        )
+        payload = self.authorized_json(INVENTORY_PATH, params={"CodigoDaEstacao": station_code, "CodigoDaBacia": basin_code, "UF": uf})
         return parse_stations(payload)
 
-    def telemetry(
-        self,
-        station_code: str,
-        *,
-        date_filter: str = "DATA_LEITURA",
-        search_range: str = "DIAS_30",
-    ) -> list[AnaTelemetry]:
+    def telemetry(self, station_code: str, *, date_filter: str = "DATA_LEITURA", search_range: str = "DIAS_30") -> list[AnaTelemetry]:
         if not station_code.strip():
             raise ValueError("station_code obrigatório")
         payload = self.authorized_json(
             TELEMETRY_PATH,
-            params={
-                "CodigoDaEstacao": station_code,
-                "TipoFiltroData": date_filter,
-                "RangeIntervaloDeBusca": search_range,
-            },
+            params={"CodigoDaEstacao": station_code, "TipoFiltroData": date_filter, "RangeIntervaloDeBusca": search_range},
         )
         return parse_telemetry(payload)
