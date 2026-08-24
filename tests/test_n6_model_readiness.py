@@ -54,7 +54,7 @@ class ReadinessTests(unittest.TestCase):
         }
         result = evaluate_datamart(self.datamart, inventory)
         self.assertFalse(result.ready)
-        self.assertTrue(any(f.code == "NO_ALTERNATIVE_TABLE_READY" and "foreign_trade" in f.message for f in result.failures))
+        self.assertTrue(any(f.code == "TABLE_MISSING" and "comex.comexstat_ncm_export" in f.message for f in result.failures))
 
     def test_datamart_passes_when_required_blocks_are_ready(self) -> None:
         inventory = {
