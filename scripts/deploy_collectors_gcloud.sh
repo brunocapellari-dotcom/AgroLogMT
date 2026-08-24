@@ -157,7 +157,7 @@ Gate externo do Drive:
 A pasta RAW deve estar compartilhada como Editor com ${COLLECTOR_SERVICE_ACCOUNT}.
 
 Homologação controlada:
-AGROLOG_SOURCE_ID=conab_armazens_cadastrados gcloud run jobs execute agrolog-dados --region ${REGION} --project ${PROJECT_ID} --wait
+gcloud run jobs execute agrolog-dados --region ${REGION} --project ${PROJECT_ID} --wait --update-env-vars "AGROLOG_SOURCE_ID=conab_armazens_cadastrados"
 python scripts/validate_conab_n6.py --project ${PROJECT_ID}
 
 Repita a execução CONAB e rode novamente validate_conab_n6.py para comprovar idempotência.
