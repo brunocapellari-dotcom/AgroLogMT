@@ -25,6 +25,17 @@
       "notes": "Piloto de endpoint publico; datasets operacionais terao specs proprias."
     },
     {
+      "source_id": "conab_armazens_cadastrados",
+      "name": "CONAB - Armazens Cadastrados",
+      "group": "dados",
+      "method": "http",
+      "url": "https://portaldeinformacoes.conab.gov.br/downloads/arquivos/ArmazensCadastrados.txt",
+      "expected_frequency": "irregular",
+      "file_extension": "txt",
+      "evidence_class": "observado",
+      "notes": "P0 N6. Snapshot oficial do cadastro de armazens. Ausencia em snapshot posterior nao significa exclusao automatica."
+    },
+    {
       "source_id": "conab_noticias",
       "name": "CONAB - Noticias",
       "group": "radar",
