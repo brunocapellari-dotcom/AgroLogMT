@@ -1,0 +1,112 @@
+name: Mercado Financeiro Backfill Wave 1
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'tools/mercado_financeiro_bridge/download_backfill_wave1.py'
+      - '.github/workflows/mercado-financeiro-backfill-wave1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backfill-wave1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download official backfill wave
+        run: python tools/mercado_financeiro_bridge/download_backfill_wave1.py
+      - name: Upload manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mf-backfill-wave1-manifest
+          path: mf_backfill_wave1/manifest.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload B3 COTAHIST 2026
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b3-cotahist-2026
+          path: mf_backfill_wave1/COTAHIST_A2026.ZIP
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload B3 COTAHIST 2024
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b3-cotahist-2024
+          path: mf_backfill_wave1/COTAHIST_A2024.ZIP
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload B3 COTAHIST 2023
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b3-cotahist-2023
+          path: mf_backfill_wave1/COTAHIST_A2023.ZIP
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload DFP 2024
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cvm-dfp-2024
+          path: mf_backfill_wave1/dfp_cia_aberta_2024.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload DFP 2023
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cvm-dfp-2023
+          path: mf_backfill_wave1/dfp_cia_aberta_2023.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload FRE 2024
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cvm-fre-2024
+          path: mf_backfill_wave1/fre_cia_aberta_2024.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload FRE 2023
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cvm-fre-2023
+          path: mf_backfill_wave1/fre_cia_aberta_2023.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload ITR 2025
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cvm-itr-2025
+          path: mf_backfill_wave1/itr_cia_aberta_2025.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload ITR 2024
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cvm-itr-2024
+          path: mf_backfill_wave1/itr_cia_aberta_2024.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload ITR 2023
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cvm-itr-2023
+          path: mf_backfill_wave1/itr_cia_aberta_2023.zip
+          if-no-files-found: ignore
+          retention-days: 7
