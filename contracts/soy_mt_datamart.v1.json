@@ -55,7 +55,7 @@
     {
       "block_id": "foreign_trade",
       "required_for_v1": true,
-      "tables_all": ["comex.comexstat_ncm_export"],
+      "tables_all": ["comercio_exterior.comexstat_ncm_export"],
       "metrics": ["comex.exportacao_soja", "comex.exportacao_soja_fob"],
       "minimum_history_years": 5
     },
