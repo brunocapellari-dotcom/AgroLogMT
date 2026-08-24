@@ -7,6 +7,7 @@ from pathlib import Path
 
 from collector.adapters import get_adapter
 from collector.cli import load_sources
+from collector.conab_safra import parse_conab_safra_workbook, select_current
 from collector.xlsx_reader import read_xlsx
 
 
@@ -35,11 +36,27 @@ def main() -> int:
 
     result = get_adapter(spec.method).fetch(spec)
     sheets = read_xlsx(result.payload)
+    records = parse_conab_safra_workbook(result.payload)
+    targets = {}
+    for geo_id, product_id in (("MT", "soja"), ("MT", "milho_2_safra"), ("MT", "algodao_pluma"), ("BR", "soja")):
+        record = select_current(records, geo_id=geo_id, product_id=product_id)
+        targets[f"{geo_id}:{product_id}"] = record.to_dict()
+
+    current = [record for record in records if record.vintage_position == "current"]
+    flagged = [record for record in current if record.quality_flags]
     report = {
         "source_id": spec.source_id,
         "observed_url": result.observed_url,
         "content_type": result.content_type,
         "bytes": len(result.payload),
+        "parsed": {
+            "records": len(records),
+            "current_records": len(current),
+            "geo_ids": sorted({record.geo_id for record in records}),
+            "products": len({record.product_id for record in current}),
+            "current_quality_flagged": len(flagged),
+            "targets": targets,
+        },
         "sheets": [],
     }
     for sheet in sheets:
