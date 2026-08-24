@@ -77,6 +77,9 @@ class ConabSafraBigQueryLoader:
             field("data_referencia", "DATE", mode="REQUIRED"),
             field("data_publicacao", "TIMESTAMP", mode="REQUIRED"),
             field("data_coleta", "TIMESTAMP", mode="REQUIRED"),
+            field("data_disponibilidade", "TIMESTAMP"),
+            field("availability_verified", "BOOL", mode="REQUIRED"),
+            field("availability_basis", "STRING"),
             field("competencia", "STRING", mode="REQUIRED"),
             field("evidence_class", "STRING", mode="REQUIRED"),
             field("methodology_id", "STRING", mode="REQUIRED"),
@@ -121,6 +124,9 @@ CREATE TABLE IF NOT EXISTS `{self.target_table}` (
   data_referencia DATE NOT NULL,
   data_publicacao TIMESTAMP NOT NULL,
   data_coleta TIMESTAMP NOT NULL,
+  data_disponibilidade TIMESTAMP,
+  availability_verified BOOL NOT NULL,
+  availability_basis STRING,
   competencia STRING NOT NULL,
   evidence_class STRING NOT NULL,
   methodology_id STRING NOT NULL,
@@ -137,6 +143,10 @@ CREATE TABLE IF NOT EXISTS `{self.target_table}` (
 PARTITION BY data_referencia
 CLUSTER BY product_id, geo_id, safra, snapshot_id
 """).result()
+        # Migração aditiva segura para tabelas criadas antes do metadata v1.2.
+        self.client.query(f"ALTER TABLE `{self.target_table}` ADD COLUMN IF NOT EXISTS data_disponibilidade TIMESTAMP").result()
+        self.client.query(f"ALTER TABLE `{self.target_table}` ADD COLUMN IF NOT EXISTS availability_verified BOOL").result()
+        self.client.query(f"ALTER TABLE `{self.target_table}` ADD COLUMN IF NOT EXISTS availability_basis STRING").result()
         self.client.query(f"""
 CREATE TABLE IF NOT EXISTS `{self.audit_table}` (
   run_id STRING NOT NULL,
