@@ -44,6 +44,8 @@ def availability_status(item: SafraPublication) -> tuple[bool, str]:
         return False, "blocked_missing_original_publication_time"
     if not publication_plausible_for_safra(item.safra, item.data_publicacao):
         return False, "blocked_suspected_site_migration_timestamp"
+    if not item.availability_basis:
+        return False, "blocked_missing_availability_evidence_basis"
     return True, "ready"
 
 
@@ -56,7 +58,7 @@ def build_plan(publications: list[SafraPublication]) -> list[dict[str, object]]:
             "levantamento": item.levantamento,
             "data_publicacao": item.data_publicacao,
             "availability_verified": verified,
-            "availability_basis": "official_page_timestamp_plausibility_checked" if verified else None,
+            "availability_basis": item.availability_basis if verified else None,
             "item_url": item.item_url,
             "attachment_url": item.attachment_url,
             "execution_status": status,
@@ -124,7 +126,7 @@ def execute_item(item: SafraPublication, store: DriveBigQueryStore) -> dict[str,
         last_modified=last_modified,
         publication_override=item.data_publicacao,
         availability_verified=True,
-        availability_basis="official_page_timestamp_plausibility_checked",
+        availability_basis=item.availability_basis,
     )
     if not rows or stats.get("current_quality_flagged"):
         return {
@@ -168,7 +170,7 @@ def execute_item(item: SafraPublication, store: DriveBigQueryStore) -> dict[str,
         extra={
             "historical_backfill": True,
             "availability_verified": True,
-            "availability_basis": "official_page_timestamp_plausibility_checked",
+            "availability_basis": item.availability_basis,
             "safra": item.safra,
             "levantamento": item.levantamento,
             "item_url": item.item_url,
@@ -184,6 +186,7 @@ def execute_item(item: SafraPublication, store: DriveBigQueryStore) -> dict[str,
         "data_publicacao": item.data_publicacao,
         "data_coleta": data_coleta,
         "availability_verified": True,
+        "availability_basis": item.availability_basis,
         "parsing": stats,
         "load": loaded.to_dict(),
     }
@@ -223,6 +226,7 @@ def main() -> int:
                 "ready": sum(item["execution_status"] == "ready" for item in plan),
                 "blocked_missing_publication_time": sum(item["execution_status"] == "blocked_missing_original_publication_time" for item in plan),
                 "blocked_suspected_migration": sum(item["execution_status"] == "blocked_suspected_site_migration_timestamp" for item in plan),
+                "blocked_missing_evidence_basis": sum(item["execution_status"] == "blocked_missing_availability_evidence_basis" for item in plan),
             },
         }, ensure_ascii=False, indent=2))
         return 0
