@@ -1,0 +1,27 @@
+{
+  "contract_version": "1.0",
+  "source_id": "imea_operational_xlsx",
+  "status": "parser_loader_ready_not_production_homologated",
+  "sheets": {
+    "indicadores diarios": "mercado.imea_indicadores_operacionais",
+    "indicadores semanais": "mercado.imea_indicadores_operacionais",
+    "frete": "logistica.imea_frete_referencia",
+    "semeadura": "agro.imea_progresso_cultura",
+    "colheita": "agro.imea_progresso_cultura"
+  },
+  "rules": [
+    "frete IMEA e referencia publicada, nao frete efetivamente negociado",
+    "semeadura e colheita sao estimativas publicadas",
+    "ausencia regional nao vira zero",
+    "R$/T normaliza para R$/t preservando unidade_origem",
+    "carga append-only por snapshot_id + record_id",
+    "segunda carga identica deve inserir zero linhas",
+    "workbook operacional nao substitui o pacote auditado IMEA Agro v1.2"
+  ],
+  "promotion_gate": [
+    "parser QA pass",
+    "crosscheck com IMEA Agro v1.2",
+    "BigQuery idempotency pass",
+    "readiness inspector pass"
+  ]
+}
