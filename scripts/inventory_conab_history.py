@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from collector.conab_safra_history import discover_archive_by_pattern, discover_publications
@@ -12,11 +12,13 @@ from scripts.backfill_conab_safra import build_plan, merge_publications
 
 def summarize(plan: list[dict[str, object]]) -> dict[str, object]:
     by_safra: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "ready": 0, "blocked": 0})
+    basis: Counter[str] = Counter()
     for item in plan:
         safra = str(item.get("safra") or "unknown")
         by_safra[safra]["total"] += 1
         if item.get("execution_status") == "ready":
             by_safra[safra]["ready"] += 1
+            basis[str(item.get("availability_basis") or "unknown")] += 1
         else:
             by_safra[safra]["blocked"] += 1
     return {
@@ -24,6 +26,8 @@ def summarize(plan: list[dict[str, object]]) -> dict[str, object]:
         "ready": sum(item.get("execution_status") == "ready" for item in plan),
         "blocked_missing_publication_time": sum(item.get("execution_status") == "blocked_missing_original_publication_time" for item in plan),
         "blocked_suspected_site_migration": sum(item.get("execution_status") == "blocked_suspected_site_migration_timestamp" for item in plan),
+        "blocked_missing_evidence_basis": sum(item.get("execution_status") == "blocked_missing_availability_evidence_basis" for item in plan),
+        "ready_by_availability_basis": dict(sorted(basis.items())),
         "by_safra": dict(sorted(by_safra.items(), reverse=True)),
     }
 
@@ -47,8 +51,8 @@ def main() -> int:
     report = {
         "range": {"start_year": args.start_year, "end_year": args.end_year},
         "policy": {
-            "publication_timestamp": "official_page_timestamp_must_be_plausible_for_crop_season",
-            "site_migration_timestamp": "blocked_until_independent_original_availability_evidence",
+            "publication_timestamp": "official page or canonical nested page timestamp must be plausible for crop season",
+            "site_migration_timestamp": "blocked unless an official nested/original timestamp is independently recovered",
             "raw_download": False,
             "bigquery_write": False,
         },
