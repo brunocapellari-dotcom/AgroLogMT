@@ -55,6 +55,7 @@ def main() -> int:
             "geo_ids": sorted({record.geo_id for record in records}),
             "products": len({record.product_id for record in current}),
             "current_quality_flagged": len(flagged),
+            "quality_flag_examples": [record.to_dict() for record in flagged[:25]],
             "targets": targets,
         },
         "sheets": [],
