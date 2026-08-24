@@ -96,6 +96,125 @@
       "notes": "Workbook autorizado fora do Git. O fileId entra somente por ambiente/secret. Linhas de indicadores/frete/progresso preservam evidence_class/evidence_subtype proprios; frete e referencia IMEA, negotiated=false. Gated ate P0/P1 e compartilhamento explicito com a service account."
     },
     {
+      "source_id": "usda_fas_psd_commodities",
+      "name": "USDA FAS PSD - Commodities",
+      "group": "dados",
+      "method": "http_env_header",
+      "enabled": false,
+      "url": "https://api.fas.usda.gov/api/psd/commodities",
+      "expected_frequency": "monthly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "header_name": "X-Api-Key",
+        "header_env_var": "DATA_GOV_API_KEY",
+        "headers": {"Accept": "application/json"}
+      },
+      "notes": "Catalogo oficial de commodities/codigos PSD. Registrado e desabilitado ate validacao segura do secret/runtime e gate P0/P1."
+    },
+    {
+      "source_id": "usda_fas_psd_countries",
+      "name": "USDA FAS PSD - Countries",
+      "group": "dados",
+      "method": "http_env_header",
+      "enabled": false,
+      "url": "https://api.fas.usda.gov/api/psd/countries",
+      "expected_frequency": "monthly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "header_name": "X-Api-Key",
+        "header_env_var": "DATA_GOV_API_KEY",
+        "headers": {"Accept": "application/json"}
+      },
+      "notes": "Catalogo oficial de paises/codigos PSD. Registrado e desabilitado ate validacao segura do secret/runtime e gate P0/P1."
+    },
+    {
+      "source_id": "usda_fas_psd_attributes",
+      "name": "USDA FAS PSD - Commodity Attributes",
+      "group": "dados",
+      "method": "http_env_header",
+      "enabled": false,
+      "url": "https://api.fas.usda.gov/api/psd/commodityAttributes",
+      "expected_frequency": "monthly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "header_name": "X-Api-Key",
+        "header_env_var": "DATA_GOV_API_KEY",
+        "headers": {"Accept": "application/json"}
+      },
+      "notes": "Dicionario oficial dos atributos PSD de oferta, demanda, comercio e estoques. Gated ate validacao segura do runtime."
+    },
+    {
+      "source_id": "usda_fas_esr_release_dates",
+      "name": "USDA FAS ESR - Data Release Dates",
+      "group": "dados",
+      "method": "http_env_header",
+      "enabled": false,
+      "url": "https://api.fas.usda.gov/api/esr/datareleasedates",
+      "expected_frequency": "weekly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "header_name": "X-Api-Key",
+        "header_env_var": "DATA_GOV_API_KEY",
+        "headers": {"Accept": "application/json"}
+      },
+      "notes": "Calendario oficial de releases ESR. Deve servir como detector de delta antes de cargas maiores; nao implica que vendas tenham sido materializadas no BigQuery."
+    },
+    {
+      "source_id": "usda_fas_esr_commodities",
+      "name": "USDA FAS ESR - Commodities",
+      "group": "dados",
+      "method": "http_env_header",
+      "enabled": false,
+      "url": "https://api.fas.usda.gov/api/esr/commodities",
+      "expected_frequency": "monthly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "header_name": "X-Api-Key",
+        "header_env_var": "DATA_GOV_API_KEY",
+        "headers": {"Accept": "application/json"}
+      },
+      "notes": "Catalogo oficial de commodities ESR para mapeamento de soja, milho, algodao e demais produtos. Gated ate validacao segura do runtime."
+    },
+    {
+      "source_id": "usda_fas_gats_census_exports_release_dates",
+      "name": "USDA FAS GATS - Census Export Release Dates",
+      "group": "dados",
+      "method": "http_env_header",
+      "enabled": false,
+      "url": "https://api.fas.usda.gov/api/gats/census/data/exports/dataReleaseDates",
+      "expected_frequency": "daily",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "header_name": "X-Api-Key",
+        "header_env_var": "DATA_GOV_API_KEY",
+        "headers": {"Accept": "application/json"}
+      },
+      "notes": "Calendario oficial de publicacao/revisao GATS/Census Export. Detector de delta; os dados mensais devem ter carga propria depois do gate."
+    },
+    {
+      "source_id": "usda_fas_gats_census_imports_release_dates",
+      "name": "USDA FAS GATS - Census Import Release Dates",
+      "group": "dados",
+      "method": "http_env_header",
+      "enabled": false,
+      "url": "https://api.fas.usda.gov/api/gats/census/data/imports/dataReleaseDates",
+      "expected_frequency": "daily",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "header_name": "X-Api-Key",
+        "header_env_var": "DATA_GOV_API_KEY",
+        "headers": {"Accept": "application/json"}
+      },
+      "notes": "Calendario oficial de publicacao/revisao GATS/Census Import. Detector de delta; os dados mensais devem ter carga propria depois do gate."
+    },
+    {
       "source_id": "conab_noticias",
       "name": "CONAB - Noticias",
       "group": "radar",
