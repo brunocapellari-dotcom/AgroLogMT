@@ -47,7 +47,7 @@ def _clean(value: Any) -> str | None:
     return text or None
 
 
-def _number(value: Any) -> float | None:
+def _number(value: Any, *, brazilian_thousands: bool = False) -> float | None:
     text = _clean(value)
     if text is None:
         return None
@@ -67,6 +67,10 @@ def _number(value: Any) -> float | None:
             text = text.replace(",", "")
     elif text.count(".") > 1:
         text = text.replace(".", "")
+    elif brazilian_thousands and "." in text:
+        integer, decimal = text.split(".", 1)
+        if len(decimal) == 3 and integer.lstrip("-").isdigit():
+            text = integer + decimal
     try:
         return float(text)
     except ValueError:
@@ -186,7 +190,7 @@ def parse_conab_armazens(
         uf = (_pick(normalized, "uf") or "").upper() or None
         codigo_ibge = _pick(normalized, "codigo_ibge")
         tipo_armazenagem = _pick(normalized, "tipo_armazenagem")
-        capacidade = _number(_pick(normalized, "capacidade_estatica_t"))
+        capacidade = _number(_pick(normalized, "capacidade_estatica_t"), brazilian_thousands=True)
         latitude = _coord(_pick(normalized, "latitude"), -90.0, 90.0)
         longitude = _coord(_pick(normalized, "longitude"), -180.0, 180.0)
 
