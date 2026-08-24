@@ -5,6 +5,7 @@ import json
 import mimetypes
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from .models import RunManifest, SourceSpec
@@ -96,6 +97,15 @@ class DriveBigQueryStore:
             parent = self._ensure_folder(parent, segment)
         return parent
 
+    def _existing_raw(self, parent_id: str, filename: str) -> str | None:
+        safe_name = self._escape_drive_query(filename)
+        safe_parent = self._escape_drive_query(parent_id)
+        existing = self.drive.files().list(
+            q=f"'{safe_parent}' in parents and name='{safe_name}' and trashed=false",
+            fields="files(id,name,size)", pageSize=10,
+        ).execute().get("files", [])
+        return existing[0]["id"] if existing else None
+
     def store_raw(self, spec: SourceSpec, payload: bytes, sha256: str, collected_at: datetime | None = None) -> StoredArtifact:
         from googleapiclient.http import MediaIoBaseUpload
 
@@ -103,17 +113,40 @@ class DriveBigQueryStore:
         ext = (spec.file_extension or "bin").lstrip(".")
         filename = f"{sha256}.{ext}"
         parent_id = self._artifact_parent(spec, ts)
-        safe_name = self._escape_drive_query(filename)
-        safe_parent = self._escape_drive_query(parent_id)
-        existing = self.drive.files().list(q=f"'{safe_parent}' in parents and name='{safe_name}' and trashed=false", fields="files(id,name,size)", pageSize=10).execute().get("files", [])
-        if existing:
-            file_id = existing[0]["id"]
-        else:
+        file_id = self._existing_raw(parent_id, filename)
+        if not file_id:
             mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
             media = MediaIoBaseUpload(io.BytesIO(payload), mimetype=mime, resumable=False)
             created = self.drive.files().create(body={"name": filename, "parents": [parent_id]}, media_body=media, fields="id").execute()
             file_id = created["id"]
         return StoredArtifact(path=f"drive://{file_id}", sha256=sha256, size=len(payload))
+
+    def store_raw_file(
+        self,
+        spec: SourceSpec,
+        path: str | Path,
+        sha256: str,
+        collected_at: datetime | None = None,
+    ) -> StoredArtifact:
+        """Upload resumível de RAW grande sem materializar o arquivo inteiro em RAM."""
+        from googleapiclient.http import MediaFileUpload
+
+        source = Path(path)
+        if not source.is_file():
+            raise FileNotFoundError(source)
+        ts = collected_at or datetime.now(timezone.utc)
+        ext = (spec.file_extension or source.suffix.lstrip(".") or "bin").lstrip(".")
+        filename = f"{sha256}.{ext}"
+        parent_id = self._artifact_parent(spec, ts)
+        file_id = self._existing_raw(parent_id, filename)
+        if not file_id:
+            mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+            media = MediaFileUpload(str(source), mimetype=mime, resumable=True, chunksize=8 * 1024 * 1024)
+            created = self.drive.files().create(
+                body={"name": filename, "parents": [parent_id]}, media_body=media, fields="id"
+            ).execute()
+            file_id = created["id"]
+        return StoredArtifact(path=f"drive://{file_id}", sha256=sha256, size=source.stat().st_size)
 
     def write_manifest(self, manifest: RunManifest) -> str:
         row = {
