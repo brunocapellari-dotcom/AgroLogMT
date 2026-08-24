@@ -45,7 +45,7 @@ class GeopoliticalReportTests(unittest.TestCase):
         cluster = cluster_events([first, second])[0]
         self.assertEqual(corroboration_status(cluster), "single_publisher_osint")
 
-    def test_reliefweb_is_curated_report(self) -> None:
+    def test_reliefweb_is_curated_report_without_fake_conflict_actor(self) -> None:
         payload = json.dumps(
             {
                 "data": [
@@ -68,7 +68,7 @@ class GeopoliticalReportTests(unittest.TestCase):
         event = events[0]
         self.assertEqual(event.verification_level, "curated_report")
         self.assertEqual(event.country, "Testland")
-        self.assertEqual(event.actors, ("OCHA",))
+        self.assertEqual(event.actors, ())
         self.assertIn("shipping", event.impact_areas)
         self.assertIn("energy", event.impact_areas)
 
