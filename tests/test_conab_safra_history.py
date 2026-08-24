@@ -31,15 +31,14 @@ class ConabSafraHistoryTests(unittest.TestCase):
         <a href="/conab/10o-levantamento-safra-2025-26">10</a>
         <a href="/conab/12o-levantamento-safra-2024-25">12</a>
         '''
-        item = '''
-        <meta property="article:published_time" content="2026-08-13T09:30:00-04:00">
-        <a href="previsao_de_safra.xlsx/view">xlsx</a>
-        '''
+        item_11 = '<meta property="article:published_time" content="2026-08-13T09:30:00-04:00"><a href="previsao_de_safra.xlsx/view">xlsx</a>'
+        item_10 = '<meta property="article:published_time" content="2026-07-14T09:30:00-04:00"><a href="previsao_de_safra.xlsx/view">xlsx</a>'
+        item_12 = '<meta property="article:published_time" content="2025-09-11T09:30:00-04:00"><a href="previsao_de_safra.xlsx/view">xlsx</a>'
         get_text.side_effect = [
             (listing, "https://www.gov.br/conab/list"),
-            (item, "https://www.gov.br/conab/11o-levantamento-safra-2025-26"),
-            (item, "https://www.gov.br/conab/10o-levantamento-safra-2025-26"),
-            (item, "https://www.gov.br/conab/12o-levantamento-safra-2024-25"),
+            (item_11, "https://www.gov.br/conab/11o-levantamento-safra-2025-26"),
+            (item_10, "https://www.gov.br/conab/10o-levantamento-safra-2025-26"),
+            (item_12, "https://www.gov.br/conab/12o-levantamento-safra-2024-25"),
         ]
         rows = discover_publications("https://www.gov.br/conab/list")
         self.assertEqual([(r.safra, r.levantamento) for r in rows], [
