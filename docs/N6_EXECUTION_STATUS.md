@@ -26,8 +26,34 @@ Este documento registra o estado operacional do caminho crítico N6. `docs/N6_PR
 | 11 | Validar Gateway ponta a ponta | READY / BLOCKED-GCP | `scripts/validate_gateway_n6.py` compara Gateway x BigQuery |
 | 12 | Fechar P0/P1 | BLOCKED-GCP | somente após PASS dos validadores e comparação OpenAI/Codex x Claude |
 | 13 | CONAB Safra point-in-time | DONE no parser/probe; GATED para produção | adapter GOV.BR + XLSX reader + parser produto×UF/BR + live probe + testes |
-| 14 | IMEA + Comex Stat | GATED, contratos prontos | `contracts/imea_agro.v1.json`, Issue #1 migrada, `contracts/comexstat.v1.json` |
-| 15 | Clima/hidrologia + Data Mart Soja MT | GATED, contrato pronto | `contracts/climate_hydrology.v1.json` + `docs/SOY_MT_DATAMART.md` |
+| 14 | IMEA + Comex Stat | DONE no código de preparação; GATED para produção | pipeline IMEA Drive autorizado e diagnóstico TLS Comex integrados em 24/08; produção depende de P0/P1 e fonte/runtime |
+| 15 | Clima/hidrologia + Data Mart Soja MT | DONE parcial / GATED | ET0 Hargreaves-Samani baseline integrado; ANA/contrato climático prontos; Data Mart só após QA das fontes canônicas |
+| 16 | `NEWS_SIGNAL v0.5` | DONE no contrato/writer; GATED produtor real | genealogia, idempotência, writer local/Drive e provider readback integrados; primeiro produtor deve usar fonte material homologada |
+
+## Aceleração consolidada — 24/08/2026
+
+Foram promovidos para `main`, após CI verde e revisão, cinco blocos que estavam maduros e fail-closed:
+
+- PR #95 — `NEWS_SIGNAL v0.5`: genealogia, idempotência, contrato JSON Schema, writer local/Drive, provider readback e testes;
+- PR #92 — inventário histórico CONAB 2010+ em paralelo e vintage registry;
+- PR #93 — diagnóstico Comex TLS atual/transitório sem `verify=false`/`curl -k`;
+- PR #94 — ET0 Hargreaves-Samani baseline e resumo auditável de déficit/superávit hídrico;
+- PR #91 — pipeline IMEA de workbook autorizado no Drive para RAW/QA/BigQuery, registrado porém `enabled=false` por padrão.
+
+As PRs antigas #12 e #25 foram fechadas como **superseded** para impedir retorno ao schema/view anterior de Armazéns/Gateway. A evidência real útil da #12 foi preservada como benchmark histórico nos Issues #9/#13.
+
+## CONAB Armazéns — benchmark histórico preservado
+
+Em 13/08/2026 houve um piloto real da arquitetura anterior de Armazéns com:
+
+- 18.807 armazéns;
+- 1 snapshot `COMPLETO`;
+- 18.807 membros de snapshot;
+- Mato Grosso: 2.917 armazéns, 107 municípios e 58.368.190 t;
+- terceira execução: novos=0, alterados=0, inalterados=18.807, ausentes=0;
+- sem duplicação analítica e sem correção manual de dados.
+
+Esse resultado valida **escala esperada, semântica e comportamento idempotente histórico**, mas não fecha o P0 atual: o contrato corrente usa `collector/conab_armazens*` e `logistica.armazens_conab`. O trabalho restante é re-homologar equivalência no runtime/schema atual, sem repetir investigação já resolvida.
 
 ## Comando de homologação P0/P1
 
@@ -57,7 +83,8 @@ A fonte `conab_safra_graos_xlsx` permanece `enabled=false` em produção até P0
 - IDs canônicos iniciais de produtos;
 - quality gate de não-negatividade e identidade área × produtividade ≈ produção;
 - tolerância de QA para arredondamento publicado em linhas de pequeno volume, evitando falso positivo percentual;
-- workflow de live probe que consulta a fonte real sem versionar o workbook no GitHub.
+- workflow de live probe que consulta a fonte real sem versionar o workbook no GitHub;
+- inventário histórico profundo em blocos 2010–2013, 2014–2017, 2018–2021 e 2022–2025, com registry deduplicado e preferência por timestamp oficial verificável.
 
 ### Evidência do probe em 24/08/2026
 
@@ -85,15 +112,19 @@ Os valores acima são leitura da publicação corrente e não substituem o armaz
 
 ## IMEA
 
-O trabalho pré-produção preservado em `bootstrap/v3-conab-imea` foi recuperado como insumo de migração, não como segunda fonte canônica. O contrato atual define snapshots, indicadores confiáveis, custo de produção, Oferta & Demanda e Estimativas. O merge bruto do branch histórico é proibido; parsers/QA úteis devem ser migrados incrementalmente.
+O pipeline operacional atual está integrado à `main`: workbook autorizado por fileId de ambiente → download Drive → cópia RAW → parser/QA → loader BigQuery → manifesto/estado. A fonte permanece `enabled=false` por padrão e só pode ser ativada após P0/P1, compartilhamento explícito com a service account e QA real do workbook autorizado. Frete IMEA continua referência observada, não frete negociado/realizado.
 
 ## Comex Stat
 
-O contrato atual separa NCM de Município-SH4, preserva semântica geográfica e proíbe converter URF automaticamente em porto. A ingestão de arquivos anuais deverá ser streaming/chunked; o coletor genérico bytes-in-memory não deve ser usado para microdados grandes.
+O contrato atual separa NCM de Município-SH4, preserva semântica geográfica e proíbe converter URF automaticamente em porto. A ingestão de arquivos anuais deverá ser streaming/chunked; o coletor genérico bytes-in-memory não deve ser usado para microdados grandes. O diagnóstico de 24/08 compara domínio atual e transitório com verificação TLS obrigatória; falha de cadeia continua `unavailable`, nunca justificativa para desabilitar TLS.
 
 ## Clima e hidrologia
 
-O contrato inicial separa observação ANA, produto modelado NASA POWER e reanálise ERA5/AgERA5. Forecast/reanálise/estação não podem ser misturados sem subtype, e backtests devem preservar initialization/availability quando aplicável.
+O contrato separa observação ANA, produto modelado NASA POWER e reanálise ERA5/AgERA5. Forecast/reanálise/estação não podem ser misturados sem subtype, e backtests devem preservar initialization/availability quando aplicável. O baseline Hargreaves-Samani usa radiação extraterrestre FAO-56 e serve apenas quando as entradas necessárias ao Penman-Monteith não estão homologadas; não substitui FAO-56 PM em produção científica quando dados confiáveis estiverem disponíveis.
+
+## AgroLog News / `NEWS_SIGNAL`
+
+O writer canônico v0.5 está integrado à `main`. Todo sinal deve preservar genealogia, rule/baseline version, transformação e idempotency key. Drive é persistência operacional temporária e todo write exige readback. A mera mudança de hash/arquivo **não** autoriza sinal: um produtor real deve existir por domínio/fonte com regra de materialidade explícita e evidência rastreável.
 
 ## Regra de materialização do Data Mart Soja MT
 
@@ -101,4 +132,4 @@ O contrato inicial separa observação ANA, produto modelado NASA POWER e reaná
 
 ## Próximo gate após P0/P1
 
-A expansão produtiva passa a seguir esta ordem: CONAB Safra → migração IMEA → Comex Stat → clima/ANA → Data Mart Soja MT → treino dos seis modelos iniciais → backtests point-in-time → relatório N6 integrado → auditoria de promoção.
+A expansão produtiva passa a seguir esta ordem: CONAB Safra → IMEA → Comex Stat → clima/ANA → Data Mart Soja MT → treino dos seis modelos iniciais → backtests point-in-time → relatório N6 integrado → auditoria de promoção. Em paralelo, `NEWS_SIGNAL` pode receber produtores reais apenas para fontes já homologadas, mantendo publicação externa bloqueada até os hard gates editoriais.
