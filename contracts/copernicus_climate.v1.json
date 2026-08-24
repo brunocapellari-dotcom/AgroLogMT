@@ -1,0 +1,34 @@
+{
+  "contract_version": "1.0",
+  "status": "request_builders_ready_credentials_not_in_repo",
+  "sources": {
+    "agera5_v2": {
+      "dataset": "sis-agrometeorological-indicators-timeseries",
+      "coverage_start": "1979-01-01",
+      "resolution": "0.1 degree daily",
+      "evidence_class": "estimado",
+      "evidence_subtype": "agera5_v2_reanalysis_downscaled",
+      "notes": "AgERA5 v2 remains the active daily-updated version; v1/v1.1 are superseded."
+    },
+    "era5_land": {
+      "dataset": "reanalysis-era5-land-timeseries",
+      "coverage_start": "1950-01-01",
+      "resolution": "0.1 degree hourly time-series",
+      "evidence_class": "estimado",
+      "evidence_subtype": "era5_land_reanalysis",
+      "notes": "Use for land/soil-water history; not station observation."
+    }
+  },
+  "credential_policy": [
+    "CDS credentials are injected by secret/environment only",
+    "never commit .cdsapirc or API key",
+    "licence acceptance is external account state and must be verified before retrieval"
+  ],
+  "crosscheck_gate": [
+    "pair station and gridded data by date/metric",
+    "calculate mean bias, MAE, RMSE and correlation",
+    "retain region/season-specific bias diagnostics",
+    "do not overwrite raw gridded values with station corrections without versioned methodology"
+  ],
+  "derived_baselines": ["reference_et0", "water_balance", "soil_water_deficit", "growing_degree_days"]
+}
