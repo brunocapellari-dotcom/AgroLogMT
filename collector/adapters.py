@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
+from html import unescape
 from typing import Protocol
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from .models import SourceSpec
@@ -23,23 +25,47 @@ class Adapter(Protocol):
     def fetch(self, spec: SourceSpec) -> AcquisitionResult: ...
 
 
+def _http_get(url: str, *, headers: dict[str, str] | None = None, timeout: int = 60) -> AcquisitionResult:
+    request_headers = {"User-Agent": "AgroLogMT/0.1 (+source-monitor)"}
+    request_headers.update(headers or {})
+    request = Request(url, headers=request_headers)
+    with urlopen(request, timeout=timeout) as response:
+        return AcquisitionResult(
+            payload=response.read(),
+            observed_url=response.geturl(),
+            content_type=response.headers.get("Content-Type"),
+            etag=response.headers.get("ETag"),
+            last_modified=response.headers.get("Last-Modified"),
+        )
+
+
+def extract_html_links(html: str, base_url: str) -> list[str]:
+    """Extrai hrefs em ordem documental e resolve links relativos."""
+    links: list[str] = []
+    for match in re.finditer(r"href\s*=\s*([\"'])(.*?)\1", html, flags=re.IGNORECASE | re.DOTALL):
+        href = unescape(match.group(2)).strip()
+        if href and not href.lower().startswith(("javascript:", "mailto:", "tel:")):
+            links.append(urljoin(base_url, href))
+    return links
+
+
+def select_first_matching_link(links: list[str], pattern: str, *, same_host_as: str | None = None) -> str:
+    regex = re.compile(pattern, flags=re.IGNORECASE)
+    expected_host = urlsplit(same_host_as).hostname if same_host_as else None
+    for link in links:
+        if expected_host and urlsplit(link).hostname != expected_host:
+            continue
+        if regex.search(link):
+            return link
+    raise RuntimeError(f"Nenhum link compatível com pattern={pattern!r}")
+
+
 class HttpAdapter:
     def fetch(self, spec: SourceSpec) -> AcquisitionResult:
         if not spec.url:
             raise ValueError(f"Fonte {spec.source_id} sem URL")
-        headers = {"User-Agent": "AgroLogMT/0.1 (+source-monitor)"}
-        headers.update(spec.options.get("headers", {}))
-        request = Request(spec.url, headers=headers)
         timeout = int(spec.options.get("timeout_seconds", 60))
-        with urlopen(request, timeout=timeout) as response:
-            payload = response.read()
-            return AcquisitionResult(
-                payload=payload,
-                observed_url=response.geturl(),
-                content_type=response.headers.get("Content-Type"),
-                etag=response.headers.get("ETag"),
-                last_modified=response.headers.get("Last-Modified"),
-            )
+        return _http_get(spec.url, headers=spec.options.get("headers", {}), timeout=timeout)
 
 
 class EnvHeaderHttpAdapter:
@@ -131,10 +157,9 @@ class CkanResourceAdapter:
             raise ValueError("CKAN exige options.base_url e options.dataset_id")
 
         api_url = f"{base_url}/api/3/action/package_show?{urlencode({'id': dataset_id})}"
-        request = Request(api_url, headers={"User-Agent": "AgroLogMT/0.1"})
         timeout = int(spec.options.get("timeout_seconds", 60))
-        with urlopen(request, timeout=timeout) as response:
-            body = json.loads(response.read().decode("utf-8"))
+        response = _http_get(api_url, headers={"User-Agent": "AgroLogMT/0.1"}, timeout=timeout)
+        body = json.loads(response.payload.decode("utf-8"))
         if not body.get("success"):
             raise RuntimeError(f"CKAN package_show falhou para {dataset_id}")
 
@@ -153,22 +178,44 @@ class CkanResourceAdapter:
         resource_url = selected.get("url")
         if not resource_url:
             raise RuntimeError("Recurso CKAN sem URL")
-        child_spec = SourceSpec(
-            source_id=spec.source_id,
-            name=spec.name,
-            group=spec.group,
-            method="http",
-            url=resource_url,
-            expected_frequency=spec.expected_frequency,
-            file_extension=spec.file_extension,
-            evidence_class=spec.evidence_class,
-            source_timezone=spec.source_timezone,
-            notes=spec.notes,
-            options={"timeout_seconds": timeout, "headers": spec.options.get("headers", {})},
-        )
-        result = HttpAdapter().fetch(child_spec)
+        result = _http_get(resource_url, headers=spec.options.get("headers", {}), timeout=timeout)
         result.content_type = result.content_type or selected.get("mimetype") or selected.get("format")
         return result
+
+
+class GovBrLatestAttachmentAdapter:
+    """Descobre o item mais recente em uma listagem GOV.BR e baixa um anexo oficial.
+
+    O adapter é determinístico: segue apenas links no mesmo host da página inicial,
+    seleciona o primeiro item que casa com `item_url_regex`, depois o primeiro anexo
+    que casa com `attachment_url_regex`. Para arquivos Plone terminados em `/view`,
+    converte para `/@@download/file`.
+    """
+
+    def fetch(self, spec: SourceSpec) -> AcquisitionResult:
+        if not spec.url:
+            raise ValueError(f"Fonte {spec.source_id} sem URL")
+        timeout = int(spec.options.get("timeout_seconds", 60))
+        item_pattern = str(spec.options.get("item_url_regex", r"/\d+[oº]-levantamento-safra-"))
+        attachment_pattern = str(spec.options.get("attachment_url_regex", r"\.xlsx(?:/view)?(?:$|[?#])"))
+        headers = spec.options.get("headers", {})
+
+        listing = _http_get(spec.url, headers=headers, timeout=timeout)
+        listing_html = listing.payload.decode("utf-8", errors="replace")
+        item_url = select_first_matching_link(
+            extract_html_links(listing_html, listing.observed_url), item_pattern, same_host_as=listing.observed_url
+        )
+        item = _http_get(item_url, headers=headers, timeout=timeout)
+        item_html = item.payload.decode("utf-8", errors="replace")
+        attachment_url = select_first_matching_link(
+            extract_html_links(item_html, item.observed_url), attachment_pattern, same_host_as=item.observed_url
+        )
+        if attachment_url.endswith("/view"):
+            attachment_url = attachment_url[:-5] + "/@@download/file"
+        elif re.search(r"\.xlsx(?:$|[?#])", attachment_url, flags=re.IGNORECASE):
+            clean = attachment_url.split("#", 1)[0].split("?", 1)[0]
+            attachment_url = clean.rstrip("/") + "/@@download/file"
+        return _http_get(attachment_url, headers=headers, timeout=timeout)
 
 
 def get_adapter(method: str) -> Adapter:
@@ -181,6 +228,8 @@ def get_adapter(method: str) -> Adapter:
         return EnvQueryHttpAdapter()
     if normalized in {"ckan", "ckan_resource"}:
         return CkanResourceAdapter()
+    if normalized in {"govbr_latest_attachment", "govbr_attachment"}:
+        return GovBrLatestAttachmentAdapter()
     raise NotImplementedError(
         f"Metodo '{method}' ainda nao implementado. Ordem de fallback aprovada: "
         "HTTP/API/arquivo -> Crawl4AI -> Playwright -> browser-use."
