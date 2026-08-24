@@ -36,6 +36,22 @@
       "notes": "P0 N6. Snapshot oficial do cadastro de armazens. Ausencia em snapshot posterior nao significa exclusao automatica."
     },
     {
+      "source_id": "conab_safra_graos_xlsx",
+      "name": "CONAB - Safra de Graos - tabela oficial do ultimo levantamento",
+      "group": "dados",
+      "method": "govbr_latest_attachment",
+      "enabled": false,
+      "url": "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos",
+      "expected_frequency": "monthly",
+      "file_extension": "xlsx",
+      "evidence_class": "estimado",
+      "options": {
+        "item_url_regex": "/[0-9]+o-levantamento-safra-[0-9]{4}-[0-9]{2}/?$",
+        "attachment_url_regex": "previsao_de_safra.*\\.xlsx(?:/view)?(?:$|[?#])"
+      },
+      "notes": "N6 etapa seguinte. Mantida desabilitada ate a homologacao P0/P1. Cada publicacao deve preservar seu proprio snapshot/data_publicacao para reconstrução point-in-time; revisoes futuras nao substituem vintages anteriores."
+    },
+    {
       "source_id": "conab_noticias",
       "name": "CONAB - Noticias",
       "group": "radar",
