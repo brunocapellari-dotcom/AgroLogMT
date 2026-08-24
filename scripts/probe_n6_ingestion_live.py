@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import socket
+import ssl
 from datetime import date
 from pathlib import Path
+from urllib.error import URLError
 
 from collector.comexstat import dataset_url, fetch_header_sample, validate_header_sample
 from collector.conab_safra_history import discover_publications
@@ -17,6 +20,7 @@ def probe_comex() -> dict[str, object]:
     observed_url, sample, metadata = fetch_header_sample(url)
     columns = validate_header_sample(sample, "ncm_export")
     return {
+        "status": "ok",
         "url": observed_url,
         "content_type": metadata["content_type"],
         "content_length_header": metadata["content_length"],
@@ -40,6 +44,7 @@ def probe_power() -> dict[str, object]:
     if missing:
         raise RuntimeError(f"NASA POWER não retornou parâmetros esperados: {missing}")
     return {
+        "status": "ok",
         "url": observed_url,
         "rows": len(rows),
         "parameters": present,
@@ -59,6 +64,7 @@ def probe_ibge() -> dict[str, object]:
     if len({row.codigo_ibge for row in rows}) != len(rows):
         raise RuntimeError("IBGE Localidades retornou código municipal duplicado")
     return {
+        "status": "ok",
         "url": observed_url,
         "municipalities_mt": len(rows),
         "unique_codes": len({row.codigo_ibge for row in rows}),
@@ -74,21 +80,56 @@ def probe_conab_history() -> dict[str, object]:
     if len(set(identities)) != len(identities):
         raise RuntimeError("CONAB histórico: identidades safra/levantamento duplicadas")
     return {
+        "status": "ok",
         "count": len(publications),
         "items": [item.to_dict() for item in publications],
     }
 
 
+def _is_network_error(exc: BaseException) -> bool:
+    network_types = (URLError, TimeoutError, ConnectionError, socket.timeout, socket.gaierror, ssl.SSLError, OSError)
+    if isinstance(exc, network_types):
+        return True
+    module = type(exc).__module__
+    name = type(exc).__name__
+    return module.startswith("requests") and name in {
+        "ConnectionError", "ConnectTimeout", "ReadTimeout", "SSLError", "ProxyError",
+    }
+
+
+def run_probe(name: str, fn, *, strict_network: bool) -> dict[str, object]:
+    try:
+        return fn()
+    except Exception as exc:
+        if _is_network_error(exc) and not strict_network:
+            return {
+                "status": "unavailable",
+                "reason": "external_network_or_tls",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:500],
+            }
+        raise RuntimeError(f"{name} contract probe failed: {exc}") from exc
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Probe read-only das próximas fontes do ciclo N6")
     parser.add_argument("--out", default="n6_ingestion_probe.json")
+    parser.add_argument(
+        "--strict-network",
+        action="store_true",
+        help="Trata indisponibilidade externa como falha; por padrão somente regressões de contrato falham o CI.",
+    )
     args = parser.parse_args()
 
     report = {
-        "conab_history": probe_conab_history(),
-        "comexstat": probe_comex(),
-        "nasa_power": probe_power(),
-        "ibge": probe_ibge(),
+        "policy": {
+            "network_unavailability": "fail" if args.strict_network else "record_unavailable",
+            "contract_or_semantic_mismatch": "fail",
+        },
+        "conab_history": run_probe("conab_history", probe_conab_history, strict_network=args.strict_network),
+        "comexstat": run_probe("comexstat", probe_comex, strict_network=args.strict_network),
+        "nasa_power": run_probe("nasa_power", probe_power, strict_network=args.strict_network),
+        "ibge": run_probe("ibge", probe_ibge, strict_network=args.strict_network),
     }
     text = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True)
     print(text)
