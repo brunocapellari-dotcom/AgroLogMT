@@ -1,0 +1,67 @@
+{
+  "registry_version": "0.1.0",
+  "promotion_rule": "Nenhum modelo recebe status production_validated sem baseline, validação temporal, out-of-sample, análise de estabilidade e auditoria independente.",
+  "models": [
+    {
+      "model_id": "ALMT-SOY-YIELD-001",
+      "name": "Produtividade de soja MT",
+      "status": "specified_waiting_historical_dataset",
+      "target": "agro.produtividade",
+      "horizons": ["pre_safra", "plantio", "vegetativo", "reprodutivo", "pre_colheita"],
+      "candidate_inputs": ["chuva", "temperatura", "balanco_hidrico", "umidade_solo", "data_plantio", "progresso_safra", "NDVI_EVI", "solo"],
+      "baselines": ["media_movel_5_safras", "tendencia_linear"],
+      "metrics": ["MAE", "RMSE", "MAPE"],
+      "validation": "leave-one-safra-out + rolling-origin point-in-time"
+    },
+    {
+      "model_id": "ALMT-SOY-BALANCE-001",
+      "name": "Balanço oferta e demanda soja MT",
+      "status": "specified_waiting_canonical_inputs",
+      "target": "estoque_final",
+      "identity": "estoque_inicial + producao + entradas - esmagamento - exportacao - outras_saidas = estoque_final",
+      "baselines": ["ultimo_vintage_oficial"],
+      "metrics": ["erro_componentes", "erro_estoque_final"],
+      "validation": "reconciliação contábil por vintage e safra"
+    },
+    {
+      "model_id": "ALMT-SOY-PARITY-001",
+      "name": "Paridade de exportação soja MT",
+      "status": "specified_waiting_canonical_inputs",
+      "target": "capacidade_pagamento_interior",
+      "identity": "CBOT + premio + cambio - custos_portuarios - transporte - custos_comerciais",
+      "baselines": ["paridade_deterministica"],
+      "metrics": ["MAE_vs_preco_fisico", "erro_componentes"],
+      "validation": "walk-forward diário sem look-ahead"
+    },
+    {
+      "model_id": "ALMT-SOY-EXPORT30-001",
+      "name": "Exportação de soja 30 dias",
+      "status": "specified_waiting_historical_dataset",
+      "target": "comex.exportacao_soja",
+      "candidate_inputs": ["lineup", "movimentacao_portuaria", "sazonalidade", "comercializacao", "estoque", "premio", "cambio", "congestionamento"],
+      "baselines": ["mesmo_periodo_ano_anterior", "media_sazonal_5_anos"],
+      "metrics": ["MAE", "RMSE", "MAPE"],
+      "validation": "rolling-origin mensal/semanal"
+    },
+    {
+      "model_id": "ALMT-FREIGHT-PRESSURE-001",
+      "name": "Pressão de frete rodoviário MT",
+      "status": "specified_waiting_historical_dataset",
+      "target": "quant.pressao_frete",
+      "candidate_inputs": ["MDFE_fluxo", "safra", "exportacao", "lineup", "diesel", "oferta_frete_observada", "retorno", "congestionamento", "capacidade_intermodal"],
+      "baselines": ["sazonalidade_rota", "indice_demanda_carga"],
+      "metrics": ["MAE_para_referencia_de_frete", "direcional", "estabilidade_regime"],
+      "validation": "walk-forward por rota/produto; frete real pago somente se fonte autorizada"
+    },
+    {
+      "model_id": "ALMT-AGROCLIMATE-RISK-001",
+      "name": "Risco agroclimático soja MT",
+      "status": "specified_waiting_historical_dataset",
+      "target": "quant.risco_agroclimatico",
+      "candidate_inputs": ["chuva", "temperatura", "ET0", "umidade_solo", "fenologia", "forecast_ensemble"],
+      "baselines": ["climatologia", "frequencia_historica_evento"],
+      "metrics": ["Brier", "calibration", "reliability", "ROC_AUC_quando_aplicavel"],
+      "validation": "hindcast point-in-time por safra e região"
+    }
+  ]
+}

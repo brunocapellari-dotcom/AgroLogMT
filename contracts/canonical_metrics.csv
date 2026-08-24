@@ -1,0 +1,37 @@
+metric_id,domain,description,canonical_unit,evidence_default,source_priority,notes
+agro.area_plantada,agro,Área plantada,ha,observado,CONAB|IMEA|IBGE,Preservar safra e vintage
+agro.area_colhida,agro,Área colhida,ha,observado,CONAB|IBGE,Preservar safra e vintage
+agro.producao,agro,Produção agrícola,t,observado,CONAB|IMEA|IBGE,Classificação deve refletir a fonte
+agro.produtividade,agro,Produtividade,kg/ha,observado,CONAB|IMEA|IBGE,Não recalcular sem registrar metodologia
+agro.plantio_progresso,agro,Percentual plantado,%,observado,IMEA|CONAB,Valor por data de referência
+agro.colheita_progresso,agro,Percentual colhido,%,observado,IMEA|CONAB,Valor por data de referência
+armazenagem.capacidade_estatica,logistica,Capacidade estática de armazenagem,t,observado,CONAB,Snapshot cadastral
+armazenagem.unidades,logistica,Quantidade de unidades armazenadoras,unidade,inferido,CONAB,COUNT DISTINCT warehouse_id do snapshot
+mercado.preco_fisico_soja,markets,Preço físico da soja,BRL/sc,observado,IMEA|CEPEA,Registrar praça e condição comercial
+mercado.comercializacao_soja,markets,Percentual comercializado da safra,%,observado,IMEA,Preservar metodologia e vintage
+mercado.cbot_soja,markets,Futuro de soja CBOT,USD/bu,observado,CME,Contrato e vencimento obrigatórios
+mercado.premio_soja,markets,Prêmio de exportação da soja,USD/bu,observado,fonte_autorizada|mercado,Registrar porto e janela
+mercado.basis_soja,markets,Basis da soja,BRL/sc,inferido,AgroLog,Metodologia versionada
+macro.cambio_brl_usd,macro,Câmbio BRL/USD,BRL/USD,observado,BCB,Definir PTAX ou spot conforme uso
+comex.exportacao_soja,comex,Exportação de soja,t,observado,ComexStat,Preservar NCM país UF via URF
+comex.exportacao_soja_fob,comex,Valor FOB exportado de soja,USD,observado,ComexStat,Preservar NCM país UF via URF
+industria.esmagamento_soja,industry,Esmagamento de soja,t,observado,ABIOVE|fonte_autorizada,Não inferir usina individual sem base
+logistica.frete_rodoviario_oferta,logistica,Valor observado de oferta de frete,BRL/t,observado,IMEA|FreightListener,Não significa frete efetivamente pago
+logistica.fluxo_rodoviario,logistica,Fluxo rodoviário de carga,t,observado,ANTT_MDFE,Filtrar NCM e natureza do transportador
+logistica.tku_rodoviaria,logistica,Trabalho de transporte rodoviário,t.km,observado,ANTT_MDFE,Não interpretar como preço
+logistica.diesel_s10,energia,Preço diesel S10,BRL/l,observado,ANP,Registrar local e tipo de preço
+portos.movimentacao_soja,portos,Movimentação portuária de soja,t,observado,ANTAQ,Separar embarque e desembarque
+portos.lineup_soja,portos,Volume programado em line-up,t,observado,PortoOficial,Programado não é realizado
+portos.escalas_soja,portos,Escalas distintas com soja,escala,inferido,PortoOficial,Preferir DUV e semana de desatracação para concluídos
+hidro.nivel_rio,climate,Nível fluviométrico,m,observado,ANA,Registrar estação
+hidro.vazao_rio,climate,Vazão fluvial,m3/s,observado,ANA,Registrar estação
+clima.precipitacao,climate,Precipitação,mm,observado,INMET|ANA|NOAA,Classificar grade e reanálise separadamente
+clima.temperatura_media,climate,Temperatura média,°C,observado,INMET|NOAA,Classificar grade e reanálise separadamente
+clima.et0,climate,Evapotranspiração de referência,mm,estimado,AgroLog|fonte_canonica,Metodologia obrigatória
+clima.umidade_solo,climate,Umidade do solo,%,observado,fonte_canonica,Profundidade e produto obrigatórios
+clima.balanco_hidrico,climate,Balanço hídrico,mm,estimado,AgroLog,Modelo e parâmetros versionados
+quant.risco_agroclimatico,quant,Risco agroclimático,probabilidade,estimado,AgroLog,Calibração e Brier Score obrigatórios
+quant.pressao_frete,quant,Índice de pressão de frete,indice,estimado,AgroLog,Não rotular como frete real
+quant.risco_navegacao,quant,Risco de restrição à navegação,probabilidade,estimado,AgroLog,Calibrar por corredor e restrição
+quant.exportacao_30d,quant,Previsão de exportação 30 dias,t,estimado,AgroLog,Backtest rolling-origin obrigatório
+quant.produtividade_prevista,quant,Previsão de produtividade,kg/ha,estimado,AgroLog,Out-of-sample por safra obrigatório
