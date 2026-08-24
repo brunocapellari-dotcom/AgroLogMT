@@ -1,5 +1,5 @@
 {
-  "contract_version": "1.0",
+  "contract_version": "1.1",
   "domain": "clima_hidrologia",
   "issue": 15,
   "status": "contract_ready_sources_not_production_homologated",
@@ -9,15 +9,25 @@
     "Forecast deve preservar initialization_time, lead_time e valid_time quando aplicavel.",
     "Backtests usam somente runs que existiam na data de corte; reanalise posterior nao substitui forecast historico.",
     "Hidrologia deve preservar codigo da estacao, nivel/vazao, status e qualidade da medicao.",
+    "Status de qualidade ANA deve acompanhar cada medicao; valor suspeito/ruim nao e silenciosamente promovido a observado confiavel.",
+    "Credenciais ANA nunca entram em Git, contratos ou RAW; runtime usa ANA_HIDRO_IDENTIFICADOR e ANA_HIDRO_SENHA ou secret injection equivalente.",
     "Derivados agroclimaticos precisam registrar methodology_id e inputs utilizados."
   ],
   "sources": [
     {
-      "source_id": "ana_hidrologia",
-      "role": "fonte primaria hidrologica Brasil",
+      "source_id": "ana_hidrowebservice",
+      "role": "fonte primaria hidrologica e pluviometrica por estacao no Brasil",
       "evidence_class": "observado",
-      "evidence_subtype": "estacao_hidrologica",
-      "metrics": ["river_level", "river_discharge", "precipitation_station"]
+      "evidence_subtype": "ana_telemetered_station",
+      "api": {
+        "base_url": "https://www.ana.gov.br/hidrowebservice",
+        "auth": "/EstacoesTelemetricas/OAuth/v1",
+        "inventory": "/EstacoesTelemetricas/HidroInventarioEstacoes/v1",
+        "telemetry": "/EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v1",
+        "credentials": "runtime_secret_only"
+      },
+      "metrics": ["river_level", "river_discharge", "precipitation_station"],
+      "quality": "preserve ANA adopted-value status codes with each variable"
     },
     {
       "source_id": "nasa_power",
@@ -42,5 +52,5 @@
     "drought_risk",
     "river_navigation_risk"
   ],
-  "promotion_gate": "PoC, schema temporal/geografico, DQ e comparacao cruzada antes de BigQuery/Gateway."
+  "promotion_gate": "PoC, schema temporal/geografico, DQ e comparacao estacao x grade x reanalise antes de BigQuery/Gateway."
 }
