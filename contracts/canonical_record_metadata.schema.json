@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agrologmt.local/contracts/canonical_record_metadata.schema.json",
-  "title": "AgroLog MT Canonical Record Metadata v1.1",
+  "title": "AgroLog MT Canonical Record Metadata v1.2",
   "description": "Envelope minimo de proveniencia, temporalidade, evidencia e qualidade que tabelas canonicas devem preservar. O payload de dominio estende este contrato.",
   "type": "object",
   "required": ["source_id", "data_referencia", "data_coleta", "competencia", "evidence_class", "source_hash", "ingestion_run_id"],
@@ -19,6 +19,12 @@
     "data_referencia": {"type": "string", "format": "date"},
     "data_publicacao": {"type": ["string", "null"], "format": "date-time"},
     "data_coleta": {"type": "string", "format": "date-time"},
+    "data_disponibilidade": {"type": ["string", "null"], "format": "date-time"},
+    "availability_verified": {"type": "boolean", "default": false},
+    "availability_basis": {
+      "type": ["string", "null"],
+      "enum": [null, "publication_metadata", "official_page_timestamp", "archive_timestamp", "runtime_collection"]
+    },
     "competencia": {"type": "string", "minLength": 1},
     "period_start": {"type": ["string", "null"], "format": "date"},
     "period_end": {"type": ["string", "null"], "format": "date"},

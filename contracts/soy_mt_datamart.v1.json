@@ -8,19 +8,7 @@
     "rota/origem-destino x periodo x produto para logistica",
     "mercado/porto x data x produto/contrato para mercado, portos e comercio exterior"
   ],
-  "mandatory_metadata": [
-    "product_id",
-    "safra",
-    "geo_id",
-    "data_referencia",
-    "data_publicacao",
-    "data_coleta",
-    "competencia",
-    "source_id",
-    "evidence_class",
-    "source_hash",
-    "methodology_id"
-  ],
+  "mandatory_metadata": ["product_id", "safra", "geo_id", "data_referencia", "data_publicacao", "data_coleta", "competencia", "source_id", "evidence_class", "source_hash", "methodology_id"],
   "hard_rules": [
     "Nao converter URF automaticamente em porto fisico.",
     "Municipio-SH4 do Comex Stat nao representa necessariamente origem fisica da carga.",
@@ -31,78 +19,16 @@
     "Toda metrica derivada deve possuir metric_id e methodology_id versionados."
   ],
   "blocks": [
-    {
-      "block_id": "production",
-      "required_for_v1": true,
-      "tables_any": ["agro.conab_safra", "agro.imea_estimativas_relatorios"],
-      "metrics": ["agro.area_plantada", "agro.producao", "agro.produtividade"],
-      "minimum_history_seasons": 5
-    },
-    {
-      "block_id": "storage",
-      "required_for_v1": true,
-      "tables_all": ["logistica.armazens_conab", "referencia.municipios_ibge"],
-      "metrics": ["armazenagem.capacidade_estatica", "armazenagem.unidades"],
-      "minimum_history_snapshots": 1
-    },
-    {
-      "block_id": "commercialization",
-      "required_for_v1": true,
-      "tables_any": ["agro.imea_indicadores"],
-      "metrics": ["mercado.comercializacao_soja"],
-      "minimum_history_seasons": 3
-    },
-    {
-      "block_id": "foreign_trade",
-      "required_for_v1": true,
-      "tables_all": ["comex.comexstat_ncm_export"],
-      "metrics": ["comex.exportacao_soja", "comex.exportacao_soja_fob"],
-      "minimum_history_years": 5
-    },
-    {
-      "block_id": "climate",
-      "required_for_v1": true,
-      "tables_any": ["clima.nasa_power_daily", "clima.agera5_daily", "clima.estacoes_daily"],
-      "metrics": ["clima.precipitacao", "clima.temperatura_media"],
-      "minimum_history_years": 10,
-      "note": "NASA POWER isoladamente nao representa observacao de estacao e deve manter evidence_subtype."
-    },
-    {
-      "block_id": "market",
-      "required_for_v1": false,
-      "tables_any": ["mercado.cbot_soja", "macro.cambio_brl_usd", "mercado.preco_fisico_soja"],
-      "metrics": ["mercado.cbot_soja", "macro.cambio_brl_usd", "mercado.preco_fisico_soja"]
-    },
-    {
-      "block_id": "logistics",
-      "required_for_v1": false,
-      "tables_any": ["logistica.fluxo_rodoviario", "logistica.frete_rodoviario_oferta"],
-      "metrics": ["logistica.fluxo_rodoviario", "logistica.frete_rodoviario_oferta", "logistica.diesel_s10"]
-    },
-    {
-      "block_id": "ports",
-      "required_for_v1": false,
-      "tables_any": ["portos.movimentacao_soja", "portos.lineup_soja"],
-      "metrics": ["portos.movimentacao_soja", "portos.lineup_soja", "portos.escalas_soja"]
-    },
-    {
-      "block_id": "hydrology",
-      "required_for_v1": false,
-      "tables_any": ["clima.ana_hidrologia"],
-      "metrics": ["hidro.nivel_rio", "hidro.vazao_rio"]
-    },
-    {
-      "block_id": "industry",
-      "required_for_v1": false,
-      "tables_any": ["industria.esmagamento_soja"],
-      "metrics": ["industria.esmagamento_soja"]
-    }
+    {"block_id":"production","required_for_v1":true,"tables_any":["agro.conab_safra_graos","agro.imea_estimativas_relatorios"],"metrics":["agro.area_plantada","agro.producao","agro.produtividade"],"minimum_history_seasons":5},
+    {"block_id":"storage","required_for_v1":true,"tables_all":["logistica.armazens_conab","referencia.municipios_ibge"],"metrics":["armazenagem.capacidade_estatica","armazenagem.unidades"],"minimum_history_snapshots":1},
+    {"block_id":"commercialization","required_for_v1":true,"tables_any":["agro.imea_indicadores"],"metrics":["mercado.comercializacao_soja"],"minimum_history_seasons":3},
+    {"block_id":"foreign_trade","required_for_v1":true,"tables_all":["comercio_exterior.comexstat_ncm_export"],"metrics":["comex.exportacao_soja","comex.exportacao_soja_fob"],"minimum_history_years":5},
+    {"block_id":"climate","required_for_v1":true,"tables_any":["clima.nasa_power_daily","clima.agera5_daily","clima.estacoes_daily"],"metrics":["clima.precipitacao","clima.temperatura_media"],"minimum_history_years":10,"note":"NASA POWER isoladamente nao representa observacao de estacao e deve manter evidence_subtype."},
+    {"block_id":"market","required_for_v1":false,"tables_any":["mercado.cbot_soja","macro.cambio_brl_usd","mercado.preco_fisico_soja"],"metrics":["mercado.cbot_soja","macro.cambio_brl_usd","mercado.preco_fisico_soja"]},
+    {"block_id":"logistics","required_for_v1":false,"tables_any":["logistica.fluxo_rodoviario","logistica.frete_rodoviario_oferta"],"metrics":["logistica.fluxo_rodoviario","logistica.frete_rodoviario_oferta","logistica.diesel_s10"]},
+    {"block_id":"ports","required_for_v1":false,"tables_any":["portos.movimentacao_soja","portos.lineup_soja"],"metrics":["portos.movimentacao_soja","portos.lineup_soja","portos.escalas_soja"]},
+    {"block_id":"hydrology","required_for_v1":false,"tables_any":["clima.ana_hidrologia"],"metrics":["hidro.nivel_rio","hidro.vazao_rio"]},
+    {"block_id":"industry","required_for_v1":false,"tables_any":["industria.esmagamento_soja"],"metrics":["industria.esmagamento_soja"]}
   ],
-  "materialization_gate": {
-    "required_blocks_must_pass": true,
-    "required_table_qa": "pass",
-    "point_in_time_metadata_required": true,
-    "canonical_geo_required": true,
-    "no_empty_demo_tables": true
-  }
+  "materialization_gate": {"required_blocks_must_pass":true,"required_table_qa":"pass","point_in_time_metadata_required":true,"canonical_geo_required":true,"no_empty_demo_tables":true}
 }
