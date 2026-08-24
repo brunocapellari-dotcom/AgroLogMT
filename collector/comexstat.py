@@ -6,7 +6,6 @@ import io
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterator, TextIO
-from urllib.request import Request, urlopen
 
 SOURCE_ID = "mdic_comexstat_open_data"
 
@@ -50,30 +49,102 @@ def dataset_url(dataset: str, year: int) -> str:
     return URL_TEMPLATES[dataset].format(year=year)
 
 
-def stream_download(url: str, destination: str | Path, *, chunk_size: int = 4 * 1024 * 1024, timeout: int = 180) -> StreamDownload:
-    """Baixa arquivo grande para disco calculando hash incrementalmente."""
+def stream_download(
+    url: str,
+    destination: str | Path,
+    *,
+    chunk_size: int = 4 * 1024 * 1024,
+    timeout: int = 180,
+) -> StreamDownload:
+    """Baixa arquivo grande com TLS verificado, streaming e SHA-256 incremental.
+
+    `requests`/certifi é usado deliberadamente aqui porque o host oficial do MDIC
+    já apresentou diferenças de cadeia TLS entre runtimes `urllib` mesmo com a URL
+    válida. A verificação TLS permanece obrigatória; não existe fallback `verify=False`.
+    """
     if chunk_size < 64 * 1024:
         raise ValueError("chunk_size deve ser >= 64 KiB")
+    if not url.lower().startswith("https://"):
+        raise ValueError("Comex Stat deve ser baixado por HTTPS")
+
+    import requests
+
     path = Path(destination)
     path.parent.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256()
     size = 0
-    request = Request(url, headers={"User-Agent": "AgroLogMT/0.1 (+ComexStat streaming)"})
-    with urlopen(request, timeout=timeout) as response, path.open("wb") as out:
-        while True:
-            chunk = response.read(chunk_size)
-            if not chunk:
-                break
-            out.write(chunk)
-            digest.update(chunk)
-            size += len(chunk)
+    headers = {"User-Agent": "AgroLogMT/0.1 (+ComexStat streaming)"}
+    with requests.get(
+        url,
+        headers=headers,
+        stream=True,
+        timeout=(30, timeout),
+        allow_redirects=True,
+    ) as response:
+        response.raise_for_status()
+        observed_url = response.url
+        if not observed_url.lower().startswith("https://"):
+            raise RuntimeError("Comex Stat redirecionou para transporte não HTTPS")
+        with path.open("wb") as out:
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if not chunk:
+                    continue
+                out.write(chunk)
+                digest.update(chunk)
+                size += len(chunk)
         content_type = response.headers.get("Content-Type")
         last_modified = response.headers.get("Last-Modified")
-        observed_url = response.geturl()
+
     return StreamDownload(
-        url=observed_url, path=str(path), sha256=digest.hexdigest(), size=size,
-        content_type=content_type, last_modified=last_modified,
+        url=observed_url,
+        path=str(path),
+        sha256=digest.hexdigest(),
+        size=size,
+        content_type=content_type,
+        last_modified=last_modified,
     )
+
+
+def fetch_header_sample(url: str, *, max_bytes: int = 131_072, timeout: int = 60) -> tuple[str, bytes, dict[str, str]]:
+    """Lê apenas o início de um arquivo oficial para validar layout sem materializá-lo."""
+    if max_bytes < 1024:
+        raise ValueError("max_bytes muito pequeno")
+    import requests
+
+    headers = {
+        "User-Agent": "AgroLogMT/0.1 (+ComexStat live-probe)",
+        "Range": f"bytes=0-{max_bytes - 1}",
+    }
+    with requests.get(url, headers=headers, stream=True, timeout=(30, timeout), allow_redirects=True) as response:
+        response.raise_for_status()
+        if not response.url.lower().startswith("https://"):
+            raise RuntimeError("Comex Stat redirecionou para transporte não HTTPS")
+        data = bytearray()
+        for chunk in response.iter_content(chunk_size=16 * 1024):
+            if not chunk:
+                continue
+            remaining = max_bytes - len(data)
+            data.extend(chunk[:remaining])
+            if len(data) >= max_bytes:
+                break
+        metadata = {
+            "content_type": response.headers.get("Content-Type") or "",
+            "content_length": response.headers.get("Content-Length") or "",
+            "content_range": response.headers.get("Content-Range") or "",
+        }
+        return response.url, bytes(data), metadata
+
+
+def validate_header_sample(sample: bytes, dataset: str) -> tuple[str, ...]:
+    lines = sample.decode("utf-8-sig", errors="replace").splitlines()
+    if not lines:
+        raise ValueError("amostra Comex Stat vazia")
+    columns = tuple(lines[0].strip().split(";"))
+    expected = EXPECTED_COLUMNS[dataset]
+    missing = [column for column in expected if column not in columns]
+    if missing:
+        raise ValueError(f"layout Comex Stat incompatível; colunas ausentes: {missing}")
+    return columns
 
 
 def _int(value: str | None) -> int | None:
@@ -112,7 +183,11 @@ def normalize_row(row: dict[str, str], dataset: str) -> dict[str, Any]:
     kg = out.get("KG_LIQUIDO")
     fob = out.get("VL_FOB")
     out["toneladas"] = kg / 1000.0 if isinstance(kg, (int, float)) else None
-    out["usd_por_t"] = (fob / (kg / 1000.0)) if isinstance(fob, (int, float)) and isinstance(kg, (int, float)) and kg > 0 else None
+    out["usd_por_t"] = (
+        fob / (kg / 1000.0)
+        if isinstance(fob, (int, float)) and isinstance(kg, (int, float)) and kg > 0
+        else None
+    )
     return out
 
 
@@ -134,7 +209,12 @@ def iter_rows(
             yield row
 
 
-def iter_file(path: str | Path, dataset: str, *, predicate: Callable[[dict[str, Any]], bool] | None = None) -> Iterator[dict[str, Any]]:
+def iter_file(
+    path: str | Path,
+    dataset: str,
+    *,
+    predicate: Callable[[dict[str, Any]], bool] | None = None,
+) -> Iterator[dict[str, Any]]:
     with Path(path).open("r", encoding="utf-8-sig", newline="") as source:
         yield from iter_rows(source, dataset, predicate=predicate)
 
