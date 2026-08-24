@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 from collector.cli import load_sources
@@ -12,18 +13,21 @@ from collector.geopolitical import (
     parse_ucdp_payload,
     score_cluster,
 )
+from collector.geopolitical_reports import build_geopolitical_report, render_geopolitical_report_markdown
+from collector.geopolitical_sources import parse_reliefweb_payload
 from collector.orchestrator import CollectorEngine
 from collector.storage import LocalStore
 
 
 PARSERS = {
     "gdelt_doc": parse_gdelt_doc_payload,
+    "reliefweb": parse_reliefweb_payload,
     "ucdp": parse_ucdp_payload,
 }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="AgroLog MT - Geopolitical Watch MVP")
+    parser = argparse.ArgumentParser(description="AgroLog MT - Geopolitical Watch")
     parser.add_argument(
         "--config",
         default="collector/config/sources.geopolitical.example.json",
@@ -32,9 +36,12 @@ def main() -> int:
     parser.add_argument(
         "--root",
         default=None,
-        help="Raiz local de RAW/state/manifests/normalized; AGROLOG_RAW_ROOT e o default",
+        help="Raiz local de RAW/state/manifests/normalized/reports; AGROLOG_RAW_ROOT e o default",
     )
     parser.add_argument("--source", help="Executa somente uma fonte")
+    parser.add_argument("--report-min-priority", type=int, default=0)
+    parser.add_argument("--report-max-events", type=int, default=20)
+    parser.add_argument("--report-max-news", type=int, default=5)
     args = parser.parse_args()
 
     root = Path(args.root or os.environ.get("AGROLOG_RAW_ROOT", ".agrolog"))
@@ -101,33 +108,62 @@ def main() -> int:
         )
 
     clusters = cluster_events(all_events)
-    if clusters:
-        cluster_path = root / "normalized" / "geopolitical" / "latest_clusters.jsonl"
-        cluster_path.parent.mkdir(parents=True, exist_ok=True)
-        cluster_path.write_text(
-            "".join(
-                json.dumps(
-                    {
-                        **cluster.to_dict(),
-                        "priority_score": score_cluster(cluster),
-                        "priority_method_version": "geo-watch-v0.1",
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
-                for cluster in clusters
-            ),
-            encoding="utf-8",
-        )
-        print(
+    cluster_path = root / "normalized" / "geopolitical" / "latest_clusters.jsonl"
+    cluster_path.parent.mkdir(parents=True, exist_ok=True)
+    cluster_path.write_text(
+        "".join(
             json.dumps(
                 {
-                    "clusters": len(clusters),
-                    "cluster_path": str(cluster_path),
+                    **cluster.to_dict(),
+                    "priority_score": score_cluster(cluster),
+                    "priority_method_version": "geo-watch-v0.1",
                 },
                 ensure_ascii=False,
             )
+            + "\n"
+            for cluster in clusters
+        ),
+        encoding="utf-8",
+    )
+    print(json.dumps({"clusters": len(clusters), "cluster_path": str(cluster_path)}, ensure_ascii=False))
+
+    generated_at = datetime.now(timezone.utc).isoformat()
+    report = build_geopolitical_report(
+        clusters,
+        generated_at=generated_at,
+        report_type="situational",
+        min_priority=args.report_min_priority,
+        max_events=args.report_max_events,
+        max_news_per_event=args.report_max_news,
+    )
+    report_markdown = render_geopolitical_report_markdown(report)
+    stamp = generated_at.replace(":", "-").replace("+", "_")
+    day = generated_at[:10]
+    report_dir = root / "reports" / "geopolitical" / day
+    report_dir.mkdir(parents=True, exist_ok=True)
+    json_path = report_dir / f"{stamp}.json"
+    md_path = report_dir / f"{stamp}.md"
+    json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    md_path.write_text(report_markdown, encoding="utf-8")
+
+    latest_dir = root / "reports" / "geopolitical"
+    latest_json = latest_dir / "latest.json"
+    latest_md = latest_dir / "latest.md"
+    latest_json.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    latest_md.write_text(report_markdown, encoding="utf-8")
+    print(
+        json.dumps(
+            {
+                "report_id": report["report_id"],
+                "report_events": report["event_count"],
+                "report_news": report["news_count"],
+                "report_json": str(json_path),
+                "report_markdown": str(md_path),
+                "latest_markdown": str(latest_md),
+            },
+            ensure_ascii=False,
         )
+    )
 
     return exit_code
 
