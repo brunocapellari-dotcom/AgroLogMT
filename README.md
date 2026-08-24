@@ -16,6 +16,7 @@ Construir uma plataforma de inteligência em agronegócio e logística com foco 
 - **Codex**: segundo agente de engenharia e revisor técnico independente, integrado ao Claude Code por MCP.
 - **Obsidian**: Segundo Cérebro permanente do projeto para conhecimento técnico, histórico e contextual.
 - **PostgreSQL**: reservado para eventual camada transacional futura.
+- **Provedores externos de inteligência**: serviços independentes podem fornecer sinais ao AgroLog por API/feed versionado; não compartilham banco, credenciais ou código interno com o AgroLog.
 
 ### Programa Integrado Radar
 
@@ -31,6 +32,10 @@ Os componentes open source avaliados são peças substituíveis. Eles não subst
 
 O Freight Listener é o módulo para transformar mensagens e mídias de **canais autorizados** em observações estruturadas de ofertas de frete. A oferta anunciada é tratada como `observado` com subtipo `oferta_frete_observada`; isso não comprova contratação, execução nem frete efetivamente pago. O módulo inclui normalização, deduplicação, reoferta, reajuste, persistência e sinais agregados, com PII minimizada e evidência original preservada fora do GitHub.
 
+### Inteligência geopolítica externa
+
+O **Geopolitical Watch** é um projeto independente. Ele pode fornecer eventos, clusters, notícias e reports ao AgroLog MT por uma interface publicada e versionada. O AgroLog atua apenas como consumidor: preserva a evidência recebida e faz sua própria análise de relevância para agricultura, energia, fertilizantes, comércio, câmbio e logística.
+
 ## Documentação principal
 
 - `docs/ARCHITECTURE.md` — arquitetura oficial.
@@ -41,6 +46,7 @@ O Freight Listener é o módulo para transformar mensagens e mídias de **canais
 - `docs/CODEX_SETUP_WINDOWS.md` — instalação e teste do Codex no notebook.
 - `docs/OBSIDIAN.md` — papel do Segundo Cérebro.
 - `docs/FREIGHT_LISTENER.md` — especificação canônica da inteligência de ofertas observadas.
+- `docs/EXTERNAL_GEOPOLITICAL_INTELLIGENCE.md` — contrato de consumo do Geopolitical Watch como provedor externo.
 - `docs/BACKLOG.md` — prioridades de implantação e três frentes integradas.
 
 ## Governança do repositório
