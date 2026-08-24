@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
+REGION="${REGION:-southamerica-east1}"
+BQ_LOCATION="${BQ_LOCATION:-southamerica-east1}"
+LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
+AR_REPOSITORY="${AR_REPOSITORY:-agrolog}"
+IMAGE_NAME="${IMAGE_NAME:-gateway}"
+IMAGE_TAG="${IMAGE_TAG:-$(date +%Y%m%d%H%M%S)}"
+GATEWAY_SA_NAME="${GATEWAY_SA_NAME:-agrolog-gateway}"
+SERVICE_NAME="${SERVICE_NAME:-agrolog-gateway}"
+
+if [[ -z "${PROJECT_ID}" || "${PROJECT_ID}" == "(unset)" ]]; then
+  echo "Nenhum projeto GCP configurado. Execute: gcloud config set project SEU_PROJECT_ID" >&2
+  exit 2
+fi
+
+GATEWAY_SERVICE_ACCOUNT="${GATEWAY_SERVICE_ACCOUNT:-${GATEWAY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
+IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}"
+
+gcloud config set project "${PROJECT_ID}" >/dev/null
+
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com bigquery.googleapis.com iam.googleapis.com
+
+if ! gcloud iam service-accounts describe "${GATEWAY_SERVICE_ACCOUNT}" >/dev/null 2>&1; then
+  gcloud iam service-accounts create "${GATEWAY_SA_NAME}" --display-name "AgroLog Gateway"
+fi
+
+# Permite executar queries. Leitura de dados é concedida somente no dataset logistica abaixo.
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${GATEWAY_SERVICE_ACCOUNT}" \
+  --role="roles/bigquery.jobUser" \
+  --condition=None >/dev/null
+
+if ! gcloud artifacts repositories describe "${AR_REPOSITORY}" --location "${REGION}" >/dev/null 2>&1; then
+  gcloud artifacts repositories create "${AR_REPOSITORY}" --repository-format=docker --location "${REGION}"
+fi
+
+gcloud builds submit . \
+  --config gateway/cloudbuild.yaml \
+  --substitutions "_IMAGE=${IMAGE}"
+
+# Dataset-level access; do not grant project-wide dataViewer.
+bq add-iam-policy-binding "${PROJECT_ID}:${LOGISTICA_DATASET}" \
+  --member="serviceAccount:${GATEWAY_SERVICE_ACCOUNT}" \
+  --role="roles/bigquery.dataViewer"
+
+gcloud run deploy "${SERVICE_NAME}" \
+  --image "${IMAGE}" \
+  --region "${REGION}" \
+  --service-account "${GATEWAY_SERVICE_ACCOUNT}" \
+  --no-allow-unauthenticated \
+  --set-env-vars "AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION}"
+
+echo "Gateway implantado com autenticação obrigatória: ${SERVICE_NAME}"
