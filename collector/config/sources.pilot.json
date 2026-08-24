@@ -82,6 +82,20 @@
       "notes": "Somente piloto de pipeline/QA. Nao representa espacialmente todo Mato Grosso; expansao estadual exige grade/amostragem canonica antes de producao analitica."
     },
     {
+      "source_id": "imea_operational_xlsx",
+      "name": "IMEA - workbook operacional autorizado",
+      "group": "dados",
+      "method": "drive_workbook",
+      "enabled": false,
+      "expected_frequency": "daily",
+      "file_extension": "xlsx",
+      "evidence_class": "observado",
+      "options": {
+        "file_id_env": "AGROLOG_IMEA_FILE_ID"
+      },
+      "notes": "Workbook autorizado fora do Git. O fileId entra somente por ambiente/secret. Linhas de indicadores/frete/progresso preservam evidence_class/evidence_subtype proprios; frete e referencia IMEA, negotiated=false. Gated ate P0/P1 e compartilhamento explicito com a service account."
+    },
+    {
       "source_id": "conab_noticias",
       "name": "CONAB - Noticias",
       "group": "radar",
