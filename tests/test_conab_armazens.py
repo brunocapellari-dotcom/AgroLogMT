@@ -26,6 +26,29 @@ class ConabArmazensParserTests(unittest.TestCase):
         self.assertEqual(parsed.rows[0]["warehouse_id"], "cda:12345")
         self.assertEqual(parsed.rows[0]["evidence_class"], "observado")
 
+    def test_current_portal_layout_is_recognized(self) -> None:
+        payload = (
+            "identificacao_armazem;dsc_especie_armazem;dsc_tipo_armazem;dsc_tipo_entidade;dsc_tipo_pessoa;"
+            "nom_municipio;cod_ibge;uf;qtd_capacidade_estatica(t);qtd_capacidade_expedicao(t);"
+            "qtd_capacidade_recepcao(t);latitude;longitude;nome_armazenador;endereco;email\n"
+            "56.0000.0034-0;GRANEL SÓLIDO;GRANELEIRO;PRIVADA;PESSOA FÍSICA;ALTO GARÇAS-MT;5100409;MT;"
+            "4580,0;50;30;-16.5052;-53.5048;ODILIO BALBINOTTI;ROD. BR 364 KM 94;teste@example.com\n"
+        ).encode("latin-1")
+        parsed = parse_conab_armazens(
+            payload, snapshot_id="live-layout", data_coleta="2026-08-24T20:45:00+00:00",
+            raw_artifact_ref=None, observed_url="https://portaldeinformacoes.conab.gov.br/fixture",
+        )
+        row = parsed.rows[0]
+        self.assertEqual(row["cda"], "56.0000.0034-0")
+        self.assertEqual(row["warehouse_id"], "cda:56.0000.0034-0")
+        self.assertEqual(row["municipio"], "ALTO GARÇAS")
+        self.assertEqual(row["codigo_ibge"], "5100409")
+        self.assertEqual(row["tipo_armazenagem"], "GRANELEIRO")
+        self.assertEqual(row["razao_social"], "ODILIO BALBINOTTI")
+        self.assertAlmostEqual(row["capacidade_estatica_t"], 4580.0)
+        self.assertEqual(row["quality_flags"], [])
+        self.assertEqual(parsed.warnings, [])
+
     def test_duplicate_rows_are_removed_within_snapshot(self) -> None:
         payload = "CDA|Municipio|UF|Capacidade\n1|Sorriso|MT|1000\n1|Sorriso|MT|1000\n".encode("utf-8")
         parsed = parse_conab_armazens(
