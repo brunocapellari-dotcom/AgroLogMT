@@ -1,0 +1,41 @@
+name: conab-soy-revision-calibration
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/analyze_conab_soy_revision_calibration.py"
+      - "tests/test_conab_soy_revision_calibration.py"
+      - "scripts/build_conab_soy_yield_hurdle.py"
+      - "contracts/conab_vintage_registry.v1.json"
+      - ".github/workflows/conab-soy-revision-calibration.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  calibration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run focused unit tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m unittest -v tests.test_conab_soy_revision_calibration
+      - name: Build live CONAB revision calibration
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python scripts/analyze_conab_soy_revision_calibration.py \
+            --out conab_soy_revision_calibration.json
+      - name: Upload calibration artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: conab-soy-revision-calibration-${{ github.run_id }}
+          path: conab_soy_revision_calibration.json
+          if-no-files-found: error
+          retention-days: 30
