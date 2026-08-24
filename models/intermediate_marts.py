@@ -51,7 +51,7 @@ WHERE product_id='soja' AND geo_id IN ('MT','BR')
 
 def storage_sql(project_id: str) -> IntermediateMartSql:
     source = _qualify(project_id, "logistica.armazens_conab")
-    geo = _qualify(project_id, "referencia.municipios_ibge")
+    geo = _qualify(project_id, "referencia.v_municipios_ibge_latest")
     target_name = "marts_soy_mt.storage_v1"
     target = _qualify(project_id, target_name)
     sql = f"""CREATE OR REPLACE VIEW {target} AS
@@ -61,7 +61,8 @@ SELECT
   a.capacidade_estatica_t, a.latitude, a.longitude,
   a.data_referencia, a.data_publicacao, a.data_coleta, a.competencia,
   a.evidence_class, a.source_hash, a.quality_score, a.quality_flags,
-  g.codigo_ibge AS geo_id_canonico
+  CAST(g.codigo_ibge AS STRING) AS geo_id_canonico,
+  g.mesorregiao, g.microrregiao, g.regiao_imediata, g.regiao_intermediaria
 FROM {source} a
 LEFT JOIN {geo} g ON CAST(a.codigo_ibge AS STRING)=CAST(g.codigo_ibge AS STRING)
 WHERE a.uf='MT'
