@@ -9,9 +9,11 @@ on:
     paths:
       - "scripts/generate_soy_mt_beta.py"
       - "scripts/generate_soy_mt_beta_v02.py"
+      - "scripts/run_soy_mt_beta.py"
       - "scripts/probe_conab_storage_layout.py"
       - "tests/test_soy_mt_beta.py"
       - "tests/test_soy_mt_beta_v02.py"
+      - "tests/test_soy_mt_timezone.py"
       - "models/agroclimate.py"
       - ".github/workflows/soy-mt-beta.yml"
 
@@ -38,7 +40,7 @@ jobs:
         run: |
           SAMPLE_POINTS=7
           if [ "$EVENT_NAME" = "pull_request" ]; then SAMPLE_POINTS=3; fi
-          python scripts/generate_soy_mt_beta_v02.py \
+          python scripts/run_soy_mt_beta.py \
             --climate-sample-points "$SAMPLE_POINTS" \
             --out-json soy_mt_beta.json \
             --out-md soy_mt_beta.md
