@@ -1,0 +1,61 @@
+{
+  "evidence_version": "SOY_MT_READINESS_EVIDENCE_2026_08_24",
+  "as_of": "2026-08-24T18:58:00-04:00",
+  "cloud_authenticated": false,
+  "blocks": {
+    "production": {
+      "source_state": "live_pit",
+      "source_ready": true,
+      "local_qa_status": "pass",
+      "point_in_time_evidence": true,
+      "cloud_table_verified": false,
+      "freshness": "CONAB 11o levantamento 2025/26 publicado 2026-08-13",
+      "evidence": "31 vintages verificadas; registry versionado; attachment re-resolution fail-closed"
+    },
+    "storage": {
+      "source_state": "live",
+      "source_ready": true,
+      "local_qa_status": "pass",
+      "point_in_time_evidence": true,
+      "cloud_table_verified": false,
+      "freshness": "snapshot 2026-08-24",
+      "evidence": "2920 registros MT; 107 municipios; capacidade e municipio completos no snapshot validado"
+    },
+    "market": {
+      "source_state": "partial_source_lag",
+      "source_ready": false,
+      "local_qa_status": "pass",
+      "point_in_time_evidence": true,
+      "cloud_table_verified": false,
+      "freshness": "workbook autorizado com dados operacionais ate 2026-07-31; SOURCE_LAG 24d",
+      "evidence": "13138 registros uteis reconciliados; pipeline Drive->RAW->QA->BigQuery implementado mas nao homologado"
+    },
+    "trade": {
+      "source_state": "blocked_tls_runner",
+      "source_ready": false,
+      "local_qa_status": "blocked",
+      "point_in_time_evidence": false,
+      "cloud_table_verified": false,
+      "freshness": "indisponivel no runner GitHub em 2026-08-24",
+      "evidence": "TLS estrito falhou nos dominios testados; nenhum bypass inseguro permitido"
+    },
+    "climate": {
+      "source_state": "live_beta",
+      "source_ready": true,
+      "local_qa_status": "beta_pass",
+      "point_in_time_evidence": false,
+      "cloud_table_verified": false,
+      "freshness": "NASA POWER observado ate 2026-08-22 no snapshot beta",
+      "evidence": "amostra espacial MT + ET0 Hargreaves + GDD; ainda sem availability history homologada para backtest PIT"
+    }
+  },
+  "model_targets": {
+    "yield_realized": {
+      "source_state": "live_read_only",
+      "source_ready": true,
+      "local_qa_status": "pass",
+      "cloud_table_verified": false,
+      "evidence": "IBGE PAM/SIDRA 1612 soja MT rendimento 1974-2024; 51 anos; 45 folds hurdle"
+    }
+  }
+}
