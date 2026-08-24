@@ -23,6 +23,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install live-probe HTTP dependency
+        run: python -m pip install --disable-pip-version-check "requests>=2.32,<3"
       - name: Probe CONAB historical, Comex Stat, NASA POWER and IBGE
         env:
           PYTHONPATH: ${{ github.workspace }}
