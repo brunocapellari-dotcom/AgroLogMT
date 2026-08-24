@@ -1,0 +1,37 @@
+name: probe-n6-ingestion
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "collector/comexstat.py"
+      - "collector/conab_safra_history.py"
+      - "collector/geo_ibge.py"
+      - "collector/nasa_power.py"
+      - "scripts/probe_n6_ingestion_live.py"
+      - ".github/workflows/probe-n6-ingestion.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  live-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Probe CONAB historical, Comex Stat, NASA POWER and IBGE
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/probe_n6_ingestion_live.py --out n6_ingestion_probe.json
+      - name: Upload probe report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n6-ingestion-probe
+          path: n6_ingestion_probe.json
+          if-no-files-found: error
+          retention-days: 7
