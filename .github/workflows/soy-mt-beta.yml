@@ -8,6 +8,7 @@ on:
   pull_request:
     paths:
       - "scripts/generate_soy_mt_beta.py"
+      - "scripts/probe_conab_storage_layout.py"
       - "tests/test_soy_mt_beta.py"
       - ".github/workflows/soy-mt-beta.yml"
 
@@ -23,6 +24,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Probe live CONAB storage layout
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/probe_conab_storage_layout.py
       - name: Generate live Soja MT beta snapshot
         env:
           PYTHONPATH: ${{ github.workspace }}
