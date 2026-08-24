@@ -1,0 +1,28 @@
+{
+  "contract_version": "1.0",
+  "source_basis": "MAPA/Comex Stat product summary and Siscomex NCM descriptions, verified 2026-08-24",
+  "products": {
+    "soja_grao": {
+      "ncm8": ["12011000", "12019000"],
+      "descriptions": {
+        "12011000": "Soja, mesmo triturada, para semeadura",
+        "12019000": "Soja, mesmo triturada, exceto para semeadura"
+      },
+      "default_for_soy_mt_trade_v1": true
+    },
+    "farelo_soja": {
+      "ncm8": ["23040010", "23040090"],
+      "default_for_soy_mt_trade_v1": false
+    },
+    "oleo_soja": {
+      "ncm8": ["15071000", "15079011", "15079019", "15079090"],
+      "default_for_soy_mt_trade_v1": false
+    }
+  },
+  "rules": [
+    "grao, farelo e oleo permanecem fluxos separados",
+    "mudanca futura de NCM exige nova versao do mapping",
+    "historico anterior a mudancas de nomenclatura deve usar mapping valido para a competencia",
+    "NCM nao identifica porto nem empresa exportadora por si so"
+  ]
+}
