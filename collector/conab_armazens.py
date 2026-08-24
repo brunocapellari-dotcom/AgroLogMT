@@ -85,22 +85,29 @@ def _coord(value: Any, low: float, high: float) -> float | None:
 
 
 ALIASES: dict[str, tuple[str, ...]] = {
-    "cda": ("cda", "codigo_cda", "cd_cda", "cod_cda", "codigo_armazem", "cd_armazem"),
+    "cda": (
+        "cda", "codigo_cda", "cd_cda", "cod_cda", "codigo_armazem", "cd_armazem",
+        "identificacao_armazem",
+    ),
     "cnpj": ("cnpj", "cpf_cnpj", "nr_cnpj", "cnpj_armazem", "cnpj_armazenador"),
-    "razao_social": ("razao_social", "nm_razao_social", "nome_empresarial", "armazenadora", "empresa"),
+    "razao_social": (
+        "razao_social", "nm_razao_social", "nome_empresarial", "armazenadora", "empresa",
+        "nome_armazenador",
+    ),
     "nome_armazem": ("nome_armazem", "nm_armazem", "armazem", "unidade_armazenadora", "nome_unidade"),
     "endereco": ("endereco", "logradouro", "ds_endereco", "endereco_armazem"),
     "bairro": ("bairro", "nm_bairro"),
     "cep": ("cep", "nr_cep"),
-    "municipio": ("municipio", "nm_municipio", "cidade", "municipio_armazem"),
+    "municipio": ("municipio", "nm_municipio", "nom_municipio", "cidade", "municipio_armazem"),
     "uf": ("uf", "sg_uf", "estado", "uf_armazem"),
     "codigo_ibge": ("codigo_ibge", "cod_ibge", "cd_municipio_ibge", "ibge"),
     "tipo_armazenagem": (
-        "tipo_armazenagem", "tipo_armazem", "tipo_estrutura", "tp_armazem", "tp_estrutura", "descricao_tipo_armazem"
+        "tipo_armazenagem", "tipo_armazem", "tipo_estrutura", "tp_armazem", "tp_estrutura",
+        "descricao_tipo_armazem", "dsc_tipo_armazem",
     ),
     "capacidade_estatica_t": (
         "capacidade_estatica_t", "capacidade_estatica", "capacidade_t", "capacidade", "qt_capacidade",
-        "capacidade_armazenagem", "capacidade_estatica_toneladas"
+        "capacidade_armazenagem", "capacidade_estatica_toneladas", "qtd_capacidade_estatica_t",
     ),
     "latitude": ("latitude", "lat", "nr_latitude"),
     "longitude": ("longitude", "lon", "lng", "nr_longitude"),
@@ -119,6 +126,15 @@ def _pick(row: dict[str, Any], key: str) -> str | None:
 def _stable_hash(parts: list[str | None]) -> str:
     payload = "|".join((part or "").strip().upper() for part in parts)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _canonical_municipio(value: str | None, uf: str | None) -> str | None:
+    if not value:
+        return None
+    text = value.strip()
+    if uf and re.search(rf"[-/]\s*{re.escape(uf)}$", text, flags=re.IGNORECASE):
+        text = re.sub(rf"\s*[-/]\s*{re.escape(uf)}$", "", text, flags=re.IGNORECASE).strip()
+    return text or None
 
 
 @dataclass(frozen=True)
@@ -186,8 +202,8 @@ def parse_conab_armazens(
         endereco = _pick(normalized, "endereco")
         bairro = _pick(normalized, "bairro")
         cep = _pick(normalized, "cep")
-        municipio = _pick(normalized, "municipio")
         uf = (_pick(normalized, "uf") or "").upper() or None
+        municipio = _canonical_municipio(_pick(normalized, "municipio"), uf)
         codigo_ibge = _pick(normalized, "codigo_ibge")
         tipo_armazenagem = _pick(normalized, "tipo_armazenagem")
         capacidade = _number(_pick(normalized, "capacidade_estatica_t"), brazilian_thousands=True)
