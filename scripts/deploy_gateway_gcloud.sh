@@ -18,6 +18,7 @@ fi
 
 GATEWAY_SERVICE_ACCOUNT="${GATEWAY_SERVICE_ACCOUNT:-${GATEWAY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}"
+TABLE="${PROJECT_ID}:${LOGISTICA_DATASET}.armazens_conab"
 
 gcloud config set project "${PROJECT_ID}" >/dev/null
 
@@ -27,7 +28,7 @@ if ! gcloud iam service-accounts describe "${GATEWAY_SERVICE_ACCOUNT}" >/dev/nul
   gcloud iam service-accounts create "${GATEWAY_SA_NAME}" --display-name "AgroLog Gateway"
 fi
 
-# Permite executar queries. Leitura de dados é concedida somente no dataset logistica abaixo.
+# Executa queries no projeto; leitura fica restrita à primeira tabela exposta pelo Gateway.
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${GATEWAY_SERVICE_ACCOUNT}" \
   --role="roles/bigquery.jobUser" \
@@ -41,10 +42,12 @@ gcloud builds submit . \
   --config gateway/cloudbuild.yaml \
   --substitutions "_IMAGE=${IMAGE}"
 
-# Dataset-level access; do not grant project-wide dataViewer.
-bq add-iam-policy-binding "${PROJECT_ID}:${LOGISTICA_DATASET}" \
+# A tabela deve existir após a primeira carga CONAB. Não concede dataViewer no projeto inteiro.
+bq add-iam-policy-binding \
   --member="serviceAccount:${GATEWAY_SERVICE_ACCOUNT}" \
-  --role="roles/bigquery.dataViewer"
+  --role="roles/bigquery.dataViewer" \
+  --table=true \
+  "${TABLE}"
 
 gcloud run deploy "${SERVICE_NAME}" \
   --image "${IMAGE}" \
