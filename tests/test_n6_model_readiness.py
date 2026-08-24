@@ -46,7 +46,7 @@ class ReadinessTests(unittest.TestCase):
 
     def test_datamart_blocks_materialization_when_required_source_missing(self) -> None:
         inventory = {
-            "agro.conab_safra": {"exists": True, "qa_status": "pass", "point_in_time_ready": True, "canonical_geo_ready": True, "history_seasons": 8},
+            "agro.conab_safra_graos": {"exists": True, "qa_status": "pass", "point_in_time_ready": True, "canonical_geo_ready": True, "history_seasons": 8},
             "logistica.armazens_conab": {"exists": True, "qa_status": "pass", "point_in_time_ready": True, "canonical_geo_ready": True, "snapshots": 1},
             "referencia.municipios_ibge": {"exists": True, "qa_status": "pass", "point_in_time_ready": True, "canonical_geo_ready": True, "snapshots": 1},
             "agro.imea_indicadores": {"exists": True, "qa_status": "pass", "point_in_time_ready": True, "canonical_geo_ready": True, "history_seasons": 5},
@@ -54,15 +54,15 @@ class ReadinessTests(unittest.TestCase):
         }
         result = evaluate_datamart(self.datamart, inventory)
         self.assertFalse(result.ready)
-        self.assertTrue(any(f.code == "TABLE_MISSING" and "comex.comexstat_ncm_export" in f.message for f in result.failures))
+        self.assertTrue(any(f.code == "TABLE_MISSING" and "comercio_exterior.comexstat_ncm_export" in f.message for f in result.failures))
 
     def test_datamart_passes_when_required_blocks_are_ready(self) -> None:
         inventory = {
-            "agro.conab_safra": {"exists": True, "qa_status": "pass", "point_in_time_ready": True, "canonical_geo_ready": True, "history_seasons": 8},
+            "agro.conab_safra_graos": {"exists": True, "qa_status": "pass", "point_in_time_ready": True, "canonical_geo_ready": True, "history_seasons": 8},
             "logistica.armazens_conab": {"exists": True, "qa_status": "pass", "point_in_time_ready": True, "canonical_geo_ready": True, "snapshots": 1},
             "referencia.municipios_ibge": {"exists": True, "qa_status": "pass", "point_in_time_ready": True, "canonical_geo_ready": True, "snapshots": 1},
             "agro.imea_indicadores": {"exists": True, "qa_status": "pass", "point_in_time_ready": True, "canonical_geo_ready": True, "history_seasons": 5},
-            "comex.comexstat_ncm_export": {"exists": True, "qa_status": "pass", "point_in_time_ready": True, "canonical_geo_ready": False, "history_years": 10},
+            "comercio_exterior.comexstat_ncm_export": {"exists": True, "qa_status": "pass", "point_in_time_ready": True, "canonical_geo_ready": False, "history_years": 10},
             "clima.nasa_power_daily": {"exists": True, "qa_status": "pass", "point_in_time_ready": True, "canonical_geo_ready": True, "history_years": 15},
         }
         result = evaluate_datamart(self.datamart, inventory)
