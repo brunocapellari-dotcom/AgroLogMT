@@ -1,0 +1,73 @@
+{
+  "contract_version": "1.0",
+  "source_id": "imea_agro",
+  "authority": "IMEA",
+  "scope": ["soja", "milho", "algodao"],
+  "excluded_scope": ["pecuaria"],
+  "migration_source": "bootstrap/v3-conab-imea",
+  "status": "contract_recovered_not_production_homologated",
+  "rules": [
+    "Nao armazenar usuario ou senha IMEA no GitHub, prompt, BigQuery ou Cloud Run.",
+    "Downloads autenticados somente quando autorizados/licenciados e por mecanismo seguro; coleta publica deve permanecer em allowlist oficial.",
+    "Preservar snapshots/vintages; publicacao nova nao apaga revisoes historicas.",
+    "data_referencia, data_publicacao, data_coleta e competencia sao campos distintos.",
+    "Pecuaria permanece em modulo editorial e analitico separado.",
+    "QA de multiplicidade, escala, unidades e identidades Oferta-Demanda bloqueia promocao silenciosa de linha ambigua."
+  ],
+  "canonical_tables": [
+    {
+      "target": "ingestao.imea_snapshots",
+      "grain": "snapshot de artefato/publicacao",
+      "key": "hash_snapshot",
+      "partition": "data_coleta",
+      "purpose": "linhagem e auditoria"
+    },
+    {
+      "target": "ingestao.imea_registros_raw",
+      "grain": "registro de indicador por snapshot",
+      "key": "hash_snapshot_registro",
+      "partition": "data_referencia",
+      "purpose": "RAW estruturado e QA"
+    },
+    {
+      "target": "agro.imea_indicadores",
+      "grain": "serie confiavel por cadeia/indicador/geografia/vintage",
+      "key": "hash_registro",
+      "partition": "data_referencia",
+      "purpose": "indicadores agro canonicos"
+    },
+    {
+      "target": "agro.imea_custo_producao",
+      "grain": "produto/safra/local/item de custo/vintage",
+      "key": "hash_registro",
+      "partition": "data_referencia",
+      "purpose": "custo de producao"
+    },
+    {
+      "target": "agro.imea_oferta_demanda",
+      "grain": "produto/safra/item/data_publicacao",
+      "key": "hash_registro",
+      "partition": "data_publicacao",
+      "purpose": "Oferta & Demanda com revisoes point-in-time"
+    },
+    {
+      "target": "agro.imea_estimativas_relatorios",
+      "grain": "produto/metrica/local/safra/data_publicacao",
+      "key": "hash_registro",
+      "partition": "data_publicacao",
+      "purpose": "estimativas de safra e revisoes"
+    }
+  ],
+  "preproduction_evidence_from_legacy_branch": {
+    "structured_raw_rows": 40190,
+    "reliable_core_records": 40046,
+    "reliable_current_records": 40030,
+    "ambiguous_current_keys_blocked": 24,
+    "cost_unique_records": 35848,
+    "offer_demand_reports": 88,
+    "offer_demand_observations": 3666,
+    "estimates_reports": 88,
+    "estimates_observations": 2431
+  },
+  "promotion_gate": "Migrar parser/loader para contratos atuais, repetir testes/QA e somente carregar BigQuery apos P0/P1 homologado."
+}

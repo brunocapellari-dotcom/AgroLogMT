@@ -8,6 +8,9 @@ on:
       - "models/**"
       - "tests/**"
       - "contracts/**"
+      - "scripts/**"
+      - "sql/**"
+      - "docs/N6_*.md"
       - "requirements*.txt"
       - ".github/workflows/unit-tests.yml"
   workflow_dispatch:
@@ -25,3 +28,24 @@ jobs:
           python-version: "3.12"
       - name: Run standard-library unit tests
         run: python -m unittest discover -s tests -v
+      - name: Compile N6 Python scripts
+        run: python -m py_compile scripts/validate_conab_n6.py scripts/validate_gateway_n6.py models/point_in_time.py
+      - name: Validate shell syntax
+        run: bash -n scripts/preflight_n6_gcp.sh scripts/deploy_collectors_gcloud.sh scripts/deploy_gateway_gcloud.sh scripts/homologate_n6_core.sh
+      - name: Validate JSON contracts/config
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          files = [
+              'collector/config/sources.pilot.json',
+              'contracts/canonical_record_metadata.schema.json',
+              'contracts/comexstat.v1.json',
+              'contracts/imea_agro.v1.json',
+              'contracts/climate_hydrology.v1.json',
+              'models/registry.json',
+          ]
+          for path in files:
+              json.loads(Path(path).read_text(encoding='utf-8'))
+              print('OK', path)
+          PY

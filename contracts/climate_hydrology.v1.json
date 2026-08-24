@@ -1,0 +1,46 @@
+{
+  "contract_version": "1.0",
+  "domain": "clima_hidrologia",
+  "issue": 15,
+  "status": "contract_ready_sources_not_production_homologated",
+  "canonical_rules": [
+    "Nunca misturar observacao de estacao, reanalise, satelite e forecast sem evidence_subtype explicito.",
+    "Preservar grade/estacao, coordenadas, resolucao, unidade e metodologia de agregacao espacial.",
+    "Forecast deve preservar initialization_time, lead_time e valid_time quando aplicavel.",
+    "Backtests usam somente runs que existiam na data de corte; reanalise posterior nao substitui forecast historico.",
+    "Hidrologia deve preservar codigo da estacao, nivel/vazao, status e qualidade da medicao.",
+    "Derivados agroclimaticos precisam registrar methodology_id e inputs utilizados."
+  ],
+  "sources": [
+    {
+      "source_id": "ana_hidrologia",
+      "role": "fonte primaria hidrologica Brasil",
+      "evidence_class": "observado",
+      "evidence_subtype": "estacao_hidrologica",
+      "metrics": ["river_level", "river_discharge", "precipitation_station"]
+    },
+    {
+      "source_id": "nasa_power",
+      "role": "complemento agrometeorologico espacial",
+      "evidence_class": "estimado",
+      "evidence_subtype": "produto_gridded_modelado",
+      "metrics": ["precipitation", "temperature", "radiation", "humidity", "wind"]
+    },
+    {
+      "source_id": "era5_agera5",
+      "role": "reanalise e historico agroclimatico",
+      "evidence_class": "estimado",
+      "evidence_subtype": "reanalise",
+      "metrics": ["precipitation", "temperature", "soil_water", "radiation", "wind"]
+    }
+  ],
+  "derived_metrics": [
+    "eto",
+    "water_balance",
+    "soil_water_deficit",
+    "agroclimate_risk",
+    "drought_risk",
+    "river_navigation_risk"
+  ],
+  "promotion_gate": "PoC, schema temporal/geografico, DQ e comparacao cruzada antes de BigQuery/Gateway."
+}

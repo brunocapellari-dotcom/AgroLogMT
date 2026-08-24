@@ -5,7 +5,14 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 Group = Literal["radar", "dados", "conhecimento"]
-EvidenceClass = Literal["observado", "inferido", "estimado", "negociado_autorizado"]
+EvidenceClass = Literal[
+    "observado",
+    "inferido",
+    "estimado",
+    "projetado",
+    "sinal_qualitativo",
+    "negociado_autorizado",
+]
 
 
 @dataclass(frozen=True)
