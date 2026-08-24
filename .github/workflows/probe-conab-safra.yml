@@ -23,6 +23,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Probe latest official CONAB Safra XLSX
+        env:
+          PYTHONPATH: .
         run: python scripts/probe_conab_safra_live.py --out conab_safra_probe.json
       - name: Upload probe report
         if: always()
