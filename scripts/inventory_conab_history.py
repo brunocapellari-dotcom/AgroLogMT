@@ -32,13 +32,27 @@ def summarize(plan: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
+def _season_start_year(item: dict[str, object]) -> int | None:
+    safra = str(item.get("safra") or "")
+    if len(safra) < 4 or not safra[:4].isdigit():
+        return None
+    return int(safra[:4])
+
+
+def filter_range(plan: list[dict[str, object]], start_year: int, end_year: int) -> list[dict[str, object]]:
+    return [item for item in plan if (year := _season_start_year(item)) is not None and start_year <= year <= end_year]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Inventário read-only do histórico CONAB Safra")
     parser.add_argument("--start-year", type=int, required=True)
     parser.add_argument("--end-year", type=int, required=True)
     parser.add_argument("--out", default="conab_history_inventory.json")
     parser.add_argument("--strict-network", action="store_true")
+    parser.add_argument("--allow-empty", action="store_true", help="retorna sucesso mesmo quando o intervalo não tem vintages recuperáveis")
     args = parser.parse_args()
+    if args.start_year > args.end_year:
+        parser.error("--start-year deve ser <= --end-year")
 
     listing = discover_publications()
     archive = discover_archive_by_pattern(
@@ -47,7 +61,7 @@ def main() -> int:
         timeout_errors_are_fatal=args.strict_network,
     )
     publications = merge_publications(listing, archive)
-    plan = build_plan(publications)
+    plan = filter_range(build_plan(publications), args.start_year, args.end_year)
     report = {
         "range": {"start_year": args.start_year, "end_year": args.end_year},
         "policy": {
@@ -55,6 +69,7 @@ def main() -> int:
             "site_migration_timestamp": "blocked unless an official nested/original timestamp is independently recovered",
             "raw_download": False,
             "bigquery_write": False,
+            "range_pure": True,
         },
         "summary": summarize(plan),
         "items": plan,
@@ -62,7 +77,8 @@ def main() -> int:
     text = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True)
     Path(args.out).write_text(text + "\n", encoding="utf-8")
     print(text)
-    return 0 if report["summary"]["ready"] else 2
+    ready = int(report["summary"]["ready"])
+    return 0 if ready or args.allow_empty else 2
 
 
 if __name__ == "__main__":
