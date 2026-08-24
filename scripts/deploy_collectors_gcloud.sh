@@ -71,9 +71,12 @@ ensure_dataset_role() {
   local dataset="$1"
   local principal="$2"
   local role="$3"
-  bq add-iam-policy-binding "${PROJECT_ID}:${dataset}" \
-    --member="serviceAccount:${principal}" \
-    --role="${role}" >/dev/null
+  bq query \
+    --project_id="${PROJECT_ID}" \
+    --location="${BQ_LOCATION}" \
+    --use_legacy_sql=false \
+    --quiet \
+    "GRANT \`${role}\` ON SCHEMA \`${PROJECT_ID}\`.${dataset} TO \"serviceAccount:${principal}\""
 }
 
 ensure_service_account "${COLLECTOR_SA_NAME}" "AgroLog Collector"
