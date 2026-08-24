@@ -59,9 +59,6 @@ def _number(value: Any) -> float | None:
         text = value.strip().replace("%", "")
         if not text:
             return None
-        # O workbook oficial normalmente armazena números como numeric cells. Este
-        # fallback existe para pequenos desvios de publicação e não tenta adivinhar
-        # separadores ambíguos com milhares e decimais simultaneamente.
         if "," in text and "." not in text:
             text = text.replace(",", ".")
         try:
@@ -112,6 +109,7 @@ class ConabSafraRecord:
     area_var_pct: float | None
     produtividade_var_pct: float | None
     producao_var_pct: float | None
+    identity_error_mil_t: float | None
     identity_error_pct: float | None
     quality_score: float
     quality_flags: tuple[str, ...]
@@ -124,12 +122,23 @@ class ConabSafraRecord:
         return data
 
 
-def _identity_error(area_mil_ha: float, produtividade_kg_ha: float, producao_mil_t: float) -> float | None:
+def _identity_errors(area_mil_ha: float, produtividade_kg_ha: float, producao_mil_t: float) -> tuple[float, float]:
     expected = area_mil_ha * produtividade_kg_ha / 1000.0
-    if expected == 0 and producao_mil_t == 0:
-        return 0.0
+    absolute = abs(producao_mil_t - expected)
     denominator = max(abs(expected), abs(producao_mil_t), 1e-9)
-    return abs(producao_mil_t - expected) / denominator * 100.0
+    return absolute, absolute / denominator * 100.0
+
+
+def _identity_material(abs_error_mil_t: float, pct_error: float, production_mil_t: float) -> bool:
+    """Evita falsos positivos de arredondamento em linhas pequenas.
+
+    O workbook publica área/produção frequentemente com uma casa decimal e produtividade
+    arredondada. Em volumes pequenos, 0,05–0,10 mil t de arredondamento pode representar
+    muitos pontos percentuais sem constituir inconsistência material. O gate exige erro
+    percentual >2% *e* erro absoluto acima de max(0,2 mil t; 0,5% da produção).
+    """
+    absolute_floor = max(0.2, abs(production_mil_t) * 0.005)
+    return pct_error > 2.0 and abs_error_mil_t > absolute_floor
 
 
 def parse_product_table_sheet(sheet: XlsxSheet, *, geo_level: str, geo_id: str) -> list[ConabSafraRecord]:
@@ -168,9 +177,9 @@ def parse_product_table_sheet(sheet: XlsxSheet, *, geo_level: str, geo_id: str) 
                 flags.append("negative_productivity")
             if production < 0:
                 flags.append("negative_production")
-            identity_error = _identity_error(area, productivity, production)
-            if identity_error is not None and identity_error > 2.0:
-                flags.append("area_yield_production_identity_gt_2pct")
+            identity_abs, identity_pct = _identity_errors(area, productivity, production)
+            if _identity_material(identity_abs, identity_pct, production):
+                flags.append("area_yield_production_identity_material")
             score = max(0.0, 1.0 - 0.2 * len(flags))
             records.append(
                 ConabSafraRecord(
@@ -187,7 +196,8 @@ def parse_product_table_sheet(sheet: XlsxSheet, *, geo_level: str, geo_id: str) 
                     area_var_pct=avar,
                     produtividade_var_pct=yvar,
                     producao_var_pct=pvar,
-                    identity_error_pct=identity_error,
+                    identity_error_mil_t=identity_abs,
+                    identity_error_pct=identity_pct,
                     quality_score=score,
                     quality_flags=tuple(flags),
                     source_sheet=sheet.name,
@@ -198,12 +208,7 @@ def parse_product_table_sheet(sheet: XlsxSheet, *, geo_level: str, geo_id: str) 
 
 
 def parse_conab_safra_workbook(payload: bytes) -> list[ConabSafraRecord]:
-    """Extrai a matriz produto × UF e o total Brasil por produto do XLSX oficial.
-
-    Outras planilhas do workbook (por produto, rendimento, páginas de apresentação)
-    permanecem disponíveis no RAW e podem ser usadas em crosschecks, mas não são
-    duplicadas nesta tabela canônica inicial.
-    """
+    """Extrai a matriz produto × UF e o total Brasil por produto do XLSX oficial."""
     sheets = read_xlsx(payload)
     records: list[ConabSafraRecord] = []
     for sheet in sheets:
