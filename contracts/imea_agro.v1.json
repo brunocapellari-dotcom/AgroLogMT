@@ -1,33 +1,45 @@
 {
-  "contract_version": "1.0",
+  "contract_version": "1.1",
   "source_id": "imea_agro",
   "authority": "IMEA",
   "scope": ["soja", "milho", "algodao"],
   "excluded_scope": ["pecuaria"],
   "migration_source": "bootstrap/v3-conab-imea",
-  "status": "contract_recovered_not_production_homologated",
+  "status": "migration_validator_implemented_not_production_homologated",
+  "runtime_architecture": {
+    "binary_raw": "Google Drive via DriveBigQueryStore",
+    "ops_dataset": "agrolog_ops",
+    "canonical_dataset": "agro",
+    "authentication": "ADC/service account in production; no credential files",
+    "legacy_ingestao_dataset": "superseded_by_agrolog_ops_for_migration_metadata"
+  },
   "rules": [
     "Nao armazenar usuario ou senha IMEA no GitHub, prompt, BigQuery ou Cloud Run.",
     "Downloads autenticados somente quando autorizados/licenciados e por mecanismo seguro; coleta publica deve permanecer em allowlist oficial.",
+    "O RAW binario corrente fica no Drive; nao recriar a arvore RAW local da implementacao antiga.",
     "Preservar snapshots/vintages; publicacao nova nao apaga revisoes historicas.",
     "data_referencia, data_publicacao, data_coleta e competencia sao campos distintos.",
     "Pecuaria permanece em modulo editorial e analitico separado.",
-    "QA de multiplicidade, escala, unidades e identidades Oferta-Demanda bloqueia promocao silenciosa de linha ambigua."
+    "QA de multiplicidade, escala, unidades e identidades Oferta-Demanda bloqueia promocao silenciosa de linha ambigua.",
+    "Merge keys duplicadas bloqueiam migracao; o migrador nao deduplica silenciosamente evidencias conflitantes.",
+    "A base antiga e evidencia de pre-producao e deve ser revalidada antes de qualquer BigQuery real."
   ],
   "canonical_tables": [
     {
-      "target": "ingestao.imea_snapshots",
+      "legacy_target": "ingestao.imea_snapshots",
+      "target": "agrolog_ops.imea_snapshots",
       "grain": "snapshot de artefato/publicacao",
       "key": "hash_snapshot",
       "partition": "data_coleta",
-      "purpose": "linhagem e auditoria"
+      "purpose": "linhagem e auditoria de migracao"
     },
     {
-      "target": "ingestao.imea_registros_raw",
-      "grain": "registro de indicador por snapshot",
+      "legacy_target": "ingestao.imea_registros_raw",
+      "target": "agrolog_ops.imea_registros_raw",
+      "grain": "registro estruturado por snapshot",
       "key": "hash_snapshot_registro",
       "partition": "data_referencia",
-      "purpose": "RAW estruturado e QA"
+      "purpose": "evidencia estruturada e QA; nao substitui RAW binario do Drive"
     },
     {
       "target": "agro.imea_indicadores",
@@ -63,11 +75,27 @@
     "reliable_core_records": 40046,
     "reliable_current_records": 40030,
     "ambiguous_current_keys_blocked": 24,
+    "x100_error_groups_treated": 16,
     "cost_unique_records": 35848,
     "offer_demand_reports": 88,
     "offer_demand_observations": 3666,
     "estimates_reports": 88,
-    "estimates_observations": 2431
+    "estimates_observations": 2431,
+    "cotton_arroba_to_kg_ha_rows": 16,
+    "known_material_internal_divergences": 1,
+    "known_offer_demand_identity_flags": 2
   },
-  "promotion_gate": "Migrar parser/loader para contratos atuais, repetir testes/QA e somente carregar BigQuery apos P0/P1 homologado."
+  "migration_implementation": {
+    "module": "collector/imea_migration.py",
+    "behavior": [
+      "validate exact required columns",
+      "hash migration artifact",
+      "require non-empty merge key",
+      "block duplicate merge key",
+      "block non-approved QA in trusted tables",
+      "report missing groups without inventing data",
+      "preserve audited conversion 1 arroba = 15 kg"
+    ]
+  },
+  "promotion_gate": "Obter os artefatos autorizados/pre-producao, executar o validador N6, repetir QA/crosschecks, homologar P0/P1 e somente depois carregar BigQuery."
 }
