@@ -1,0 +1,62 @@
+{
+  "contract_version": "1.0",
+  "status": "sql_ready_waiting_source_homologation",
+  "purpose": "Camadas intermediarias point-in-time entre tabelas canonicas e o Data Mart Soja MT V1.",
+  "marts": [
+    {
+      "mart_id": "soy_mt_production",
+      "target": "marts_soy_mt.production_v1",
+      "sources_all": ["agro.conab_safra_graos"],
+      "grain": "safra x levantamento/vintage x geografia x produto",
+      "required_fields": ["safra", "produto", "uf", "area_mil_ha", "produtividade_kg_ha", "producao_mil_t", "data_publicacao", "data_coleta", "snapshot_id"],
+      "hard_filters": ["produto canonico = SOJA", "geografia = MT/Brasil explicitamente separada"]
+    },
+    {
+      "mart_id": "soy_mt_storage",
+      "target": "marts_soy_mt.storage_v1",
+      "sources_all": ["logistica.armazens_conab", "referencia.municipios_ibge"],
+      "grain": "snapshot x municipio/codigo_ibge x unidade armazenadora",
+      "required_fields": ["warehouse_id", "municipio", "uf", "capacidade_estatica_t", "snapshot_id", "data_referencia", "data_coleta"],
+      "hard_filters": ["UF=MT", "join geografico por codigo IBGE quando disponivel"]
+    },
+    {
+      "mart_id": "soy_mt_commercialization",
+      "target": "marts_soy_mt.commercialization_v1",
+      "sources_any": ["agro.imea_indicadores"],
+      "grain": "data/vintage x safra x local x indicador",
+      "required_fields": ["safra", "data_referencia", "data_publicacao", "data_coleta", "valor_canonico", "unidade_canonica", "hash_registro"],
+      "hard_filters": ["cadeia/produto = soja", "somente series de comercializacao identificadas semanticamente"]
+    },
+    {
+      "mart_id": "soy_mt_market",
+      "target": "marts_soy_mt.market_v1",
+      "sources_all": ["mercado.imea_indicadores_operacionais"],
+      "grain": "data x produto x indicador x local",
+      "required_fields": ["data_referencia", "produto", "metric_name", "valor", "unidade_canonica", "data_coleta", "snapshot_id"],
+      "hard_filters": ["produto = SOJA", "CBOT/PTAX/premio/preco fisico permanecem variaveis separadas"]
+    },
+    {
+      "mart_id": "soy_mt_trade",
+      "target": "marts_soy_mt.trade_v1",
+      "sources_all": ["comercio_exterior.comexstat_ncm_export"],
+      "grain": "competencia x NCM x UF/pais/URF conforme tabela de origem",
+      "required_fields": ["year", "month", "ncm", "net_kg", "fob_usd", "snapshot_id", "data_coleta"],
+      "hard_filters": ["NCM de soja definido por mapping versionado", "URF nunca vira porto fisico", "municipio declarante nunca vira origem fisica automaticamente"]
+    },
+    {
+      "mart_id": "soy_mt_climate",
+      "target": "marts_soy_mt.climate_v1",
+      "sources_any": ["clima.agera5_daily", "clima.nasa_power_daily", "clima.estacoes_daily"],
+      "grain": "data x grid/estacao x parametro",
+      "required_fields": ["data_referencia", "latitude", "longitude", "parameter", "value", "evidence_subtype"],
+      "hard_filters": ["fonte/subtipo preservados", "estacao e reanalise nao sao intercambiaveis", "agregacao MT exige metodologia espacial versionada"]
+    }
+  ],
+  "global_rules": [
+    "nenhum mart intermediario substitui a tabela canonica de origem",
+    "toda materializacao exige qa_status=pass da fonte",
+    "point-in-time precisa ser reconstruivel por cutoff",
+    "nenhuma tabela demo/vazia pode liberar o mart final",
+    "materializacao deve ser idempotente ou CREATE OR REPLACE derivada de fontes append-only"
+  ]
+}
