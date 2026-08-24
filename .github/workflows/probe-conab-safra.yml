@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - "collector/xlsx_reader.py"
+      - "collector/conab_safra.py"
       - "collector/adapters.py"
       - "collector/config/sources.pilot.json"
       - "scripts/probe_conab_safra_live.py"
