@@ -35,8 +35,7 @@ def parse_reliefweb_payload(
         published = _text(date.get("original")) or _text(date.get("created")) or collected
         country = _country_name(fields)
         source_url = _text(fields.get("origin")) or _text(fields.get("url_alias")) or _text(fields.get("url"))
-        source_names = _source_names(fields.get("source"))
-        impact_text = " ".join([title, country or "", *source_names])
+        impact_text = " ".join([title, country or ""])
         events.append(
             GeopoliticalEvent(
                 event_id=stable_event_id(source_id, source_event_id, title, published, country),
@@ -50,7 +49,6 @@ def parse_reliefweb_payload(
                 verification_level="curated_report",
                 country=country,
                 source_url=source_url,
-                actors=tuple(source_names),
                 impact_areas=infer_agrolog_impact_areas(impact_text),
                 raw_artifact_ref=raw_artifact_ref,
             )
@@ -75,19 +73,6 @@ def _country_name(fields: dict[str, Any]) -> str | None:
                 if name:
                     return name
     return None
-
-
-def _source_names(value: object) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    names: list[str] = []
-    for source in value:
-        if not isinstance(source, dict):
-            continue
-        name = _text(source.get("shortname")) or _text(source.get("name")) or _text(source.get("longname"))
-        if name and name not in names:
-            names.append(name)
-    return names
 
 
 def _text(value: object) -> str | None:
