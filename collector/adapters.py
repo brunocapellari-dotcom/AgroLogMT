@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urlencode
@@ -39,6 +40,43 @@ class HttpAdapter:
                 etag=response.headers.get("ETag"),
                 last_modified=response.headers.get("Last-Modified"),
             )
+
+
+class EnvHeaderHttpAdapter:
+    """HTTP deterministico com um header sensivel carregado somente do ambiente."""
+
+    def fetch(self, spec: SourceSpec) -> AcquisitionResult:
+        header_name = str(spec.options.get("header_name", "")).strip()
+        env_var = str(spec.options.get("header_env_var", "")).strip()
+        if not header_name or not env_var:
+            raise ValueError("http_env_header exige options.header_name e options.header_env_var")
+
+        secret = os.environ.get(env_var)
+        if not secret:
+            raise RuntimeError(f"Variavel de ambiente obrigatoria ausente: {env_var}")
+
+        prefix = str(spec.options.get("header_value_prefix", ""))
+        headers = dict(spec.options.get("headers", {}))
+        headers[header_name] = f"{prefix}{secret}"
+
+        child_spec = SourceSpec(
+            source_id=spec.source_id,
+            name=spec.name,
+            group=spec.group,
+            method="http",
+            enabled=spec.enabled,
+            url=spec.url,
+            expected_frequency=spec.expected_frequency,
+            file_extension=spec.file_extension,
+            evidence_class=spec.evidence_class,
+            source_timezone=spec.source_timezone,
+            notes=spec.notes,
+            options={
+                "timeout_seconds": spec.options.get("timeout_seconds", 60),
+                "headers": headers,
+            },
+        )
+        return HttpAdapter().fetch(child_spec)
 
 
 class CkanResourceAdapter:
@@ -97,6 +135,8 @@ def get_adapter(method: str) -> Adapter:
     normalized = method.strip().lower()
     if normalized in {"http", "http_file", "json_api", "api"}:
         return HttpAdapter()
+    if normalized in {"http_env_header", "api_env_header"}:
+        return EnvHeaderHttpAdapter()
     if normalized in {"ckan", "ckan_resource"}:
         return CkanResourceAdapter()
     raise NotImplementedError(
