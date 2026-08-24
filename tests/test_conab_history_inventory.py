@@ -19,20 +19,23 @@ class HistoricalAvailabilityTests(unittest.TestCase):
         self.assertFalse(publication_plausible_for_safra("2022/23", "2025-09-17T15:31:00+00:00"))
         self.assertFalse(publication_plausible_for_safra("2022/23", None))
 
-    def test_plan_blocks_missing_and_migrated_timestamps(self) -> None:
+    def test_plan_blocks_missing_migrated_and_evidence_less_timestamps(self) -> None:
         rows = [
-            SafraPublication("u1", "a1", "2022/23", 12, "2023-09-01T12:00:00+00:00"),
-            SafraPublication("u2", "a2", "2022/23", 1, "2025-09-17T15:31:00+00:00"),
-            SafraPublication("u3", "a3", "2021/22", 1, None),
+            SafraPublication("u1", "a1", "2022/23", 12, "2023-09-01T12:00:00+00:00", "official_page_timestamp"),
+            SafraPublication("u2", "a2", "2022/23", 1, "2025-09-17T15:31:00+00:00", None),
+            SafraPublication("u3", "a3", "2021/22", 1, None, None),
+            SafraPublication("u4", "a4", "2022/23", 2, "2022-11-09T12:00:00+00:00", None),
         ]
         plan = build_plan(rows)
         self.assertEqual(plan[0]["execution_status"], "ready")
+        self.assertEqual(plan[0]["availability_basis"], "official_page_timestamp")
         self.assertEqual(plan[1]["execution_status"], "blocked_suspected_site_migration_timestamp")
         self.assertEqual(plan[2]["execution_status"], "blocked_missing_original_publication_time")
+        self.assertEqual(plan[3]["execution_status"], "blocked_missing_availability_evidence_basis")
 
     def test_merge_prefers_verified_timestamp_for_same_identity(self) -> None:
-        migrated = SafraPublication("old", "a", "2022/23", 1, "2025-09-17T15:31:00+00:00")
-        verified = SafraPublication("verified", "b", "2022/23", 1, "2022-10-06T12:00:00+00:00")
+        migrated = SafraPublication("old", "a", "2022/23", 1, "2025-09-17T15:31:00+00:00", None)
+        verified = SafraPublication("verified", "b", "2022/23", 1, "2022-10-06T12:00:00+00:00", "official_nested_page_timestamp")
         merged = merge_publications([migrated], [verified])
         self.assertEqual(len(merged), 1)
         self.assertEqual(merged[0].item_url, "verified")
@@ -44,7 +47,7 @@ class ArchiveDiscoveryTests(unittest.TestCase):
     def test_archive_scanner_walks_expected_season_and_ignores_404(self, fetch_item) -> None:
         def side_effect(url: str):
             if "/12o-levantamento-safra-2022-23" in url:
-                return SafraPublication(url, url + "/file.xlsx", "2022/23", 12, "2023-09-01T12:00:00+00:00")
+                return SafraPublication(url, url + "/file.xlsx", "2022/23", 12, "2023-09-01T12:00:00+00:00", "official_page_timestamp")
             raise HTTPError(url, 404, "not found", hdrs=None, fp=None)
 
         fetch_item.side_effect = side_effect
