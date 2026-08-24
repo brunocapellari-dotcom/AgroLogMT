@@ -39,11 +39,12 @@ class _FakeSafraRecord:
 class BackfillPlanTests(unittest.TestCase):
     def test_conab_plan_blocks_item_without_original_publication_time(self) -> None:
         rows = [
-            SafraPublication("https://gov/item1", "https://gov/a.xlsx", "2025/26", 1, "2025-10-10T12:00:00+00:00"),
-            SafraPublication("https://gov/item2", "https://gov/b.xlsx", "2025/26", 2, None),
+            SafraPublication("https://gov/item1", "https://gov/a.xlsx", "2025/26", 1, "2025-10-10T12:00:00+00:00", "official_page_timestamp"),
+            SafraPublication("https://gov/item2", "https://gov/b.xlsx", "2025/26", 2, None, None),
         ]
         plan = build_conab_plan(rows)
         self.assertEqual(plan[0]["execution_status"], "ready")
+        self.assertEqual(plan[0]["availability_basis"], "official_page_timestamp")
         self.assertEqual(plan[1]["execution_status"], "blocked_missing_original_publication_time")
         selected = select_publications(rows, safra="2025/26", min_levantamento=2)
         self.assertEqual([item.levantamento for item in selected], [2])
