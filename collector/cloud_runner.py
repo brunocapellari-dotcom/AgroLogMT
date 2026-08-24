@@ -10,6 +10,8 @@ from .conab_armazens import SOURCE_ID as CONAB_ARMAZENS_SOURCE_ID
 from .conab_armazens_pipeline import run_conab_armazens_pipeline
 from .conab_safra import SOURCE_ID as CONAB_SAFRA_SOURCE_ID
 from .conab_safra_pipeline import run_conab_safra_pipeline
+from .ibge_pipeline import SOURCE_ID as IBGE_SOURCE_ID, run_ibge_pipeline
+from .nasa_power_pipeline import SOURCE_ID as NASA_POWER_SOURCE_ID, run_nasa_power_pipeline
 from .orchestrator import CollectorEngine
 
 
@@ -31,20 +33,21 @@ def main() -> int:
     for spec in selected:
         if spec.source_id == CONAB_ARMAZENS_SOURCE_ID:
             code, payload = run_conab_armazens_pipeline(spec, store)
-            print(json.dumps(payload, ensure_ascii=False, sort_keys=True), flush=True)
-            if code:
-                failed += 1
-            continue
-        if spec.source_id == CONAB_SAFRA_SOURCE_ID:
+        elif spec.source_id == CONAB_SAFRA_SOURCE_ID:
             code, payload = run_conab_safra_pipeline(spec, store)
-            print(json.dumps(payload, ensure_ascii=False, sort_keys=True), flush=True)
-            if code:
+        elif spec.source_id == IBGE_SOURCE_ID:
+            code, payload = run_ibge_pipeline(spec, store)
+        elif spec.source_id == NASA_POWER_SOURCE_ID:
+            code, payload = run_nasa_power_pipeline(spec, store)
+        else:
+            manifest = engine.run_source(spec)
+            print(json.dumps(manifest.to_dict(), ensure_ascii=False, sort_keys=True), flush=True)
+            if manifest.status == "error":
                 failed += 1
             continue
 
-        manifest = engine.run_source(spec)
-        print(json.dumps(manifest.to_dict(), ensure_ascii=False, sort_keys=True), flush=True)
-        if manifest.status == "error":
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True), flush=True)
+        if code:
             failed += 1
     return 1 if failed else 0
 

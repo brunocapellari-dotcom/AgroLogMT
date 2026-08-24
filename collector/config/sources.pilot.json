@@ -52,6 +52,36 @@
       "notes": "N6 etapa seguinte. Mantida desabilitada ate a homologacao P0/P1. Cada publicacao deve preservar seu proprio snapshot/data_publicacao para reconstrução point-in-time; revisoes futuras nao substituem vintages anteriores."
     },
     {
+      "source_id": "ibge_municipios_mt",
+      "name": "IBGE Localidades - Municipios de Mato Grosso",
+      "group": "dados",
+      "method": "http",
+      "enabled": false,
+      "url": "https://servicodados.ibge.gov.br/api/v1/localidades/estados/MT/municipios",
+      "expected_frequency": "monthly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "notes": "Dimensao geografica canonica. Gated ate P0/P1; nao usar nomes livres quando codigo IBGE estiver disponivel."
+    },
+    {
+      "source_id": "nasa_power_mt_pilot_lucas",
+      "name": "NASA POWER - piloto Lucas do Rio Verde",
+      "group": "dados",
+      "method": "nasa_power_window",
+      "enabled": false,
+      "expected_frequency": "daily",
+      "file_extension": "json",
+      "evidence_class": "estimado",
+      "options": {
+        "latitude": -13.05,
+        "longitude": -55.91,
+        "days_back": 7,
+        "lag_days": 2,
+        "parameters": ["PRECTOTCORR", "T2M", "T2M_MAX", "T2M_MIN", "RH2M"]
+      },
+      "notes": "Somente piloto de pipeline/QA. Nao representa espacialmente todo Mato Grosso; expansao estadual exige grade/amostragem canonica antes de producao analitica."
+    },
+    {
       "source_id": "conab_noticias",
       "name": "CONAB - Noticias",
       "group": "radar",
