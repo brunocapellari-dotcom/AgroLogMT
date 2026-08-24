@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import unittest
 
-from collector.comexstat import chunked, dataset_url, iter_rows, parse_text
+from collector.comexstat import chunked, dataset_url, iter_rows, parse_text, validate_header_sample
 
 
 class ComexStatTests(unittest.TestCase):
@@ -31,6 +31,19 @@ class ComexStatTests(unittest.TestCase):
     def test_rejects_wrong_layout(self) -> None:
         with self.assertRaises(ValueError):
             list(iter_rows(io.StringIO("CO_ANO;CO_MES\n2026;7\n"), "ncm_export"))
+
+    def test_live_header_validator_accepts_extra_columns(self) -> None:
+        sample = (
+            b"CO_ANO;CO_MES;CO_NCM;CO_UNID;CO_PAIS;SG_UF_NCM;CO_VIA;CO_URF;QT_ESTAT;KG_LIQUIDO;VL_FOB;EXTRA\n"
+            b"2026;7;12019000;10;160;MT;1;817600;100;250000;100000;x\n"
+        )
+        columns = validate_header_sample(sample, "ncm_export")
+        self.assertIn("EXTRA", columns)
+
+    def test_live_header_validator_rejects_missing_required_column(self) -> None:
+        sample = b"CO_ANO;CO_MES;CO_NCM\n2026;7;12019000\n"
+        with self.assertRaises(ValueError):
+            validate_header_sample(sample, "ncm_export")
 
     def test_chunked_never_requires_full_materialization(self) -> None:
         rows = ({"i": i} for i in range(5))
