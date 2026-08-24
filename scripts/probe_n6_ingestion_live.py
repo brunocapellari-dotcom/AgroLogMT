@@ -5,9 +5,8 @@ import argparse
 import json
 from datetime import date
 from pathlib import Path
-from urllib.request import Request, urlopen
 
-from collector.comexstat import EXPECTED_COLUMNS, dataset_url
+from collector.comexstat import dataset_url, fetch_header_sample, validate_header_sample
 from collector.conab_safra_history import discover_publications
 from collector.geo_ibge import fetch_municipalities
 from collector.nasa_power import DEFAULT_PARAMETERS, fetch_daily
@@ -15,25 +14,17 @@ from collector.nasa_power import DEFAULT_PARAMETERS, fetch_daily
 
 def probe_comex() -> dict[str, object]:
     url = dataset_url("ncm_export", 2026)
-    request = Request(url, headers={"User-Agent": "AgroLogMT/0.1 (+live-probe)", "Range": "bytes=0-131071"})
-    with urlopen(request, timeout=60) as response:
-        sample = response.read(131072)
-        observed_url = response.geturl()
-        content_type = response.headers.get("Content-Type")
-        content_length = response.headers.get("Content-Length")
-    first_line = sample.decode("utf-8-sig", errors="replace").splitlines()[0]
-    columns = tuple(first_line.strip().split(";"))
-    expected = EXPECTED_COLUMNS["ncm_export"]
-    missing = [column for column in expected if column not in columns]
-    if missing:
-        raise RuntimeError(f"Comex Stat layout incompatível; faltam {missing}")
+    observed_url, sample, metadata = fetch_header_sample(url)
+    columns = validate_header_sample(sample, "ncm_export")
     return {
         "url": observed_url,
-        "content_type": content_type,
-        "content_length_header": content_length,
+        "content_type": metadata["content_type"],
+        "content_length_header": metadata["content_length"],
+        "content_range_header": metadata["content_range"],
         "sample_bytes": len(sample),
         "columns": list(columns),
         "expected_columns_ok": True,
+        "tls_verification": "required",
     }
 
 
