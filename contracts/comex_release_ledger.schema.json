@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Comex Stat release ledger v1",
+  "description": "Evidência documental de quando uma competência do comércio exterior tornou-se disponível. Não reconstrói vintages sem snapshots históricos correspondentes.",
+  "type": "object",
+  "required": ["competence", "release_time", "release_type", "source_url", "evidence_basis", "verified"],
+  "properties": {
+    "competence": {"type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"},
+    "release_time": {"type": "string", "format": "date-time"},
+    "release_type": {"type": "string", "enum": ["preliminary_partial", "monthly_consolidated", "annual_definitive"]},
+    "source_url": {"type": "string", "format": "uri"},
+    "evidence_basis": {"type": "string", "minLength": 1},
+    "verified": {"type": "boolean"}
+  },
+  "additionalProperties": false
+}
