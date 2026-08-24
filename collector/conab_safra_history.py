@@ -6,10 +6,12 @@ from datetime import datetime, timezone
 from html import unescape
 from urllib.parse import urljoin, urlsplit
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 from .adapters import extract_html_links, select_first_matching_link
 
 DEFAULT_LISTING = "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos"
+GOVBR_PUBLICATION_TZ = ZoneInfo("America/Sao_Paulo")
 
 
 @dataclass(frozen=True)
@@ -40,7 +42,7 @@ def _parse_identity(url: str) -> tuple[str | None, int | None]:
 
 
 def _normalize_publication_time(value: str) -> str | None:
-    cleaned = unescape(value).strip()
+    cleaned = " ".join(unescape(value).split())
     if not cleaned:
         return None
     candidates = [cleaned, cleaned.replace("Z", "+00:00")]
@@ -48,7 +50,7 @@ def _normalize_publication_time(value: str) -> str | None:
         try:
             parsed = datetime.fromisoformat(candidate)
             if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=timezone.utc)
+                parsed = parsed.replace(tzinfo=GOVBR_PUBLICATION_TZ)
             return parsed.astimezone(timezone.utc).isoformat()
         except ValueError:
             pass
@@ -58,16 +60,22 @@ def _normalize_publication_time(value: str) -> str | None:
         hour = int(match.group(4) or 0)
         minute = int(match.group(5) or 0)
         try:
-            # GOV.BR publica em horário local; sem timezone explícito, usamos somente
-            # a data civil como disponibilidade conservadora no início do dia UTC.
-            return datetime(year, month, day, hour, minute, tzinfo=timezone.utc).isoformat()
+            parsed = datetime(year, month, day, hour, minute, tzinfo=GOVBR_PUBLICATION_TZ)
+            return parsed.astimezone(timezone.utc).isoformat()
         except ValueError:
             return None
     return None
 
 
+def _visible_text(html: str) -> str:
+    text = re.sub(r"<script\b[^>]*>.*?</script>", " ", html, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<style\b[^>]*>.*?</style>", " ", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<[^>]+>", " ", text)
+    return " ".join(unescape(text).split())
+
+
 def extract_publication_time(html: str) -> str | None:
-    """Extrai timestamp publicado pela página; retorna None em vez de inventar data."""
+    """Extrai timestamp de publicação do GOV.BR; retorna None em vez de inventar data."""
     meta_patterns = [
         r'<meta[^>]+(?:property|name)=["\'](?:article:published_time|DC\.date\.issued|date|publication_date)["\'][^>]+content=["\']([^"\']+)["\']',
         r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\'](?:article:published_time|DC\.date\.issued|date|publication_date)["\']',
@@ -79,16 +87,14 @@ def extract_publication_time(html: str) -> str | None:
             if normalized:
                 return normalized
 
-    text_patterns = [
-        r"Publicado\s+em\s*:?\s*</?[^>]*>?\s*([^<\n]+)",
-        r"Publicado\s+em\s*:?\s*(\d{2}/\d{2}/\d{4}(?:\s+\d{1,2}[h:]\d{2})?)",
-    ]
-    for pattern in text_patterns:
-        match = re.search(pattern, html, flags=re.IGNORECASE)
-        if match:
-            normalized = _normalize_publication_time(re.sub(r"<[^>]+>", " ", match.group(1)))
-            if normalized:
-                return normalized
+    visible = _visible_text(html)
+    match = re.search(
+        r"Publicado\s+em\s+(\d{2}/\d{2}/\d{4}(?:\s+\d{1,2}[h:]\d{2})?)",
+        visible,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        return _normalize_publication_time(match.group(1))
     return None
 
 

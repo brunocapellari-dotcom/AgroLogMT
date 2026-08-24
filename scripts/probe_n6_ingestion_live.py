@@ -66,7 +66,22 @@ def probe_conab_history() -> dict[str, object]:
     identities = [(item.safra, item.levantamento) for item in publications]
     if len(set(identities)) != len(identities):
         raise RuntimeError("CONAB histórico: identidades safra/levantamento duplicadas")
-    return {"status": "ok", "count": len(publications), "items": [item.to_dict() for item in publications]}
+    missing_publication = [
+        {"safra": item.safra, "levantamento": item.levantamento, "url": item.item_url}
+        for item in publications
+        if not item.data_publicacao
+    ]
+    if missing_publication:
+        raise RuntimeError(
+            "CONAB histórico: publicação sem data_publicacao verificável; "
+            + json.dumps(missing_publication, ensure_ascii=False)
+        )
+    return {
+        "status": "ok",
+        "count": len(publications),
+        "publication_time_verified": len(publications),
+        "items": [item.to_dict() for item in publications],
+    }
 
 
 def _is_network_error(exc: BaseException) -> bool:

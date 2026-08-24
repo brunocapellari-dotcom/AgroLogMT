@@ -11,6 +11,16 @@ class ConabSafraHistoryTests(unittest.TestCase):
         html = '<meta property="article:published_time" content="2026-08-13T09:30:00-04:00">'
         self.assertEqual(extract_publication_time(html), "2026-08-13T13:30:00+00:00")
 
+    def test_extract_publication_time_from_govbr_visible_text(self) -> None:
+        html = '''
+        <div class="documentPublished">
+          <span>Publicado em</span>
+          <span>13/08/2026 09h00</span>
+          <span>Atualizado em 13/08/2026 09h48</span>
+        </div>
+        '''
+        self.assertEqual(extract_publication_time(html), "2026-08-13T12:00:00+00:00")
+
     def test_missing_publication_time_returns_none(self) -> None:
         self.assertIsNone(extract_publication_time("<html><body>sem data</body></html>"))
 
