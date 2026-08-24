@@ -37,14 +37,26 @@ class ConabSafraParserTests(unittest.TestCase):
         self.assertEqual(canonical_product_id("MILHO 2ª SAFRA"), "milho_2_safra")
         self.assertEqual(canonical_product_id("MILHO 3ª SAFRA"), "milho_3_safra")
 
-    def test_identity_quality_gate(self) -> None:
+    def test_identity_quality_gate_flags_material_difference(self) -> None:
         sheet = self._sheet()
         rows = [list(r) for r in sheet.rows]
         rows[3][8] = 40000.0
         records = parse_product_table_sheet(XlsxSheet(name="MT", rows=rows), geo_level="uf", geo_id="MT")
         soy = select_current(records, geo_id="MT", product_id="soja")
-        self.assertIn("area_yield_production_identity_gt_2pct", soy.quality_flags)
+        self.assertIn("area_yield_production_identity_material", soy.quality_flags)
         self.assertLess(soy.quality_score, 1.0)
+
+    def test_identity_quality_gate_tolerates_small_published_rounding(self) -> None:
+        rows = [
+            ["PRODUTO", "ÁREA (Em mil ha)", None, None, "PRODUTIVIDADE (Em kg/ha)", None, None, "PRODUÇÃO (Em mil t)"],
+            [None, "Safra 24/25", "Safra 25/26", "VAR. %", "Safra 24/25", "Safra 25/26", "VAR. %", "Safra 24/25", "Safra 25/26", "VAR. %"],
+            [None, "(a)", "(b)", "(b/a)", "(c)", "(d)", "(d/c)", "(e)", "(f)", "(f/e)"],
+            ["Caupi", 0.8, 0.8, 0.0, 560.0, 560.0, 0.0, 0.4, 0.4, 0.0],
+        ]
+        records = parse_product_table_sheet(XlsxSheet(name="AL", rows=rows), geo_level="uf", geo_id="AL")
+        current = select_current(records, geo_id="AL", product_id="caupi")
+        self.assertGreater(current.identity_error_pct or 0.0, 2.0)
+        self.assertEqual(current.quality_flags, ())
 
 
 if __name__ == "__main__":
