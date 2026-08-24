@@ -1,0 +1,46 @@
+name: soy-mt-beta
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 11 * * *"
+    - cron: "15 19 * * *"
+  pull_request:
+    paths:
+      - "scripts/generate_soy_mt_beta.py"
+      - "tests/test_soy_mt_beta.py"
+      - ".github/workflows/soy-mt-beta.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Generate live Soja MT beta snapshot
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          SAMPLE_POINTS=7
+          if [ "$EVENT_NAME" = "pull_request" ]; then SAMPLE_POINTS=3; fi
+          python scripts/generate_soy_mt_beta.py \
+            --climate-sample-points "$SAMPLE_POINTS" \
+            --out-json soy_mt_beta.json \
+            --out-md soy_mt_beta.md
+      - name: Upload beta snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soy-mt-beta-${{ github.run_id }}
+          path: |
+            soy_mt_beta.json
+            soy_mt_beta.md
+          if-no-files-found: error
+          retention-days: 30
