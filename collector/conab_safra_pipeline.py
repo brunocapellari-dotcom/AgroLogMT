@@ -16,6 +16,16 @@ PARSER_VERSION = "conab_safra_v1"
 METHODOLOGY_ID = "conab_safra_graos_monthly_v1"
 
 
+def _iso_dt(value: str | datetime) -> datetime:
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def _publication_dt(last_modified: str | None, data_coleta: str) -> datetime:
     if last_modified:
         try:
@@ -25,10 +35,7 @@ def _publication_dt(last_modified: str | None, data_coleta: str) -> datetime:
             return parsed.astimezone(timezone.utc)
         except (TypeError, ValueError):
             pass
-    parsed = datetime.fromisoformat(data_coleta.replace("Z", "+00:00"))
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+    return _iso_dt(data_coleta)
 
 
 def build_canonical_rows(
@@ -39,8 +46,13 @@ def build_canonical_rows(
     raw_artifact_ref: str | None,
     observed_url: str | None,
     last_modified: str | None,
+    publication_override: str | datetime | None = None,
+    availability_verified: bool = False,
+    availability_basis: str | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    publication = _publication_dt(last_modified, data_coleta)
+    if availability_verified and publication_override is None:
+        raise ValueError("availability_verified exige publication_override explícito")
+    publication = _iso_dt(publication_override) if publication_override is not None else _publication_dt(last_modified, data_coleta)
     reference_date = publication.date().isoformat()
     competencia = publication.strftime("%Y-%m")
     records = parse_conab_safra_workbook(payload)
@@ -55,6 +67,9 @@ def build_canonical_rows(
             "data_referencia": reference_date,
             "data_publicacao": publication.isoformat(),
             "data_coleta": data_coleta,
+            "data_disponibilidade": publication.isoformat() if availability_verified else None,
+            "availability_verified": availability_verified,
+            "availability_basis": availability_basis if availability_verified else "runtime_collection",
             "competencia": competencia,
             "evidence_class": "estimado",
             "methodology_id": METHODOLOGY_ID,
@@ -76,7 +91,9 @@ def build_canonical_rows(
         "current_quality_flagged": len(flagged),
         "geo_ids": len({r.geo_id for r in records}),
         "products": len({r.product_id for r in current}),
-        "data_publicacao_basis": "http_last_modified" if last_modified else "data_coleta_fallback",
+        "data_publicacao_basis": "historical_verified_override" if publication_override is not None else ("http_last_modified" if last_modified else "data_coleta_fallback"),
+        "availability_verified": availability_verified,
+        "availability_basis": availability_basis if availability_verified else "runtime_collection",
     }
     return rows, stats
 
