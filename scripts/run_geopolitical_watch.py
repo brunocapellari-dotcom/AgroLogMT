@@ -54,7 +54,8 @@ def main() -> int:
     for spec in specs:
         if args.source and spec.source_id != args.source:
             continue
-        manifest = engine.run_source(spec)
+        outcome = engine.run_source_capture(spec)
+        manifest = outcome.manifest
         summary = {
             "source_id": spec.source_id,
             "status": manifest.status,
@@ -65,7 +66,7 @@ def main() -> int:
         if manifest.status == "error":
             exit_code = 1
             continue
-        if manifest.status == "disabled" or not manifest.raw_artifact_ref:
+        if manifest.status == "disabled" or outcome.payload is None:
             continue
 
         parser_name = str(spec.options.get("parser", "")).strip()
@@ -73,10 +74,8 @@ def main() -> int:
         if parser_fn is None:
             continue
 
-        raw_path = Path(manifest.raw_artifact_ref)
-        payload = raw_path.read_bytes()
         events = parser_fn(
-            payload,
+            outcome.payload,
             source_id=spec.source_id,
             collected_at=manifest.data_coleta,
             raw_artifact_ref=manifest.raw_artifact_ref,
