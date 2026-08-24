@@ -1,0 +1,37 @@
+{
+  "sources": [
+    {
+      "source_id": "gdelt_conflict_watch",
+      "name": "GDELT DOC 2.0 - Conflict Watch",
+      "group": "radar",
+      "method": "http",
+      "url": "https://api.gdeltproject.org/api/v2/doc/doc?query=%28war%20OR%20conflict%20OR%20airstrike%20OR%20missile%20OR%20shelling%20OR%20invasion%20OR%20%22drone%20strike%22%20OR%20ceasefire%29&mode=ArtList&maxrecords=200&format=json&timespan=24H&sort=DateDesc",
+      "expected_frequency": "hourly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "parser": "gdelt_doc",
+        "timeout_seconds": 60
+      },
+      "notes": "Sinal OSINT/noticioso. O registro observado e a publicacao capturada; o conteudo nao e tratado como fato confirmado sem corroboracao."
+    },
+    {
+      "source_id": "ucdp_ged_candidate_26_0_7",
+      "name": "UCDP GED Candidate 26.0.7",
+      "group": "dados",
+      "method": "http_env_header",
+      "enabled": false,
+      "url": "https://ucdpapi.pcr.uu.se/api/gedevents/26.0.7?pagesize=1000&page=1",
+      "expected_frequency": "daily",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "parser": "ucdp",
+        "header_name": "x-ucdp-access-token",
+        "header_env_var": "UCDP_API_TOKEN",
+        "timeout_seconds": 90
+      },
+      "notes": "Desativado por padrao ate existir token UCDP. Antes de producao, implementar paginacao e janela temporal dinamica para nao depender apenas da primeira pagina."
+    }
+  ]
+}
