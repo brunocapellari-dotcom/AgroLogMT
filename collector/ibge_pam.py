@@ -30,6 +30,12 @@ def fetch_payload(*, timeout: int = 90) -> tuple[bytes, str]:
 
 
 def _number(value: object) -> float | None:
+    """Parse SIDRA numeric text for annual yield (kg/ha).
+
+    SIDRA normally returns this variable as an integer string, but exports may carry
+    pt-BR thousands separators (e.g. `3.750`). For this integer-like yield variable,
+    a single dot followed by exactly three digits is treated as a thousands separator.
+    """
     text = str(value or "").strip()
     if not text or text in {"-", "...", "..", "X"}:
         return None
@@ -38,6 +44,12 @@ def _number(value: object) -> float | None:
         text = text.replace(".", "").replace(",", ".")
     elif "," in text:
         text = text.replace(",", ".")
+    elif text.count(".") == 1:
+        left, right = text.split(".", 1)
+        if left.lstrip("+-").isdigit() and right.isdigit() and len(right) == 3:
+            text = left + right
+    elif text.count(".") > 1 and all(part.isdigit() for part in text.split(".")):
+        text = text.replace(".", "")
     try:
         parsed = float(text)
     except ValueError:
