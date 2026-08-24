@@ -10,7 +10,7 @@ from statistics import mean
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from models.backtest import regression_metrics
+from models.backtest import RegressionMetrics, regression_metrics
 
 TABLE_ID = 1612
 MT_UF_CODE = 51
@@ -124,6 +124,16 @@ def linear_trend_at_horizon(values: list[float], horizon: int) -> float:
     return intercept + slope * target_x
 
 
+def _metric_payload(metrics: RegressionMetrics) -> dict:
+    return {
+        "n": metrics.n,
+        "mae": metrics.mae,
+        "rmse": metrics.rmse,
+        "mape_fraction": metrics.mape,
+        "mape_pct": None if metrics.mape is None else metrics.mape * 100.0,
+    }
+
+
 def lagged_hurdle(
     observations: list[YieldObservation], *, label_lag_years: int = 2, min_train: int = 5
 ) -> dict:
@@ -161,8 +171,8 @@ def lagged_hurdle(
         "min_train": min_train,
         "folds": [asdict(fold) for fold in folds],
         "metrics": {
-            "moving_average_5": asdict(ma_metrics),
-            "linear_trend_horizon": asdict(trend_metrics),
+            "moving_average_5": _metric_payload(ma_metrics),
+            "linear_trend_horizon": _metric_payload(trend_metrics),
         },
     }
 
