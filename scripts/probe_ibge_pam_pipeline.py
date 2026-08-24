@@ -27,7 +27,7 @@ def main() -> int:
         "stats": stats,
         "sample_first": rows[0],
         "sample_last": rows[-1],
-        "cloud_write": false if False else False
+        "cloud_write": False,
     }
     Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"status": result["status"], "stats": stats}, ensure_ascii=False, indent=2))
