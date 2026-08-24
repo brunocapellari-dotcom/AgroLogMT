@@ -178,7 +178,7 @@ def corroboration_status(cluster: EventCluster) -> str:
 
 def _cluster_news(cluster: EventCluster, *, max_items: int) -> list[NewsItem]:
     seen_urls: set[str] = set()
-    seen_titles: set[str] = set()
+    seen_publisher_titles: set[tuple[str, str]] = set()
     items: list[NewsItem] = []
     candidates = sorted(
         (
@@ -191,19 +191,21 @@ def _cluster_news(cluster: EventCluster, *, max_items: int) -> list[NewsItem]:
     )
     for event in candidates:
         normalized_title = " ".join(event.title.casefold().split())
+        publisher = _publisher(event)
+        title_key = (publisher, normalized_title)
         url_key = event.source_url or ""
         if url_key and url_key in seen_urls:
             continue
-        if normalized_title in seen_titles:
+        if title_key in seen_publisher_titles:
             continue
         if url_key:
             seen_urls.add(url_key)
-        seen_titles.add(normalized_title)
+        seen_publisher_titles.add(title_key)
         items.append(
             NewsItem(
                 event_id=event.event_id,
                 title=event.title,
-                publisher=_publisher(event),
+                publisher=publisher,
                 published_at=event.data_publicacao,
                 url=event.source_url,
                 source_id=event.source_id,
