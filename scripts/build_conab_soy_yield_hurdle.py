@@ -5,9 +5,11 @@ import argparse
 import json
 from collections import defaultdict
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from collector.conab_safra import parse_conab_safra_workbook
+from collector.conab_safra_history import _publication_from_item
 from models.first_backtests import yield_backtest
 
 DEFAULT_REGISTRY = Path("contracts/conab_vintage_registry.v1.json")
@@ -58,25 +60,67 @@ def choose_final_available_vintages(items: list[dict], *, start_year: int, end_y
     return sorted(chosen, key=lambda item: _season_start(str(item["safra"])))
 
 
+def _download_verified_publication(publication: dict) -> tuple[bytes, str, str]:
+    """Download a verified vintage while tolerating GOV.BR attachment URL churn.
+
+    The registry remains authoritative for publication time and availability evidence. If a stored
+    attachment URL moved, only the binary locator is refreshed from the same official item page.
+    Safra/levantamento identity must still match before the refreshed binary is accepted.
+    """
+    stored_url = str(publication["attachment_url"])
+    try:
+        return _download(stored_url), stored_url, "registry_attachment"
+    except HTTPError as exc:
+        if exc.code not in {404, 410}:
+            raise
+
+    refreshed = _publication_from_item(str(publication["item_url"]))
+    if refreshed is None:
+        raise RuntimeError(
+            f"CONAB vintage {publication.get('safra')} L{publication.get('levantamento')}: "
+            "attachment expirou e a pagina oficial nao resolveu novo XLSX"
+        )
+    if refreshed.safra != publication.get("safra") or refreshed.levantamento != publication.get("levantamento"):
+        raise RuntimeError(
+            f"CONAB vintage identity drift: registry={publication.get('safra')}/L{publication.get('levantamento')} "
+            f"resolved={refreshed.safra}/L{refreshed.levantamento}"
+        )
+    return _download(refreshed.attachment_url), refreshed.attachment_url, "official_item_reresolved"
+
+
 def build_annual_series(*, start_year: int = 2021, end_year: int = 2025, registry_path: str | Path = DEFAULT_REGISTRY) -> dict:
     registry = load_verified_registry(registry_path)
     chosen = choose_final_available_vintages(registry, start_year=start_year, end_year=end_year)
 
     seasons: dict[str, dict] = {}
     source_vintages: list[dict] = []
+    acquisition_warnings: list[str] = []
     for publication in chosen:
-        payload = _download(str(publication["attachment_url"]))
+        try:
+            payload, resolved_attachment_url, attachment_resolution = _download_verified_publication(publication)
+        except Exception as exc:
+            acquisition_warnings.append(
+                f"Falha ao adquirir {publication.get('safra')} L{publication.get('levantamento')}: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            continue
         rows = parse_conab_safra_workbook(payload)
         soy = [row for row in rows if row.geo_id == "MT" and row.product_id == "soja"]
         current = next((row for row in soy if row.vintage_position == "current"), None)
         previous = next((row for row in soy if row.vintage_position == "previous"), None)
         if current is None or current.produtividade_kg_ha is None:
+            acquisition_warnings.append(
+                f"Vintage {publication.get('safra')} L{publication.get('levantamento')} sem produtividade corrente de soja MT"
+            )
             continue
         source_vintages.append({
             "source_safra": publication["safra"],
             "levantamento": publication["levantamento"],
             "data_publicacao": publication["data_publicacao"],
             "availability_basis": publication["availability_basis"],
+            "registry_attachment_url": publication["attachment_url"],
+            "resolved_attachment_url": resolved_attachment_url,
+            "attachment_resolution": attachment_resolution,
             "current_safra": current.safra,
             "current_yield_kg_ha": current.produtividade_kg_ha,
             "previous_safra": previous.safra if previous else None,
@@ -113,7 +157,7 @@ def build_annual_series(*, start_year: int = 2021, end_year: int = 2025, registr
         "n_seasons": len(ordered),
         "season_start": ordered[0]["safra"] if ordered else None,
         "season_end": ordered[-1]["safra"] if ordered else None,
-        "warnings": [],
+        "warnings": acquisition_warnings,
     }
     if len(values) >= 6:
         backtest = yield_backtest(values, min_train=5).to_dict()
