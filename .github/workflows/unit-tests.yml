@@ -33,7 +33,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: python scripts/run_n6_synthetic_backtest.py
       - name: Compile N6 Python scripts
-        run: python -m py_compile scripts/validate_conab_n6.py scripts/validate_gateway_n6.py scripts/run_n6_synthetic_backtest.py models/point_in_time.py models/readiness.py models/baselines.py models/feature_matrix.py models/training_dataset.py models/evaluation.py models/promotion.py
+        run: python -m py_compile scripts/validate_conab_n6.py scripts/validate_gateway_n6.py scripts/run_n6_synthetic_backtest.py scripts/inspect_n6_bigquery_readiness.py models/point_in_time.py models/readiness.py models/baselines.py models/feature_matrix.py models/training_dataset.py models/evaluation.py models/promotion.py
       - name: Validate shell syntax
         run: bash -n scripts/preflight_n6_gcp.sh scripts/deploy_collectors_gcloud.sh scripts/deploy_gateway_gcloud.sh scripts/homologate_n6_core.sh
       - name: Validate JSON contracts/config
