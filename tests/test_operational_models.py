@@ -28,7 +28,7 @@ class OperationalModelsTest(unittest.TestCase):
         self.assertFalse(regime_shift(previous_hhi=.20, current_hhi=.21, previous_top_share=40, current_top_share=41, leader_changed=False))
 
     def test_freight_pressure(self):
-        self.assertEqual(freight_pressure_label([90, 91, 92, 60])["label"], "ELEVATED")
+        self.assertEqual(freight_pressure_label([90, 91, 92, 60])["label"], "HIGH")
         self.assertEqual(freight_pressure_label([95, 96, 94, 90])["label"], "HIGH")
 
     def test_ramp_activity(self):
