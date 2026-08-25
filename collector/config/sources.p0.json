@@ -1,0 +1,39 @@
+{
+  "sources": [
+    {
+      "source_id": "bcb_ptax_usd_daily",
+      "name": "BCB/Depin - PTAX USD diária",
+      "group": "dados",
+      "method": "bcb_ptax_daily",
+      "enabled": true,
+      "expected_frequency": "daily",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "days_back": 7,
+        "timeout_seconds": 60
+      },
+      "notes": "P0. API oficial Olinda/PTAX; consulta janela curta e materializa somente cotação retornada pela fonte primária."
+    },
+    {
+      "source_id": "ana_hidroweb_m04_stations",
+      "name": "ANA HidroWebService - estações M04",
+      "group": "dados",
+      "method": "ana_hidroweb_adopted",
+      "enabled": true,
+      "expected_frequency": "hourly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "required_env_vars": ["ANA_IDENTIFICADOR", "ANA_SENHA"],
+        "identificador_env_var": "ANA_IDENTIFICADOR",
+        "senha_env_var": "ANA_SENHA",
+        "station_codes": ["15400000", "15320002", "15630000", "17730000", "17900000"],
+        "date_filter": "DATA_LEITURA",
+        "range_filter": "DIAS_30",
+        "timeout_seconds": 90
+      },
+      "notes": "P0 M04. Nova API canônica ANA; credenciais só por Secret Manager/env. Token efêmero nunca é persistido."
+    }
+  ]
+}
