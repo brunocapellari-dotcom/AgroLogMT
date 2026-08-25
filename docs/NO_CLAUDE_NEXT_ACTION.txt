@@ -1,0 +1,1 @@
+PROJECT_ID=<projeto> MANAGE_SCHEDULER=0 bash scripts/homologate_n6_core.sh
