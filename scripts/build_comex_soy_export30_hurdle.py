@@ -36,26 +36,28 @@ def _rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     raise RuntimeError("ComexStat API sem lista de resultados reconhecivel")
 
 
-def _fetch_years(
+def _fetch_period_blocks(
     client: ComexStatApiClient,
     *,
     start_year: int,
     end_year: int,
     end_month: int,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
-    """Consulta cada ano separadamente.
+    """Reconstrói série contínua com no máximo duas chamadas.
 
-    A API ComexStat interpreta intervalos multi-ano com mês inicial/final como uma
-    seleção de meses repetida em cada ano. Para reconstruir uma série mensal
-    contínua, cada ano fechado deve ser solicitado como 01-12 e o ano corrente
-    como 01-mês mais recente.
+    Na API ComexStat, um intervalo multi-ano `YYYY-01 -> YYYY-07` seleciona
+    meses 01-07 em cada ano. Portanto anos fechados são consultados em um bloco
+    01-12 e o ano corrente em bloco separado 01-mês mais recente. Isso evita
+    lacunas agosto-dezembro e também evita rate-limit de uma chamada por ano.
     """
+    blocks: list[tuple[str, str]] = []
+    if start_year < end_year:
+        blocks.append((f"{start_year:04d}-01", f"{end_year - 1:04d}-12"))
+    blocks.append((f"{end_year:04d}-01", f"{end_year:04d}-{end_month:02d}"))
+
     rows: list[dict[str, Any]] = []
     requests: list[dict[str, str]] = []
-    for year in range(start_year, end_year + 1):
-        final_month = end_month if year == end_year else 12
-        start = f"{year:04d}-01"
-        end = f"{year:04d}-{final_month:02d}"
+    for start, end in blocks:
         result = client.general(soybean_export_payload(start=start, end=end, month_detail=True))
         batch = _rows(result)
         rows.extend(batch)
@@ -71,7 +73,7 @@ def build_history(*, start_year: int = 2015, state: str = "Mato Grosso", client:
     if start_year < 1997 or start_year > update.year:
         raise ValueError("start_year fora da cobertura moderna")
 
-    rows, request_periods = _fetch_years(
+    rows, request_periods = _fetch_period_blocks(
         client, start_year=start_year, end_year=update.year, end_month=update.month
     )
 
