@@ -25,7 +25,6 @@ class BcbPtaxDailyAdapter:
     BASE = "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata"
 
     def fetch(self, spec: SourceSpec):
-        # Import local evita acoplamento circular no carregamento de adapters.py.
         from .adapters import AcquisitionResult
 
         timeout = int(spec.options.get("timeout_seconds", 60))
@@ -121,6 +120,7 @@ class AnaHidroAdoptedAdapter:
             raise P0AcquisitionError("ANA source sem station_codes")
         range_filter = str(spec.options.get("range_filter", "DIAS_30"))
         date_filter = str(spec.options.get("date_filter", "DATA_LEITURA"))
+        search_date = str(spec.options.get("search_date") or datetime.now(timezone.utc).date().isoformat())
         all_items: list[dict[str, Any]] = []
         request_urls: list[str] = []
         for station in stations:
@@ -128,6 +128,7 @@ class AnaHidroAdoptedAdapter:
                 {
                     "CodigoDaEstacao": station,
                     "TipoFiltroData": date_filter,
+                    "DataDeBusca": search_date,
                     "RangeIntervaloDeBusca": range_filter,
                 }
             )
@@ -152,12 +153,12 @@ class AnaHidroAdoptedAdapter:
             "station_codes": stations,
             "range_filter": range_filter,
             "date_filter": date_filter,
+            "search_date": search_date,
             "request_urls": request_urls,
             "items": all_items,
             "token_exposed": False,
         }
         payload = json.dumps(safe_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
-        # Defesa adicional: segredos jamais podem aparecer no payload persistido.
         text = payload.decode("utf-8", errors="ignore")
         if identificador in text or senha in text or token in text:
             raise P0AcquisitionError("SECRET_LEAK_GUARD acionado")
