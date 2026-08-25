@@ -13,6 +13,8 @@ IMAGE_TAG="${IMAGE_TAG:-$(date +%Y%m%d%H%M%S)}"
 TIME_ZONE="${TIME_ZONE:-America/Cuiaba}"
 COLLECTOR_SA_NAME="${COLLECTOR_SA_NAME:-agrolog-collector}"
 SCHEDULER_SA_NAME="${SCHEDULER_SA_NAME:-agrolog-scheduler}"
+# P0/P1 homologation must not create recurring jobs by default.
+MANAGE_SCHEDULER="${MANAGE_SCHEDULER:-0}"
 
 if [[ -z "${PROJECT_ID}" || "${PROJECT_ID}" == "(unset)" ]]; then
   echo "Nenhum projeto GCP configurado. Execute: gcloud config set project SEU_PROJECT_ID" >&2
@@ -30,10 +32,12 @@ gcloud services enable \
   run.googleapis.com \
   cloudbuild.googleapis.com \
   artifactregistry.googleapis.com \
-  cloudscheduler.googleapis.com \
   bigquery.googleapis.com \
   drive.googleapis.com \
   iam.googleapis.com
+if [[ "${MANAGE_SCHEDULER}" == "1" ]]; then
+  gcloud services enable cloudscheduler.googleapis.com
+fi
 
 ensure_service_account() {
   local account_id="$1"
@@ -80,17 +84,21 @@ ensure_dataset_role() {
 }
 
 ensure_service_account "${COLLECTOR_SA_NAME}" "AgroLog Collector"
-ensure_service_account "${SCHEDULER_SA_NAME}" "AgroLog Scheduler Invoker"
+# The scheduler account is unnecessary during P0/P1 unless recurring Cloud Scheduler is explicitly requested.
+if [[ "${MANAGE_SCHEDULER}" == "1" ]]; then
+  ensure_service_account "${SCHEDULER_SA_NAME}" "AgroLog Scheduler Invoker"
+fi
 
-# O coletor precisa criar/executar jobs BigQuery, mas escrita de dados fica limitada aos datasets AgroLog abaixo.
+# Collector can create/run BigQuery jobs; write permission is dataset-scoped.
 ensure_project_role "${COLLECTOR_SERVICE_ACCOUNT}" "roles/bigquery.user"
 ensure_dataset "${OPS_DATASET}"
 ensure_dataset "${LOGISTICA_DATASET}"
 ensure_dataset_role "${OPS_DATASET}" "${COLLECTOR_SERVICE_ACCOUNT}" "roles/bigquery.dataEditor"
 ensure_dataset_role "${LOGISTICA_DATASET}" "${COLLECTOR_SERVICE_ACCOUNT}" "roles/bigquery.dataEditor"
 
-# O Scheduler apenas dispara os Cloud Run Jobs.
-ensure_project_role "${SCHEDULER_SERVICE_ACCOUNT}" "roles/run.invoker"
+if [[ "${MANAGE_SCHEDULER}" == "1" ]]; then
+  ensure_project_role "${SCHEDULER_SERVICE_ACCOUNT}" "roles/run.invoker"
+fi
 
 if ! gcloud artifacts repositories describe "${AR_REPOSITORY}" --location "${REGION}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
   gcloud artifacts repositories create "${AR_REPOSITORY}" --repository-format=docker --location "${REGION}" --project "${PROJECT_ID}"
@@ -112,37 +120,28 @@ for group in radar dados conhecimento; do
     --task-timeout 30m
 done
 
-declare -A schedules=(
-  [radar]="0 */2 * * *"
-  [dados]="0 */4 * * *"
-  [conhecimento]="0 * * * *"
-)
-
-for group in radar dados conhecimento; do
-  scheduler="agrolog-${group}-schedule"
-  uri="${run_api}/agrolog-${group}:run"
-  if gcloud scheduler jobs describe "${scheduler}" --location "${REGION}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
-    gcloud scheduler jobs update http "${scheduler}" \
-      --location "${REGION}" \
-      --project "${PROJECT_ID}" \
-      --schedule "${schedules[$group]}" \
-      --time-zone "${TIME_ZONE}" \
-      --uri "${uri}" \
-      --http-method POST \
-      --oauth-service-account-email "${SCHEDULER_SERVICE_ACCOUNT}" \
-      --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform"
-  else
-    gcloud scheduler jobs create http "${scheduler}" \
-      --location "${REGION}" \
-      --project "${PROJECT_ID}" \
-      --schedule "${schedules[$group]}" \
-      --time-zone "${TIME_ZONE}" \
-      --uri "${uri}" \
-      --http-method POST \
-      --oauth-service-account-email "${SCHEDULER_SERVICE_ACCOUNT}" \
-      --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform"
-  fi
-done
+if [[ "${MANAGE_SCHEDULER}" == "1" ]]; then
+  declare -A schedules=(
+    [radar]="0 * * * *"
+    [dados]="0 * * * *"
+    [conhecimento]="0 * * * *"
+  )
+  for group in radar dados conhecimento; do
+    scheduler="agrolog-${group}-schedule"
+    uri="${run_api}/agrolog-${group}:run"
+    if gcloud scheduler jobs describe "${scheduler}" --location "${REGION}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+      gcloud scheduler jobs update http "${scheduler}" \
+        --location "${REGION}" --project "${PROJECT_ID}" --schedule "${schedules[$group]}" --time-zone "${TIME_ZONE}" \
+        --uri "${uri}" --http-method POST --oauth-service-account-email "${SCHEDULER_SERVICE_ACCOUNT}" \
+        --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform"
+    else
+      gcloud scheduler jobs create http "${scheduler}" \
+        --location "${REGION}" --project "${PROJECT_ID}" --schedule "${schedules[$group]}" --time-zone "${TIME_ZONE}" \
+        --uri "${uri}" --http-method POST --oauth-service-account-email "${SCHEDULER_SERVICE_ACCOUNT}" \
+        --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform"
+    fi
+  done
+fi
 
 cat <<EOF
 
@@ -154,7 +153,7 @@ BigQuery: ${BQ_LOCATION}
 Datasets de escrita: ${OPS_DATASET}, ${LOGISTICA_DATASET}
 Pasta RAW/Drive: ${DRIVE_FOLDER_ID}
 Collector SA: ${COLLECTOR_SERVICE_ACCOUNT}
-Scheduler SA: ${SCHEDULER_SERVICE_ACCOUNT}
+Cloud Scheduler gerenciado nesta execução: ${MANAGE_SCHEDULER}
 
 Gate externo do Drive:
 A pasta RAW deve estar compartilhada como Editor com ${COLLECTOR_SERVICE_ACCOUNT}.
