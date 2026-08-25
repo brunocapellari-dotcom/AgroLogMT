@@ -53,6 +53,14 @@ class PortLifecycleTests(unittest.TestCase):
         current = obs("SANTOS", state="ATRACADO", berth="2026-08-25T12:00:00+00:00")
         self.assertEqual(promote_state(previous, current).state, "ATRACADO")
 
+    def test_completed_call_can_keep_realized_tonnage_unknown(self) -> None:
+        previous = obs("SANTOS", state="ATRACADO", berth="2026-08-25T12:00:00+00:00")
+        current = obs("SANTOS", state="CONCLUIDO", berth="2026-08-25T12:00:00+00:00", unberth="2026-08-25T15:00:00+00:00")
+        result = promote_state(previous, current)
+        self.assertEqual(result.state, "CONCLUIDO")
+        self.assertIsNone(result.quantity_realized_t)
+        self.assertEqual(result.quantity_programmed_t, 50000.0)
+
     def test_state_regression_is_blocked(self) -> None:
         previous = obs("SANTOS", state="ATRACADO", berth="2026-08-25T12:00:00+00:00")
         current = obs("SANTOS", state="PROGRAMADO")
