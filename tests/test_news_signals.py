@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from collector.news_signals import LocalNewsSignalStore, NewsSignal
 
 
@@ -66,6 +68,19 @@ def test_local_store_write_readback_and_idempotent_replay(tmp_path):
     assert second.already_existed is True
     assert first.logical_ref == second.logical_ref
     assert first.sha256 == second.sha256
+
+
+def test_local_store_recollection_time_only_reuses_first_artifact(tmp_path):
+    store = LocalNewsSignalStore(tmp_path)
+    first_signal = _signal(data_coleta="2026-08-24T18:03:00-04:00")
+    replay_signal = _signal(data_coleta="2026-08-24T18:33:00-04:00")
+    first = store.write(first_signal)
+    second = store.write(replay_signal)
+    assert second.already_existed is True
+    assert second.readback_ok is True
+    assert first.sha256 == second.sha256
+    stored = json.loads((store.root / f"{first_signal.idempotency_key}.json").read_text(encoding="utf-8"))
+    assert stored["data_coleta"] == "2026-08-24T18:03:00-04:00"
 
 
 def test_local_store_blocks_same_key_with_changed_content(tmp_path):
