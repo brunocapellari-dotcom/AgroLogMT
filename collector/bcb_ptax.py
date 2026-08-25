@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time
 from typing import Any
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -11,11 +11,14 @@ from zoneinfo import ZoneInfo
 BASE_URL = "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata"
 BRASILIA = ZoneInfo("America/Sao_Paulo")
 NORMAL_FINAL_WINDOW_END = time(13, 10)
-# Comunicado BCB 44.603/2026: horários excepcionais do fechamento PTAX em 2026.
-SPECIAL_FINAL_WINDOW_END_2026: dict[date, time] = {
-    date(2026, 2, 18): time(15, 40),
-    date(2026, 12, 24): time(11, 10),
-    date(2026, 12, 31): time(10, 10),
+NORMAL_CONSULTATIONS = 4
+# Comunicado BCB 44.603/2026: horários excepcionais da PTAX em 2026.
+SPECIAL_SCHEDULE_2026: dict[date, tuple[time, int]] = {
+    date(2026, 2, 18): (time(15, 40), 2),
+    date(2026, 12, 24): (time(11, 10), 2),
+    # 31/12 é excepcional: o fechamento repete USD/BRL de 30/12. Deve ser tratado
+    # por boletim explícito, nunca inferido pela contagem de consultas do próprio dia.
+    date(2026, 12, 31): (time(10, 10), 0),
 }
 
 
@@ -39,10 +42,7 @@ def _odata_date(value: date) -> str:
 
 def dollar_day_url(value: date) -> str:
     literal = quote(f"'{_odata_date(value)}'", safe="'()")
-    return (
-        f"{BASE_URL}/CotacaoDolarDia(dataCotacao=@dataCotacao)"
-        f"?@dataCotacao={literal}&$format=json"
-    )
+    return f"{BASE_URL}/CotacaoDolarDia(dataCotacao=@dataCotacao)?@dataCotacao={literal}&$format=json"
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -67,9 +67,7 @@ def parse_quotes(payload: Any, *, reference_date: date) -> list[PtaxQuote]:
         ts = _parse_datetime(row.get("dataHoraCotacao"))
         buy = row.get("cotacaoCompra")
         sell = row.get("cotacaoVenda")
-        if ts is None or buy is None or sell is None:
-            continue
-        if ts.date() != reference_date:
+        if ts is None or buy is None or sell is None or ts.date() != reference_date:
             continue
         out.append(
             PtaxQuote(
@@ -84,37 +82,37 @@ def parse_quotes(payload: Any, *, reference_date: date) -> list[PtaxQuote]:
     return out
 
 
-def expected_final_window_end(value: date) -> time:
-    return SPECIAL_FINAL_WINDOW_END_2026.get(value, NORMAL_FINAL_WINDOW_END)
+def expected_schedule(value: date) -> tuple[time, int]:
+    return SPECIAL_SCHEDULE_2026.get(value, (NORMAL_FINAL_WINDOW_END, NORMAL_CONSULTATIONS))
 
 
 def classify_daily_state(*, reference_date: date, quotes: list[PtaxQuote], now: datetime) -> str:
-    """Fail-closed temporal classifier for a PTAX day.
+    """Fail-closed temporal classifier for one PTAX reference day.
 
-    It never substitutes a previous business day. Before the expected final consultation
-    window ends, lack of a final quote is NOT_YET_PUBLISHED. Afterwards it becomes
-    SOURCE_LAG unless a same-day closing/final observation is present.
+    Previous-day values are never promoted to the current day. On normal days the
+    closing is accepted only after the official final consultation window and after
+    the expected number of same-day consultation observations is present. Explicit
+    closing bulletin metadata, when supplied by an official endpoint, takes precedence.
     """
     local_now = now.astimezone(BRASILIA)
     if reference_date > local_now.date():
         return "FUTURE_DATE"
     same_day = [q for q in quotes if q.reference_date == reference_date.isoformat()]
-    expected_end = datetime.combine(reference_date, expected_final_window_end(reference_date), tzinfo=BRASILIA)
-    if not same_day:
-        return "NOT_YET_PUBLISHED" if local_now < expected_end else "SOURCE_LAG"
+    final_window_end, expected_count = expected_schedule(reference_date)
+    expected_end = datetime.combine(reference_date, final_window_end, tzinfo=BRASILIA)
 
     final_types = {"fechamento", "closing", "final"}
     if any((q.bulletin_type or "").strip().lower() in final_types for q in same_day):
         return "CLOSING_PUBLISHED"
 
-    latest = max(_parse_datetime(q.quote_time) for q in same_day)
-    if latest is None:
-        return "DATA_QUALITY_BLOCK"
-    if latest >= expected_end.replace(minute=0 if expected_end.hour == 10 and reference_date == date(2026, 12, 31) else expected_end.minute):
-        # CotacaoDolarDia commonly omits tipoBoletim. A same-day observation at/after
-        # the final window is acceptable as the final observation only after that window.
-        return "CLOSING_PUBLISHED" if local_now >= expected_end else "INTRADAY_ONLY"
-    return "INTRADAY_ONLY" if local_now < expected_end else "SOURCE_LAG"
+    if local_now < expected_end:
+        return "INTRADAY_ONLY" if same_day else "NOT_YET_PUBLISHED"
+
+    if expected_count == 0:
+        return "NEEDS_EXPLICIT_CLOSING_BULLETIN"
+    if len(same_day) >= expected_count:
+        return "CLOSING_PUBLISHED"
+    return "SOURCE_LAG"
 
 
 def fetch_dollar_day(value: date, *, timeout: int = 30) -> tuple[list[PtaxQuote], str]:
