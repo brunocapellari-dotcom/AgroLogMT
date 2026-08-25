@@ -60,12 +60,12 @@ def validate_observation(row: PortCallObservation) -> None:
         raise ValueError(f"port_system nao canonico: {row.port_system}")
     if not (row.duv or row.imo or row.ship_name):
         raise ValueError("observacao portuaria exige DUV, IMO ou nome do navio")
-    _state(row.state)
+    state = _state(row.state)
     if row.quantity_programmed_t is not None and row.quantity_programmed_t < 0:
         raise ValueError("quantity_programmed_t negativa")
     if row.quantity_realized_t is not None and row.quantity_realized_t < 0:
         raise ValueError("quantity_realized_t negativa")
-    if _state(row.state) < PortCallState.CONCLUIDO and row.quantity_realized_t is not None:
+    if state < PortCallState.CONCLUIDO and row.quantity_realized_t is not None:
         raise ValueError("tonelagem realizada exige estado CONCLUIDO")
 
 
@@ -74,6 +74,8 @@ def promote_state(previous: PortCallObservation, current: PortCallObservation) -
 
     A newer scrape cannot promote a call by age alone. The current observation must
     carry the explicit official state. Regressions are blocked; replays are allowed.
+    Operational completion can be observed even when the source omits realized tonnage;
+    in that case quantity_realized_t stays null rather than being copied from programmed.
     """
     validate_observation(previous)
     validate_observation(current)
@@ -87,8 +89,6 @@ def promote_state(previous: PortCallObservation, current: PortCallObservation) -
         raise ValueError("ATRACADO exige berth_at oficial")
     if after in {PortCallState.DESATRACADO, PortCallState.CONCLUIDO} and not current.unberth_at:
         raise ValueError(f"{after.name} exige unberth_at oficial")
-    if after == PortCallState.CONCLUIDO and current.quantity_realized_t is None:
-        raise ValueError("CONCLUIDO exige quantity_realized_t quando o volume realizado for afirmado")
     return current
 
 
