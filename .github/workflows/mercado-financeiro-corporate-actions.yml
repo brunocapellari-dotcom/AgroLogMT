@@ -1,0 +1,32 @@
+name: Mercado Financeiro Corporate Actions Bridge
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'tools/mercado_financeiro_bridge/download_corporate_actions.py'
+      - '.github/workflows/mercado-financeiro-corporate-actions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acquire-corporate-actions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download official B3 company information and corporate actions
+        run: python tools/mercado_financeiro_bridge/download_corporate_actions.py
+      - name: Upload corporate actions bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mf-b3-corporate-actions
+          path: mf_corporate_actions/
+          if-no-files-found: error
+          retention-days: 7
