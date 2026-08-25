@@ -36,33 +36,23 @@ def _rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     raise RuntimeError("ComexStat API sem lista de resultados reconhecivel")
 
 
-def _fetch_period_blocks(
+def _fetch_full_month_block(
     client: ComexStatApiClient,
     *,
     start_year: int,
     end_year: int,
-    end_month: int,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
-    """Reconstrói série contínua com no máximo duas chamadas.
+    """Solicita meses 01-12 para todos os anos em uma única chamada.
 
-    Na API ComexStat, um intervalo multi-ano `YYYY-01 -> YYYY-07` seleciona
-    meses 01-07 em cada ano. Portanto anos fechados são consultados em um bloco
-    01-12 e o ano corrente em bloco separado 01-mês mais recente. Isso evita
-    lacunas agosto-dezembro e também evita rate-limit de uma chamada por ano.
+    A semântica da API aplica o intervalo de meses a cada ano. Portanto 01-12
+    recupera todos os meses de cada ano; meses futuros do ano corrente não geram
+    grupos e são removidos depois usando a competência oficial de atualização.
     """
-    blocks: list[tuple[str, str]] = []
-    if start_year < end_year:
-        blocks.append((f"{start_year:04d}-01", f"{end_year - 1:04d}-12"))
-    blocks.append((f"{end_year:04d}-01", f"{end_year:04d}-{end_month:02d}"))
-
-    rows: list[dict[str, Any]] = []
-    requests: list[dict[str, str]] = []
-    for start, end in blocks:
-        result = client.general(soybean_export_payload(start=start, end=end, month_detail=True))
-        batch = _rows(result)
-        rows.extend(batch)
-        requests.append({"from": start, "to": end, "rows": str(len(batch))})
-    return rows, requests
+    start = f"{start_year:04d}-01"
+    end = f"{end_year:04d}-12"
+    result = client.general(soybean_export_payload(start=start, end=end, month_detail=True))
+    rows = _rows(result)
+    return rows, [{"from": start, "to": end, "rows": str(len(rows))}]
 
 
 def build_history(*, start_year: int = 2015, state: str = "Mato Grosso", client: ComexStatApiClient | None = None) -> dict[str, Any]:
@@ -73,8 +63,8 @@ def build_history(*, start_year: int = 2015, state: str = "Mato Grosso", client:
     if start_year < 1997 or start_year > update.year:
         raise ValueError("start_year fora da cobertura moderna")
 
-    rows, request_periods = _fetch_period_blocks(
-        client, start_year=start_year, end_year=update.year, end_month=update.month
+    rows, request_periods = _fetch_full_month_block(
+        client, start_year=start_year, end_year=update.year
     )
 
     monthly: dict[str, dict[str, float]] = {}
@@ -83,6 +73,8 @@ def build_history(*, start_year: int = 2015, state: str = "Mato Grosso", client:
             continue
         year = int(row["year"])
         month = int(row["monthNumber"])
+        if (year, month) > (update.year, update.month):
+            continue
         period = f"{year:04d}-{month:02d}"
         kg = float(row.get("metricKG") or 0.0)
         fob = float(row.get("metricFOB") or 0.0)
