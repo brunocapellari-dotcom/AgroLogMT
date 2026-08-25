@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import asdict
-from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +36,33 @@ def _rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     raise RuntimeError("ComexStat API sem lista de resultados reconhecivel")
 
 
+def _fetch_years(
+    client: ComexStatApiClient,
+    *,
+    start_year: int,
+    end_year: int,
+    end_month: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    """Consulta cada ano separadamente.
+
+    A API ComexStat interpreta intervalos multi-ano com mês inicial/final como uma
+    seleção de meses repetida em cada ano. Para reconstruir uma série mensal
+    contínua, cada ano fechado deve ser solicitado como 01-12 e o ano corrente
+    como 01-mês mais recente.
+    """
+    rows: list[dict[str, Any]] = []
+    requests: list[dict[str, str]] = []
+    for year in range(start_year, end_year + 1):
+        final_month = end_month if year == end_year else 12
+        start = f"{year:04d}-01"
+        end = f"{year:04d}-{final_month:02d}"
+        result = client.general(soybean_export_payload(start=start, end=end, month_detail=True))
+        batch = _rows(result)
+        rows.extend(batch)
+        requests.append({"from": start, "to": end, "rows": str(len(batch))})
+    return rows, requests
+
+
 def build_history(*, start_year: int = 2015, state: str = "Mato Grosso", client: ComexStatApiClient | None = None) -> dict[str, Any]:
     client = client or ComexStatApiClient(timeout=180)
     update = client.last_update()
@@ -46,10 +71,9 @@ def build_history(*, start_year: int = 2015, state: str = "Mato Grosso", client:
     if start_year < 1997 or start_year > update.year:
         raise ValueError("start_year fora da cobertura moderna")
 
-    start = f"{start_year:04d}-01"
-    end = f"{update.year:04d}-{update.month:02d}"
-    result = client.general(soybean_export_payload(start=start, end=end, month_detail=True))
-    rows = _rows(result)
+    rows, request_periods = _fetch_years(
+        client, start_year=start_year, end_year=update.year, end_month=update.month
+    )
 
     monthly: dict[str, dict[str, float]] = {}
     for row in rows:
@@ -83,6 +107,7 @@ def build_history(*, start_year: int = 2015, state: str = "Mato Grosso", client:
 
     values = [row["tonnes"] for row in series]
     backtest = export30_backtest(values, seasonal_period=12, min_years=5).to_dict()
+    zero_actual_folds = sum(1 for fold in backtest["folds"] if float(fold["actual"]) == 0.0)
     return {
         "dataset": "ComexStat API soybean exports Mato Grosso",
         "source_id": "mdic_comexstat_api",
@@ -92,12 +117,19 @@ def build_history(*, start_year: int = 2015, state: str = "Mato Grosso", client:
         "period_end": periods[-1],
         "n_months": len(series),
         "api_updated": update.updated,
+        "request_periods": request_periods,
         "series": series,
         "missing_group_months_assumed_zero": missing_groups,
         "backtest": backtest,
+        "metric_quality": {
+            "zero_actual_folds": zero_actual_folds,
+            "mape_usable": zero_actual_folds == 0,
+            "primary_metrics": ["mae", "rmse"] if zero_actual_folds else ["mae", "rmse", "mape"],
+        },
         "status": "research_only",
         "warnings": [
             "Ausencia de grupo mensal na resposta agregada da API e tratada como zero; validar contra microdados antes de promocao.",
+            "MAPE nao deve ser interpretado quando houver actual=0 em folds; MAE/RMSE permanecem os hurdles primarios nesses casos.",
             "SG_UF_NCM/state representa UF do produto na semantica ComexStat; nao confundir com municipio de origem fisica ou porto.",
             "O hurdle mensal testa sazonalidade historica; EXPORT30 produtivo ainda deve incorporar informacao point-in-time adicional e validar release ledger.",
         ],
@@ -112,14 +144,14 @@ def main() -> int:
     args = parser.parse_args()
     result = build_history(start_year=args.start_year, state=args.state)
     Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    metrics = result["backtest"]["metrics"]
     print(json.dumps({
         "status": result["status"],
         "period_start": result["period_start"],
         "period_end": result["period_end"],
         "n_months": result["n_months"],
         "zero_group_months": len(result["missing_group_months_assumed_zero"]),
-        "metrics": metrics,
+        "metric_quality": result["metric_quality"],
+        "metrics": result["backtest"]["metrics"],
     }, ensure_ascii=False, indent=2))
     return 0
 
