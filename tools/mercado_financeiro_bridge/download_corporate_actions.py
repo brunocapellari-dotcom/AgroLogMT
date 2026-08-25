@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 OUT = pathlib.Path("mf_corporate_actions")
 OUT.mkdir(parents=True, exist_ok=True)
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; MercadoFinanceiroDataBridge/1.2; +https://github.com/)",
+    "User-Agent": "Mozilla/5.0 (compatible; MercadoFinanceiroDataBridge/1.3; +https://github.com/)",
     "Accept": "application/json,*/*",
 }
 IN_URL = "https://www.b3.com.br/pesquisapregao/download?filelist=IN260824.zip"
@@ -51,18 +51,20 @@ def extract_assets_from_instrument_report() -> list[str]:
         nested = z.read(nested_name)
     assets = set()
     with zipfile.ZipFile(io.BytesIO(nested)) as z:
-        for xml_name in [n for n in z.namelist() if n.lower().endswith(".xml")]:
+        xml_names = [n for n in z.namelist() if n.lower().endswith(".xml")]
+        # The public package can contain replicated message streams; one complete stream is enough.
+        for xml_name in xml_names[:1]:
             with z.open(xml_name) as fp:
                 for _, elem in ET.iterparse(fp, events=("end",)):
                     if local(elem.tag) != "Instrm":
                         continue
-                    market = find_text(elem, "Mkt")
-                    segment = find_text(elem, "Sgmt")
-                    category = find_text(elem, "SctyCtgy")
-                    asset = find_text(elem, "Asst")
-                    start = find_text(elem, "TradgStartDt")
-                    if market == "10" and segment == "1" and category in {"11", "13"} and asset and asset != "TAXA" and start != "9999-12-31":
-                        assets.add(asset)
+                    vals = {}
+                    for child in elem.iter():
+                        name = local(child.tag)
+                        if name in {"Mkt","Sgmt","SctyCtgy","Asst","TradgStartDt"} and name not in vals:
+                            vals[name] = (child.text or "").strip()
+                    if vals.get("Mkt") == "10" and vals.get("Sgmt") == "1" and vals.get("SctyCtgy") in {"11", "13"} and vals.get("Asst") and vals.get("Asst") != "TAXA" and vals.get("TradgStartDt") != "9999-12-31":
+                        assets.add(vals["Asst"])
                     elem.clear()
     return sorted(assets)
 
@@ -71,6 +73,14 @@ def fetch_company(asset: str):
     url = b3_encoded_url(INFO_URL, {"issuingCompany": asset, "language": "pt-br"})
     data = get_bytes(url, timeout=60)
     return json.loads(data.decode("utf-8"))
+
+
+def normalize_response(obj):
+    # B3 currently returns a one-element list for this endpoint in some deployments.
+    if isinstance(obj, list):
+        dicts = [x for x in obj if isinstance(x, dict)]
+        return dicts[0] if dicts else None
+    return obj if isinstance(obj, dict) else None
 
 
 def write_csv(path: pathlib.Path, rows: list[dict]):
@@ -92,23 +102,28 @@ def sha256(path: pathlib.Path) -> str:
 
 
 assets = extract_assets_from_instrument_report()
-info_rows=[]; cash=[]; stock=[]; subs=[]; failures=[]
+info_rows=[]; cash=[]; stock=[]; subs=[]; failures=[]; sample_raw=[]
 for idx, asset in enumerate(assets, 1):
     try:
-        obj = fetch_company(asset)
-        if isinstance(obj, dict):
-            base = {k:v for k,v in obj.items() if k not in {"cashDividends","stockDividends","subscriptions"}}
-            base["issuingCompanyQuery"] = asset
-            info_rows.append(base)
-            for r in obj.get("cashDividends") or []:
-                cash.append({"issuingCompanyQuery":asset, **r})
-            for r in obj.get("stockDividends") or []:
-                stock.append({"issuingCompanyQuery":asset, **r})
-            for r in obj.get("subscriptions") or []:
-                subs.append({"issuingCompanyQuery":asset, **r})
+        raw_obj = fetch_company(asset)
+        if len(sample_raw) < 3:
+            sample_raw.append({"asset":asset,"raw":raw_obj})
+        obj = normalize_response(raw_obj)
+        if obj is None:
+            failures.append({"asset":asset,"error":"unsupported_json_shape"})
+            continue
+        base = {k:v for k,v in obj.items() if k not in {"cashDividends","stockDividends","subscriptions"}}
+        base["issuingCompanyQuery"] = asset
+        info_rows.append(base)
+        for r in obj.get("cashDividends") or []:
+            if isinstance(r, dict): cash.append({"issuingCompanyQuery":asset, **r})
+        for r in obj.get("stockDividends") or []:
+            if isinstance(r, dict): stock.append({"issuingCompanyQuery":asset, **r})
+        for r in obj.get("subscriptions") or []:
+            if isinstance(r, dict): subs.append({"issuingCompanyQuery":asset, **r})
     except Exception as exc:
         failures.append({"asset":asset,"error":repr(exc)})
-    time.sleep(0.05)
+    time.sleep(0.03)
 
 paths = {
     "company_info": OUT / "company_info.jsonl",
@@ -116,6 +131,7 @@ paths = {
     "stock_dividends": OUT / "stock_dividends.csv",
     "subscriptions": OUT / "subscriptions.csv",
     "failures": OUT / "failures.json",
+    "sample_raw": OUT / "sample_raw.json",
 }
 with paths["company_info"].open("w", encoding="utf-8") as f:
     for row in info_rows:
@@ -124,6 +140,7 @@ write_csv(paths["cash_dividends"], cash)
 write_csv(paths["stock_dividends"], stock)
 write_csv(paths["subscriptions"], subs)
 paths["failures"].write_text(json.dumps(failures, indent=2, ensure_ascii=False), encoding="utf-8")
+paths["sample_raw"].write_text(json.dumps(sample_raw, indent=2, ensure_ascii=False), encoding="utf-8")
 manifest = {
     "generated_at": datetime.now(timezone.utc).isoformat(),
     "assets": len(assets),
