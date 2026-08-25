@@ -1,0 +1,64 @@
+from __future__ import annotations
+
+import unittest
+from datetime import datetime, timezone
+
+from collector.port_lifecycle import PortCallObservation, multiport_readiness, promote_state
+
+NOW = datetime(2026, 8, 25, 14, 0, tzinfo=timezone.utc)
+
+
+def obs(system: str, *, state: str = "PROGRAMADO", hours_old: int = 1, berth: str | None = None, unberth: str | None = None, realized: float | None = None) -> PortCallObservation:
+    observed = datetime(2026, 8, 25, 13 - hours_old, 0, tzinfo=timezone.utc)
+    return PortCallObservation(
+        port_system=system,
+        source_url="https://official.example/source",
+        observed_at=observed.isoformat(),
+        data_referencia="2026-08-25",
+        ship_name="TEST SHIP",
+        imo="1234567",
+        duv=f"DUV-{system}",
+        state=state,
+        quantity_programmed_t=50000.0,
+        quantity_realized_t=realized,
+        berth_at=berth,
+        unberth_at=unberth,
+    )
+
+
+class PortLifecycleTests(unittest.TestCase):
+    def test_santos_alone_is_partial(self) -> None:
+        result = multiport_readiness([obs("SANTOS")], now=NOW)
+        self.assertEqual(result["status"], "PARTIAL_MULTI_PORT")
+        self.assertIn("PARANAGUA_ANTONINA", result["missing_or_stale_systems"])
+        self.assertIn("ARCO_NORTE_CDP", result["missing_or_stale_systems"])
+
+    def test_three_geographic_systems_are_required(self) -> None:
+        rows = [obs("SANTOS"), obs("PARANAGUA_ANTONINA"), obs("ARCO_NORTE_CDP")]
+        result = multiport_readiness(rows, now=NOW)
+        self.assertEqual(result["status"], "MULTIPORT_VALIDATED")
+
+    def test_programmed_quantity_cannot_be_realized_before_completion(self) -> None:
+        with self.assertRaises(ValueError):
+            multiport_readiness([obs("SANTOS", state="ATRACADO", berth="2026-08-25T12:00:00+00:00", realized=50000)], now=NOW)
+
+    def test_berthing_requires_explicit_berth_timestamp(self) -> None:
+        previous = obs("SANTOS")
+        current = obs("SANTOS", state="ATRACADO")
+        with self.assertRaises(ValueError):
+            promote_state(previous, current)
+
+    def test_explicit_programmed_to_berthed_transition_passes(self) -> None:
+        previous = obs("SANTOS")
+        current = obs("SANTOS", state="ATRACADO", berth="2026-08-25T12:00:00+00:00")
+        self.assertEqual(promote_state(previous, current).state, "ATRACADO")
+
+    def test_state_regression_is_blocked(self) -> None:
+        previous = obs("SANTOS", state="ATRACADO", berth="2026-08-25T12:00:00+00:00")
+        current = obs("SANTOS", state="PROGRAMADO")
+        with self.assertRaises(ValueError):
+            promote_state(previous, current)
+
+
+if __name__ == "__main__":
+    unittest.main()
