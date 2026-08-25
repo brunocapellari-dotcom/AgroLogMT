@@ -1,0 +1,51 @@
+name: Mercado Financeiro Backfill 2011-2022
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'tools/mercado_financeiro_bridge/download_backfill_2011_2022.py'
+      - '.github/workflows/mercado-financeiro-backfill-2011-2022.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download official B3/CVM 2011-2022
+        run: python tools/mercado_financeiro_bridge/download_backfill_2011_2022.py
+      - name: Upload global manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mf-backfill-2011-2022-manifest
+          path: mf_backfill_2011_2022/manifest.json
+          retention-days: 1
+      - name: Upload yearly bundles
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mf-backfill-2011-2022-year-bundles
+          path: |
+            mf_backfill_2011_2022/2011/
+            mf_backfill_2011_2022/2012/
+            mf_backfill_2011_2022/2013/
+            mf_backfill_2011_2022/2014/
+            mf_backfill_2011_2022/2015/
+            mf_backfill_2011_2022/2016/
+            mf_backfill_2011_2022/2017/
+            mf_backfill_2011_2022/2018/
+            mf_backfill_2011_2022/2019/
+            mf_backfill_2011_2022/2020/
+            mf_backfill_2011_2022/2021/
+            mf_backfill_2011_2022/2022/
+          if-no-files-found: error
+          retention-days: 1
