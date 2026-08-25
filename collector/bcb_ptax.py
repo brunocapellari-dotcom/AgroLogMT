@@ -11,14 +11,11 @@ from zoneinfo import ZoneInfo
 BASE_URL = "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata"
 BRASILIA = ZoneInfo("America/Sao_Paulo")
 NORMAL_FINAL_WINDOW_END = time(13, 10)
-NORMAL_CONSULTATIONS = 4
 # Comunicado BCB 44.603/2026: horários excepcionais da PTAX em 2026.
-SPECIAL_SCHEDULE_2026: dict[date, tuple[time, int]] = {
-    date(2026, 2, 18): (time(15, 40), 2),
-    date(2026, 12, 24): (time(11, 10), 2),
-    # 31/12 é excepcional: o fechamento repete USD/BRL de 30/12. Deve ser tratado
-    # por boletim explícito, nunca inferido pela contagem de consultas do próprio dia.
-    date(2026, 12, 31): (time(10, 10), 0),
+SPECIAL_FINAL_WINDOW_END_2026: dict[date, time] = {
+    date(2026, 2, 18): time(15, 40),
+    date(2026, 12, 24): time(11, 10),
+    date(2026, 12, 31): time(10, 10),
 }
 
 
@@ -29,6 +26,7 @@ class PtaxQuote:
     buy: float
     sell: float
     bulletin_type: str | None = None
+    currency: str = "USD"
     evidence_class: str = "observado"
     evidence_subtype: str = "bcb_ptax_official"
 
@@ -41,8 +39,12 @@ def _odata_date(value: date) -> str:
 
 
 def dollar_day_url(value: date) -> str:
-    literal = quote(f"'{_odata_date(value)}'", safe="'()")
-    return f"{BASE_URL}/CotacaoDolarDia(dataCotacao=@dataCotacao)?@dataCotacao={literal}&$format=json"
+    currency = quote("'USD'", safe="'")
+    literal = quote(f"'{_odata_date(value)}'", safe="'")
+    return (
+        f"{BASE_URL}/CotacaoMoedaDia(moeda=@moeda,dataCotacao=@dataCotacao)"
+        f"?@moeda={currency}&@dataCotacao={literal}&$format=json"
+    )
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -82,36 +84,33 @@ def parse_quotes(payload: Any, *, reference_date: date) -> list[PtaxQuote]:
     return out
 
 
-def expected_schedule(value: date) -> tuple[time, int]:
-    return SPECIAL_SCHEDULE_2026.get(value, (NORMAL_FINAL_WINDOW_END, NORMAL_CONSULTATIONS))
+def expected_final_window_end(value: date) -> time:
+    return SPECIAL_FINAL_WINDOW_END_2026.get(value, NORMAL_FINAL_WINDOW_END)
+
+
+def closing_quote(quotes: list[PtaxQuote], *, reference_date: date) -> PtaxQuote | None:
+    same_day = [q for q in quotes if q.reference_date == reference_date.isoformat()]
+    closings = [q for q in same_day if (q.bulletin_type or "").strip().lower() in {"fechamento", "closing", "final"}]
+    return max(closings, key=lambda q: q.quote_time) if closings else None
 
 
 def classify_daily_state(*, reference_date: date, quotes: list[PtaxQuote], now: datetime) -> str:
-    """Fail-closed temporal classifier for one PTAX reference day.
+    """Fail-closed PTAX freshness classifier.
 
-    Previous-day values are never promoted to the current day. On normal days the
-    closing is accepted only after the official final consultation window and after
-    the expected number of same-day consultation observations is present. Explicit
-    closing bulletin metadata, when supplied by an official endpoint, takes precedence.
+    The current day is closing only when an official same-day record is explicitly
+    labelled Fechamento. Previous-day values, intermediate bulletins and timing alone
+    never authorize promotion to closing.
     """
     local_now = now.astimezone(BRASILIA)
     if reference_date > local_now.date():
         return "FUTURE_DATE"
     same_day = [q for q in quotes if q.reference_date == reference_date.isoformat()]
-    final_window_end, expected_count = expected_schedule(reference_date)
-    expected_end = datetime.combine(reference_date, final_window_end, tzinfo=BRASILIA)
-
-    final_types = {"fechamento", "closing", "final"}
-    if any((q.bulletin_type or "").strip().lower() in final_types for q in same_day):
+    if closing_quote(same_day, reference_date=reference_date) is not None:
         return "CLOSING_PUBLISHED"
 
+    expected_end = datetime.combine(reference_date, expected_final_window_end(reference_date), tzinfo=BRASILIA)
     if local_now < expected_end:
         return "INTRADAY_ONLY" if same_day else "NOT_YET_PUBLISHED"
-
-    if expected_count == 0:
-        return "NEEDS_EXPLICIT_CLOSING_BULLETIN"
-    if len(same_day) >= expected_count:
-        return "CLOSING_PUBLISHED"
     return "SOURCE_LAG"
 
 
