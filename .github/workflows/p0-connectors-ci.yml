@@ -1,0 +1,75 @@
+name: P0 Connectors CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'collector/p0_adapters.py'
+      - 'collector/p0_pipeline.py'
+      - 'collector/cloud_runner.py'
+      - 'collector/config/sources.p0.json'
+      - 'scripts/backfill_m04_ana.py'
+      - 'scripts/build_m04_hydro_views.py'
+      - 'scripts/deploy_p0_connectors_gcloud.sh'
+      - 'scripts/validate_p0_connectors_gcloud.sh'
+      - 'tests/test_p0_adapters.py'
+      - '.github/workflows/p0-connectors-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  unit-and-live-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install minimal dependencies
+        run: pip install requests
+      - name: Unit tests
+        run: python -m unittest tests.test_p0_adapters -v
+      - name: Live BCB PTAX primary probe
+        run: |
+          python - <<'PY'
+          import json
+          from collector.models import SourceSpec
+          from collector.p0_adapters import BcbPtaxDailyAdapter
+          spec=SourceSpec(source_id='bcb_ptax_usd_daily',name='PTAX',group='dados',method='bcb_ptax_daily',options={'days_back':7,'timeout_seconds':30})
+          result=BcbPtaxDailyAdapter().fetch(spec)
+          body=json.loads(result.payload)
+          row=body['latest']
+          safe={'source':body['source'],'dataHoraCotacao':row['dataHoraCotacao'],'cotacaoCompra':row['cotacaoCompra'],'cotacaoVenda':row['cotacaoVenda'],'observed_url':result.observed_url}
+          print(json.dumps(safe,ensure_ascii=False,sort_keys=True))
+          open('ptax_primary_probe.json','w',encoding='utf-8').write(json.dumps(safe,ensure_ascii=False,sort_keys=True,indent=2))
+          PY
+      - name: Optional ANA primary probe
+        env:
+          ANA_IDENTIFICADOR: ${{ secrets.ANA_IDENTIFICADOR }}
+          ANA_SENHA: ${{ secrets.ANA_SENHA }}
+        run: |
+          python - <<'PY'
+          import json,os
+          from collector.models import SourceSpec
+          from collector.p0_adapters import AnaHidroAdoptedAdapter
+          if not os.getenv('ANA_IDENTIFICADOR') or not os.getenv('ANA_SENHA'):
+              print('ANA_PROBE_SKIPPED_SECRET_NOT_CONFIGURED')
+              raise SystemExit(0)
+          spec=SourceSpec(source_id='ana_hidroweb_m04_stations',name='ANA',group='dados',method='ana_hidroweb_adopted',options={'station_codes':['15400000','15320002','15630000','17730000','17900000'],'date_filter':'DATA_LEITURA','range_filter':'DIAS_30','timeout_seconds':60})
+          result=AnaHidroAdoptedAdapter().fetch(spec)
+          body=json.loads(result.payload)
+          stations=sorted({str(x.get('codigoestacao')) for x in body.get('items',[]) if x.get('codigoestacao')})
+          safe={'source':body['source'],'canonical':body['canonical'],'stations':stations,'item_count':len(body.get('items',[])),'token_exposed':body['token_exposed']}
+          print(json.dumps(safe,ensure_ascii=False,sort_keys=True))
+          open('ana_primary_probe.json','w',encoding='utf-8').write(json.dumps(safe,ensure_ascii=False,sort_keys=True,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p0-primary-probes
+          path: |
+            ptax_primary_probe.json
+            ana_primary_probe.json
+          if-no-files-found: ignore
