@@ -1,0 +1,38 @@
+name: comex-export30-hurdle
+
+on:
+  pull_request:
+    paths:
+      - "collector/comexstat_api.py"
+      - "models/first_backtests.py"
+      - "scripts/build_comex_soy_export30_hurdle.py"
+      - "tests/test_comex_soy_export30_hurdle.py"
+      - ".github/workflows/comex-export30-hurdle.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hurdle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install requests
+        run: python -m pip install --disable-pip-version-check requests
+      - name: Unit tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m unittest tests.test_comex_soy_export30_hurdle -v
+      - name: Build live MT soybean export hurdle
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/build_comex_soy_export30_hurdle.py --start-year 2015 --out comex_soy_export30_hurdle.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: comex-soy-export30-hurdle-${{ github.run_id }}
+          path: comex_soy_export30_hurdle.json
+          retention-days: 30
