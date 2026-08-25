@@ -28,7 +28,8 @@ class ComexStatApiClient:
 
     Não existe fallback `verify=False`. O cliente serve como rota operacional agregada;
     os CSVs brutos continuam sendo a fonte preferida para backfill integral quando o
-    runtime conseguir validar a cadeia TLS do host de arquivos.
+    runtime conseguir validar a cadeia TLS do host de arquivos. A sessão padrão usa
+    retry bounded para 429/5xx e respeita `Retry-After`, sem retries infinitos.
     """
 
     def __init__(self, *, base_url: str = BASE_URL, timeout: int = 120, session: Any | None = None) -> None:
@@ -38,7 +39,22 @@ class ComexStatApiClient:
             raise ValueError("timeout deve ser positivo")
         if session is None:
             import requests
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
+
             session = requests.Session()
+            retry = Retry(
+                total=5,
+                connect=3,
+                read=3,
+                status=5,
+                backoff_factor=2.0,
+                status_forcelist=(429, 500, 502, 503, 504),
+                allowed_methods=frozenset({"GET", "POST"}),
+                respect_retry_after_header=True,
+                raise_on_status=False,
+            )
+            session.mount("https://", HTTPAdapter(max_retries=retry))
         self.session = session
         self.session.headers.update({"User-Agent": "AgroLogMT/0.1 (+ComexStat API)", "Accept": "application/json"})
 
