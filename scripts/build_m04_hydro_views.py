@@ -26,8 +26,8 @@ def main() -> int:
           MIN(cota_cm) AS stage_cm_min,
           MAX(cota_cm) AS stage_cm_max,
           APPROX_QUANTILES(vazao_m3s, 100 IGNORE NULLS)[OFFSET(50)] AS flow_m3s_median,
-          SUM(IF(cota_status='0',1,0)) / COUNTIF(cota_cm IS NOT NULL) AS stage_qc_ok_share,
-          SUM(IF(vazao_status='0',1,0)) / COUNTIF(vazao_m3s IS NOT NULL) AS flow_qc_ok_share,
+          SAFE_DIVIDE(SUM(IF(cota_status='0',1,0)), COUNTIF(cota_cm IS NOT NULL)) AS stage_qc_ok_share,
+          SAFE_DIVIDE(SUM(IF(vazao_status='0',1,0)), COUNTIF(vazao_m3s IS NOT NULL)) AS flow_qc_ok_share,
           COUNT(*) AS readings,
           MAX(data_hora_medicao) AS latest_measurement,
           MAX(data_atualizacao) AS latest_source_update
