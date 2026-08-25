@@ -36,23 +36,26 @@ def _rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     raise RuntimeError("ComexStat API sem lista de resultados reconhecivel")
 
 
-def _fetch_full_month_block(
-    client: ComexStatApiClient,
-    *,
-    start_year: int,
-    end_year: int,
-) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
-    """Solicita meses 01-12 para todos os anos em uma única chamada.
-
-    A semântica da API aplica o intervalo de meses a cada ano. Portanto 01-12
-    recupera todos os meses de cada ano; meses futuros do ano corrente não geram
-    grupos e são removidos depois usando a competência oficial de atualização.
-    """
+def _fetch_full_month_block(client: ComexStatApiClient, *, start_year: int, end_year: int) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     start = f"{start_year:04d}-01"
     end = f"{end_year:04d}-12"
     result = client.general(soybean_export_payload(start=start, end=end, month_detail=True))
     rows = _rows(result)
     return rows, [{"from": start, "to": end, "rows": str(len(rows))}]
+
+
+def _wape(backtest: dict[str, Any]) -> dict[str, float | None]:
+    folds = backtest.get("folds") or []
+    actual_sum = sum(abs(float(fold["actual"])) for fold in folds)
+    out: dict[str, float | None] = {}
+    names = sorted({name for fold in folds for name in fold.get("predictions", {})})
+    for name in names:
+        if actual_sum == 0:
+            out[name] = None
+            continue
+        error = sum(abs(float(fold["actual"]) - float(fold["predictions"][name])) for fold in folds)
+        out[name] = error / actual_sum
+    return out
 
 
 def build_history(*, start_year: int = 2015, state: str = "Mato Grosso", client: ComexStatApiClient | None = None) -> dict[str, Any]:
@@ -63,67 +66,52 @@ def build_history(*, start_year: int = 2015, state: str = "Mato Grosso", client:
     if start_year < 1997 or start_year > update.year:
         raise ValueError("start_year fora da cobertura moderna")
 
-    rows, request_periods = _fetch_full_month_block(
-        client, start_year=start_year, end_year=update.year
-    )
-
+    rows, request_periods = _fetch_full_month_block(client, start_year=start_year, end_year=update.year)
     monthly: dict[str, dict[str, float]] = {}
     for row in rows:
         if str(row.get("state") or "").strip().casefold() != state.casefold():
             continue
-        year = int(row["year"])
-        month = int(row["monthNumber"])
+        year = int(row["year"]); month = int(row["monthNumber"])
         if (year, month) > (update.year, update.month):
             continue
         period = f"{year:04d}-{month:02d}"
-        kg = float(row.get("metricKG") or 0.0)
-        fob = float(row.get("metricFOB") or 0.0)
+        kg = float(row.get("metricKG") or 0.0); fob = float(row.get("metricFOB") or 0.0)
         bucket = monthly.setdefault(period, {"kg": 0.0, "fob_usd": 0.0})
-        bucket["kg"] += kg
-        bucket["fob_usd"] += fob
+        bucket["kg"] += kg; bucket["fob_usd"] += fob
 
     periods = month_range(start_year, 1, update.year, update.month)
-    series: list[dict[str, Any]] = []
-    missing_groups: list[str] = []
+    series: list[dict[str, Any]] = []; missing_groups: list[str] = []
     for period in periods:
         values = monthly.get(period)
         if values is None:
-            missing_groups.append(period)
-            values = {"kg": 0.0, "fob_usd": 0.0}
+            missing_groups.append(period); values = {"kg": 0.0, "fob_usd": 0.0}
         tonnes = values["kg"] / 1000.0
-        series.append({
-            "period": period,
-            "tonnes": tonnes,
-            "kg": values["kg"],
-            "fob_usd": values["fob_usd"],
-            "usd_per_t": values["fob_usd"] / tonnes if tonnes > 0 else None,
-        })
+        series.append({"period": period, "tonnes": tonnes, "kg": values["kg"], "fob_usd": values["fob_usd"], "usd_per_t": values["fob_usd"] / tonnes if tonnes > 0 else None})
 
-    values = [row["tonnes"] for row in series]
-    backtest = export30_backtest(values, seasonal_period=12, min_years=5).to_dict()
-    zero_actual_folds = sum(1 for fold in backtest["folds"] if float(fold["actual"]) == 0.0)
+    backtest = export30_backtest([row["tonnes"] for row in series], seasonal_period=12, min_years=5).to_dict()
+    small_actual_folds = sum(1 for fold in backtest["folds"] if float(fold["actual"]) < 1000.0)
+    wape = _wape(backtest)
     return {
         "dataset": "ComexStat API soybean exports Mato Grosso",
         "source_id": "mdic_comexstat_api",
         "state": state,
         "ncm": ["12011000", "12019000"],
-        "period_start": periods[0],
-        "period_end": periods[-1],
-        "n_months": len(series),
+        "period_start": periods[0], "period_end": periods[-1], "n_months": len(series),
         "api_updated": update.updated,
         "request_periods": request_periods,
         "series": series,
         "missing_group_months_assumed_zero": missing_groups,
         "backtest": backtest,
+        "wape": wape,
         "metric_quality": {
-            "zero_actual_folds": zero_actual_folds,
-            "mape_usable": zero_actual_folds == 0,
-            "primary_metrics": ["mae", "rmse"] if zero_actual_folds else ["mae", "rmse", "mape"],
+            "small_actual_folds_below_1000_t": small_actual_folds,
+            "mape_usable": small_actual_folds == 0,
+            "primary_metrics": ["mae", "rmse", "wape"],
         },
         "status": "research_only",
         "warnings": [
             "Ausencia de grupo mensal na resposta agregada da API e tratada como zero; validar contra microdados antes de promocao.",
-            "MAPE nao deve ser interpretado quando houver actual=0 em folds; MAE/RMSE permanecem os hurdles primarios nesses casos.",
+            "MAPE fica secundario porque volumes mensais proximos de zero explodem erro percentual; WAPE, MAE e RMSE sao os hurdles primarios.",
             "SG_UF_NCM/state representa UF do produto na semantica ComexStat; nao confundir com municipio de origem fisica ou porto.",
             "O hurdle mensal testa sazonalidade historica; EXPORT30 produtivo ainda deve incorporar informacao point-in-time adicional e validar release ledger.",
         ],
@@ -132,21 +120,10 @@ def build_history(*, start_year: int = 2015, state: str = "Mato Grosso", client:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Hurdle EXPORT30 de soja MT via API ComexStat")
-    parser.add_argument("--start-year", type=int, default=2015)
-    parser.add_argument("--state", default="Mato Grosso")
-    parser.add_argument("--out", default="comex_soy_export30_hurdle.json")
-    args = parser.parse_args()
-    result = build_history(start_year=args.start_year, state=args.state)
+    parser.add_argument("--start-year", type=int, default=2015); parser.add_argument("--state", default="Mato Grosso"); parser.add_argument("--out", default="comex_soy_export30_hurdle.json")
+    args = parser.parse_args(); result = build_history(start_year=args.start_year, state=args.state)
     Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({
-        "status": result["status"],
-        "period_start": result["period_start"],
-        "period_end": result["period_end"],
-        "n_months": result["n_months"],
-        "zero_group_months": len(result["missing_group_months_assumed_zero"]),
-        "metric_quality": result["metric_quality"],
-        "metrics": result["backtest"]["metrics"],
-    }, ensure_ascii=False, indent=2))
+    print(json.dumps({"status": result["status"], "period_start": result["period_start"], "period_end": result["period_end"], "n_months": result["n_months"], "zero_group_months": len(result["missing_group_months_assumed_zero"]), "metric_quality": result["metric_quality"], "wape": result["wape"], "metrics": result["backtest"]["metrics"]}, ensure_ascii=False, indent=2))
     return 0
 
 
