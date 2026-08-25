@@ -1,0 +1,46 @@
+{
+  "contract_version": "1.0",
+  "effective_date": "2026-08-25",
+  "families": {
+    "CLIMA_AGROMETEOROLOGIA": {
+      "includes": ["meteorologia", "agrometeorologia", "chuva", "temperatura", "umidade", "incendio"],
+      "excludes": ["nivel_de_rio", "restricao_de_navegacao"]
+    },
+    "ENERGIA_COMBUSTIVEIS": {
+      "includes": ["diesel", "petroleo", "derivados", "refino"],
+      "excludes": ["frete_real_negociado_sem_evidencia"]
+    },
+    "SAFRA_PRODUCAO": {
+      "includes": ["area", "produtividade", "producao", "plantio", "colheita", "estimativa_de_safra"],
+      "excludes": ["comercializacao", "preco", "frete"]
+    },
+    "MERCADO_COMERCIALIZACAO": {
+      "includes": ["comercializacao", "preco_fisico", "premio", "paridade", "oferta_demanda"],
+      "excludes": ["producao_agronomica"]
+    },
+    "PORTOS_LINEUP": {
+      "includes": ["lineup", "programacao_navio", "atracacao", "desatracacao", "volume_programado", "volume_realizado"],
+      "gate": "Santos + Paranagua/Antonina + Arco Norte",
+      "excludes": ["tonelagem_programada_como_realizada"]
+    },
+    "EXPORTACOES_COMEX": {
+      "includes": ["exportacao", "importacao", "comex_stat", "secex", "mdic"],
+      "excludes": ["programacao_portuaria_como_exportacao_realizada"]
+    },
+    "HIDROLOGIA_RIOS": {
+      "includes": ["nivel", "vazao", "cota", "navegabilidade_observada"],
+      "excludes": ["restricao_inferida_apenas_por_nivel"]
+    },
+    "MERCADO_CAMBIO": {
+      "includes": ["ptax", "usd_brl", "cambio"],
+      "excludes": ["ultimo_fechamento_anterior_como_fechamento_atual"]
+    }
+  },
+  "gate_rules": {
+    "duplicate_safra_labels_forbidden": true,
+    "santos_alone_is_multiport": false,
+    "source_lag_is_not_current": true,
+    "programmed_is_not_realized": true,
+    "forecast_is_not_observed": true
+  }
+}
