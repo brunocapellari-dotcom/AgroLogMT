@@ -1,0 +1,85 @@
+name: operational-models-readiness
+
+on:
+  pull_request:
+    paths:
+      - "collector/anp_bioenergy.py"
+      - "collector/operational_models_bigquery.py"
+      - "models/operational_models.py"
+      - "tests/test_anp_bioenergy.py"
+      - "tests/test_operational_models.py"
+      - ".github/workflows/operational-models-readiness.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests
+        run: python -m unittest tests.test_operational_models tests.test_anp_bioenergy -v
+      - name: Public ANP probe
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python - <<'PY'
+          from collector.anp_bioenergy import fetch_ethanol, latest_competence, state_monthly
+          payload, rows = fetch_ethanol()
+          print('bytes', len(payload), 'rows', len(rows), 'latest', latest_competence(rows))
+          mt = state_monthly(rows)
+          assert mt and mt[-1]['year'] >= 2026
+          print('MT latest', mt[-1])
+          PY
+
+  cloud-preflight:
+    runs-on: ubuntu-latest
+    env:
+      WIF_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      ANA_HIDRO_IDENTIFICADOR: ${{ secrets.ANA_HIDRO_IDENTIFICADOR }}
+      ANA_HIDRO_SENHA: ${{ secrets.ANA_HIDRO_SENHA }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report secret readiness without revealing values
+        run: |
+          for key in WIF_PROVIDER GCP_SERVICE_ACCOUNT PROJECT_ID ANA_HIDRO_IDENTIFICADOR ANA_HIDRO_SENHA; do
+            if [ -n "${!key}" ]; then echo "READY $key"; else echo "MISSING $key"; fi
+          done
+      - id: gate
+        name: Compute GCP auth readiness
+        run: |
+          if [ -n "$WIF_PROVIDER" ] && [ -n "$GCP_SERVICE_ACCOUNT" ] && [ -n "$PROJECT_ID" ]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: google-github-actions/auth@v2
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+        if: steps.gate.outputs.ready == 'true'
+      - name: GCP preflight
+        if: steps.gate.outputs.ready == 'true'
+        run: bash scripts/preflight_n6_gcp.sh
+      - name: ANA live probe
+        if: steps.gate.outputs.ready == 'true' && env.ANA_HIDRO_IDENTIFICADOR != '' && env.ANA_HIDRO_SENHA != ''
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python - <<'PY'
+          from collector.ana_hidrowebservice import AnaHidroWebServiceClient
+          client = AnaHidroWebServiceClient()
+          for code in ('15400000','15320002','15630000','17730000','17900000'):
+            rows = client.telemetry(code, search_range='DIAS_30')
+            print(code, len(rows), rows[-1].measurement_time if rows else None)
+          PY
