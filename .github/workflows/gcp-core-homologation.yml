@@ -1,0 +1,84 @@
+name: gcp-core-homologation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: agrolog-gcp-core-homologation
+  cancel-in-progress: false
+
+jobs:
+  homologate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      WIF_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      REGION: southamerica-east1
+      BQ_LOCATION: southamerica-east1
+      MANAGE_SCHEDULER: "0"
+      EVIDENCE_DIR: outputs/n6-core
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail closed if WIF secrets are missing
+        run: |
+          missing=0
+          for key in WIF_PROVIDER GCP_SERVICE_ACCOUNT PROJECT_ID; do
+            if [ -z "${!key}" ]; then
+              echo "MISSING ${key}"
+              missing=1
+            else
+              echo "READY ${key}"
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Execute scripts/setup_github_gcp_wif.sh em Cloud Shell autenticado antes desta homologacao." >&2
+            exit 2
+          fi
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install validator dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            google-cloud-bigquery google-api-python-client google-auth requests
+
+      - name: Confirm federated identity and project
+        run: |
+          gcloud auth list --filter=status:ACTIVE --format='value(account)'
+          gcloud config set project "$PROJECT_ID"
+          test "$(gcloud config get-value project)" = "$PROJECT_ID"
+
+      - name: Execute P0/P1 core homologation
+        run: bash scripts/homologate_n6_core.sh
+
+      - name: Require explicit PASS artifact
+        run: |
+          result="$(find "$EVIDENCE_DIR" -name RESULT.txt -type f -print | sort | tail -n 1)"
+          test -n "$result"
+          grep -Fxq 'N6 CORE HOMOLOGATION: PASS' "$result"
+          cat "$result"
+
+      - name: Upload homologation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n6-core-homologation-${{ github.run_id }}
+          path: outputs/n6-core
+          if-no-files-found: warn
+          retention-days: 90
