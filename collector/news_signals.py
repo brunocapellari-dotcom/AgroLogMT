@@ -43,6 +43,30 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _recollection_equivalent(existing: bytes, candidate: bytes) -> bool:
+    """Allow an idempotent replay whose only difference is collection time.
+
+    `data_coleta` records when a collector saw an already-identical upstream event;
+    it is intentionally not part of the logical idempotency key. A later replay of
+    the same evidence must therefore reuse the first immutable artifact instead of
+    raising a false collision. Every other payload difference remains strict.
+    """
+    if existing == candidate:
+        return True
+    try:
+        left = json.loads(existing.decode("utf-8"))
+        right = json.loads(candidate.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(left, dict) or not isinstance(right, dict):
+        return False
+    left = dict(left)
+    right = dict(right)
+    left.pop("data_coleta", None)
+    right.pop("data_coleta", None)
+    return left == right
+
+
 @dataclass(frozen=True)
 class NewsSignal:
     source_id: str
@@ -106,8 +130,10 @@ class NewsSignal:
     def idempotency_payload(self) -> dict[str, Any]:
         """Campos que definem a identidade logica do sinal.
 
-        Metadados editoriais como `summary` e `extra` ficam fora da chave. Se mudarem
-        sem mudar a evidência/regra, o writer detecta colisão e bloqueia sobrescrita.
+        `data_coleta` não entra na identidade: recoletas do mesmo evento devem
+        reaproveitar o primeiro artefato persistido. Metadados editoriais como
+        `summary` e `extra` também ficam fora da chave, mas continuam protegidos
+        pelo writer: se mudarem para a mesma identidade, a sobrescrita é bloqueada.
         """
         return {
             "schema_version": SCHEMA_VERSION,
@@ -169,26 +195,27 @@ class LocalNewsSignalStore:
 
     def write(self, signal: NewsSignal) -> NewsSignalWriteResult:
         payload = serialize_news_signal(signal)
-        payload_hash = hashlib.sha256(payload).hexdigest()
         path = self.root / f"{signal.idempotency_key}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         already_existed = path.exists()
+        stored_payload = payload
         if already_existed:
             current = path.read_bytes()
-            if current != payload:
+            if not _recollection_equivalent(current, payload):
                 raise RuntimeError("Colisao de idempotencia: mesmo signal key com conteudo diferente")
+            stored_payload = current
         else:
             temp = path.with_suffix(".tmp")
             temp.write_bytes(payload)
             temp.replace(path)
         readback = path.read_bytes()
-        if readback != payload:
+        if readback != stored_payload:
             raise RuntimeError("NEWS_SIGNAL write sem readback valido")
         return NewsSignalWriteResult(
             logical_ref=str(path),
             signal_id=signal.signal_id,
             idempotency_key=signal.idempotency_key,
-            sha256=payload_hash,
+            sha256=hashlib.sha256(stored_payload).hexdigest(),
             readback_ok=True,
             already_existed=already_existed,
         )
@@ -199,7 +226,8 @@ class DriveNewsSignalStore:
 
     Não cria tabela analítica nova. O conteúdo fica em AGROLOG_NEWS/05_DATA_DRIVEN
     até o gate P0/P1 autorizar a camada analítica definitiva. Todo write exige
-    provider readback byte-a-byte.
+    provider readback byte-a-byte. Recoletas do mesmo evento preservam o primeiro
+    artefato; qualquer outra divergência para a mesma chave continua bloqueada.
     """
 
     def __init__(self, cloud_store: Any) -> None:
@@ -236,7 +264,6 @@ class DriveNewsSignalStore:
         import io
 
         payload = serialize_news_signal(signal)
-        payload_hash = hashlib.sha256(payload).hexdigest()
         filename = f"{signal.idempotency_key}.json"
         parent = self._parent()
         file_id = self._find_existing(parent, filename)
@@ -252,16 +279,20 @@ class DriveNewsSignalStore:
             file_id = created["id"]
 
         readback = self._readback(file_id)
-        if readback != payload:
-            if already_existed:
+        if already_existed:
+            if not _recollection_equivalent(readback, payload):
                 raise RuntimeError("Colisao de idempotencia no Drive: mesmo signal key com conteudo diferente")
-            raise RuntimeError("NEWS_SIGNAL Drive write sem provider readback valido")
+            stored_payload = readback
+        else:
+            if readback != payload:
+                raise RuntimeError("NEWS_SIGNAL Drive write sem provider readback valido")
+            stored_payload = payload
 
         return NewsSignalWriteResult(
             logical_ref=f"drive://{file_id}",
             signal_id=signal.signal_id,
             idempotency_key=signal.idempotency_key,
-            sha256=payload_hash,
+            sha256=hashlib.sha256(stored_payload).hexdigest(),
             readback_ok=True,
             already_existed=already_existed,
         )
