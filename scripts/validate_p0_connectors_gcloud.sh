@@ -7,7 +7,8 @@ BQ_LOCATION="${BQ_LOCATION:-southamerica-east1}"
 MERCADO_DATASET="${MERCADO_DATASET:-mercado}"
 HIDRO_DATASET="${HIDRO_DATASET:-hidrologia}"
 EVIDENCE_DIR="${EVIDENCE_DIR:-outputs/p0-connectors}"
-JOB="${JOB:-agrolog-p0}"
+PTAX_JOB="${PTAX_JOB:-agrolog-ptax}"
+ANA_JOB="${ANA_JOB:-agrolog-ana-hidro}"
 
 if [[ -z "${PROJECT_ID}" || "${PROJECT_ID}" == "(unset)" ]]; then
   echo "Projeto GCP ausente" >&2
@@ -34,7 +35,7 @@ bq query --project_id="${PROJECT_ID}" --location="${BQ_LOCATION}" --use_legacy_s
 
 python - "${OUT}/ptax_latest.json" "${OUT}/ana_station_coverage.json" <<'PY'
 import json,sys
-from datetime import date, datetime
+from datetime import date
 ptax=json.load(open(sys.argv[1],encoding='utf-8'))
 hydro=json.load(open(sys.argv[2],encoding='utf-8'))
 if not ptax:
@@ -51,10 +52,10 @@ if missing:
 print(json.dumps({'ptax_latest':latest.isoformat(),'ptax_age_days':age,'ana_stations':sorted(got),'status':'DATA_GATE_PASS'},ensure_ascii=False))
 PY
 
-# Log safety: nenhum nome de segredo/token de autenticação deve aparecer no output do job.
+# Segurança: procura padrões que indicariam vazamento acidental no texto dos dois jobs, sem ler os valores dos secrets.
 gcloud logging read \
-  "resource.type=cloud_run_job AND resource.labels.job_name=${JOB}" \
-  --project "${PROJECT_ID}" --freshness=24h --limit=1000 --format=json > "${OUT}/job_logs.json" || true
+  "resource.type=cloud_run_job AND (resource.labels.job_name=${PTAX_JOB} OR resource.labels.job_name=${ANA_JOB})" \
+  --project "${PROJECT_ID}" --freshness=24h --limit=2000 --format=json > "${OUT}/job_logs.json" || true
 
 if grep -Eqi 'tokenautenticacao|ANA_SENHA|ANA_IDENTIFICADOR|Authorization[^\n]*Bearer' "${OUT}/job_logs.json"; then
   echo "SECRET_LOG_PATTERN_DETECTED" >&2
@@ -65,10 +66,11 @@ cat > "${OUT}/RESULT.txt" <<EOF
 P0 CONNECTORS: PASS
 project=${PROJECT_ID}
 region=${REGION}
+ptax_job=${PTAX_JOB}
+ana_job=${ANA_JOB}
 ptax=${PROJECT_ID}.${MERCADO_DATASET}.ptax_usd_daily
 hydro=${PROJECT_ID}.${HIDRO_DATASET}.hydro_station_telemetry
 evidence_dir=${OUT}
 secret_log_pattern=PASS
 EOF
-
 cat "${OUT}/RESULT.txt"
