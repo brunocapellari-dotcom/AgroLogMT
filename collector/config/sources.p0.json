@@ -34,6 +34,42 @@
         "timeout_seconds": 90
       },
       "notes": "P0 M04. Nova API canônica ANA; credenciais só por Secret Manager/env. Token efêmero nunca é persistido."
+    },
+    {
+      "source_id": "chm_avisos_navegantes_hidrovias",
+      "name": "Marinha/CHM - Avisos aos Navegantes - Hidrovias em Geral",
+      "group": "dados",
+      "method": "http",
+      "enabled": true,
+      "url": "https://www.marinha.mil.br/chm/dados-do-segnav-aviso-aos-navegantes-tela",
+      "expected_frequency": "daily",
+      "file_extension": "html",
+      "evidence_class": "observado",
+      "notes": "M04 operacional. Fonte canônica para avisos à navegação; RAW preserva publicação/links. Parser deve separar aviso em vigor, cancelado, permanente, temporário e preliminar."
+    },
+    {
+      "source_id": "dnit_plano_monitoramento_hidroviario",
+      "name": "DNIT - Plano de Monitoramento Hidroviário",
+      "group": "dados",
+      "method": "http",
+      "enabled": true,
+      "url": "https://www.gov.br/dnit/pt-br/assuntos/aquaviario/plano-de-monitoramento-hidroviario-pmh",
+      "expected_frequency": "daily",
+      "file_extension": "html",
+      "evidence_class": "observado",
+      "notes": "M04 complementar operacional. Monitorar pontos críticos, dragagem, profundidade e restrição de calado; não inferir restrição apenas da existência de obras/monitoramento."
+    },
+    {
+      "source_id": "antaq_estiagem_amazonia",
+      "name": "ANTAQ - estiagem e navegação Amazônia",
+      "group": "dados",
+      "method": "http",
+      "enabled": true,
+      "url": "https://www.gov.br/antaq/pt-br/noticias/2026/antaq-reforca-acoes-preventivas-diante-dos-impactos-da-estiagem-na-regiao-amazonica",
+      "expected_frequency": "daily",
+      "file_extension": "html",
+      "evidence_class": "observado",
+      "notes": "M04 complementar regulatório/operacional. Usar para medidas, comunicação de taxa de seca e restrições confirmadas; notícia institucional não substitui aviso náutico específico."
     }
   ]
 }
