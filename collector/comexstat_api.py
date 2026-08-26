@@ -180,12 +180,7 @@ class ComexStatApiClient:
 
     @staticmethod
     def data_list(response: dict[str, Any]) -> list[dict[str, Any]]:
-        """Extrai linhas de envelopes observados/documentados da API.
-
-        O ComexStat historicamente expôs ``data.list``; o workflow legado do próprio
-        AgroLog já tratava também ``data.data``. Ambos são aceitos explicitamente,
-        sem procurar recursivamente por listas arbitrárias.
-        """
+        """Extrai linhas de envelopes observados/documentados da API."""
         data = response.get("data")
         if isinstance(data, list):
             rows: Any = data
@@ -234,8 +229,9 @@ def soybean_export_payload(
 ) -> dict[str, Any]:
     """Consulta operacional de soja em grão pela API ComexStat.
 
-    NCM 12011000 = soja para semeadura; 12019000 = outras sojas. ``state`` é UF do
-    produto na semântica ComexStat. Para Mato Grosso use ``state_code=51``.
+    NCM 12011000 = soja para semeadura; 12019000 = outras sojas. ``state`` usa o
+    identificador próprio do catálogo ComexStat, não o código IBGE. Para Mato Grosso,
+    o catálogo live validado em 26/08/2026 retornou ``state_code=52``.
 
     Quando ``include_logistics`` é verdadeiro, a consulta preserva país, via e URF
     para permitir leitura dos corredores de exportação sem confundir programação
