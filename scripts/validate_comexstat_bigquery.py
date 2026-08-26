@@ -9,6 +9,7 @@ from typing import Any
 SOURCE_ID = "mdic_comexstat_soja_mt_export_api"
 ALLOWED_NCMS = {"12011000", "12019000"}
 EXPECTED_STATE = "Mato Grosso"
+EXPECTED_FLOW = "export"
 
 
 @dataclass(frozen=True)
@@ -31,18 +32,33 @@ def _query_one(client: Any, sql: str, params: list[Any] | None = None) -> Any:
 
 
 def _latest_snapshot(client: Any, table: str) -> SnapshotStats:
+    from google.cloud import bigquery
+
+    params = [
+        bigquery.ScalarQueryParameter("state", "STRING", EXPECTED_STATE),
+        bigquery.ScalarQueryParameter("flow", "STRING", EXPECTED_FLOW),
+        bigquery.ArrayQueryParameter("ncms", "STRING", sorted(ALLOWED_NCMS)),
+    ]
     row = _query_one(
         client,
         f"""
+WITH scoped_latest AS (
+  SELECT snapshot_id
+  FROM `{table}`
+  WHERE state_name=@state AND flow=@flow AND ncm_code IN UNNEST(@ncms)
+  ORDER BY data_coleta DESC, snapshot_id DESC
+  LIMIT 1
+)
 SELECT snapshot_id,
        ANY_VALUE(competencia) competencia,
        COUNT(*) records,
        SUM(kg_liquido) kg_liquido,
        SUM(valor_fob_usd) valor_fob_usd
 FROM `{table}`
-WHERE snapshot_id = (SELECT snapshot_id FROM `{table}` ORDER BY data_coleta DESC, snapshot_id DESC LIMIT 1)
+WHERE snapshot_id=(SELECT snapshot_id FROM scoped_latest)
 GROUP BY snapshot_id
 """,
+        params,
     )
     return SnapshotStats(
         snapshot_id=str(row["snapshot_id"]),
@@ -77,6 +93,7 @@ def validate(
         f"""
 SELECT
   COUNTIF(state_name != @state) wrong_state,
+  COUNTIF(flow != @flow) wrong_flow,
   COUNTIF(ncm_code NOT IN UNNEST(@ncms)) wrong_ncm,
   COUNT(*) rows_total,
   COUNT(DISTINCT record_id) record_ids
@@ -85,12 +102,15 @@ WHERE snapshot_id=@snapshot_id
 """,
         [
             bigquery.ScalarQueryParameter("state", "STRING", EXPECTED_STATE),
+            bigquery.ScalarQueryParameter("flow", "STRING", EXPECTED_FLOW),
             bigquery.ArrayQueryParameter("ncms", "STRING", sorted(ALLOWED_NCMS)),
             bigquery.ScalarQueryParameter("snapshot_id", "STRING", snapshot.snapshot_id),
         ],
     )
     if int(scope_row["wrong_state"]) != 0:
         raise RuntimeError(f"Snapshot possui UF fora de {EXPECTED_STATE}")
+    if int(scope_row["wrong_flow"]) != 0:
+        raise RuntimeError(f"Snapshot possui fluxo fora de {EXPECTED_FLOW}")
     if int(scope_row["wrong_ncm"]) != 0:
         raise RuntimeError("Snapshot possui NCM fora do escopo de soja")
     if int(scope_row["rows_total"]) != int(scope_row["record_ids"]):
@@ -102,18 +122,21 @@ WHERE snapshot_id=@snapshot_id
 SELECT COUNT(*) rows_total,
        MAX(competencia) max_competencia,
        COUNTIF(state_name != @state) wrong_state,
+       COUNTIF(flow != @flow) wrong_flow,
        COUNTIF(ncm_code NOT IN UNNEST(@ncms)) wrong_ncm
 FROM `{view}`
+WHERE state_name=@state AND flow=@flow AND ncm_code IN UNNEST(@ncms)
 """,
         [
             bigquery.ScalarQueryParameter("state", "STRING", EXPECTED_STATE),
+            bigquery.ScalarQueryParameter("flow", "STRING", EXPECTED_FLOW),
             bigquery.ArrayQueryParameter("ncms", "STRING", sorted(ALLOWED_NCMS)),
         ],
     )
     if int(latest_view["rows_total"]) <= 0:
-        raise RuntimeError("View latest ComexStat está vazia")
-    if int(latest_view["wrong_state"]) or int(latest_view["wrong_ncm"]):
-        raise RuntimeError("View latest contém drift de escopo")
+        raise RuntimeError("View latest ComexStat está vazia para soja MT")
+    if int(latest_view["wrong_state"]) or int(latest_view["wrong_flow"]) or int(latest_view["wrong_ncm"]):
+        raise RuntimeError("View latest contém drift no escopo soja MT")
 
     run_rows = list(
         client.query(
@@ -130,11 +153,11 @@ LIMIT 10
         ).result()
     )
     if not run_rows:
-        raise RuntimeError("Nenhum manifesto operacional ComexStat encontrado")
+        raise RuntimeError("Nenhum manifesto operacional ComexStat soja MT encontrado")
 
     matching = [row for row in run_rows if str(row["sha256"] or "") == snapshot.snapshot_id]
     if not matching:
-        raise RuntimeError("Snapshot BigQuery não possui manifesto correspondente")
+        raise RuntimeError("Snapshot BigQuery soja MT não possui manifesto correspondente")
     manifest = json.loads(str(matching[0]["manifest_json"]))
     if not str(matching[0]["raw_artifact_ref"] or "").startswith("drive://"):
         raise RuntimeError("Manifesto ComexStat não aponta para RAW no Drive")
@@ -156,6 +179,7 @@ LIMIT 10
     return {
         "status": "PASS",
         "source_id": SOURCE_ID,
+        "scope": {"state": EXPECTED_STATE, "flow": EXPECTED_FLOW, "ncm": sorted(ALLOWED_NCMS)},
         "table": table,
         "latest_view": view,
         "snapshot": {
@@ -167,14 +191,14 @@ LIMIT 10
         },
         "latest_view_rows": int(latest_view["rows_total"]),
         "latest_view_max_competencia": str(latest_view["max_competencia"]),
-        "raw_drive_evidence": True,
-        "manifest_tie_out": True,
+        "raw_drive_evidence": true,
+        "manifest_tie_out": true,
         "idempotency_proven": idempotent,
     }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Valida materialização ComexStat API no BigQuery")
+    parser = argparse.ArgumentParser(description="Valida materialização ComexStat API de soja MT no BigQuery")
     parser.add_argument("--project", required=True)
     parser.add_argument("--dataset", default="comercio_exterior")
     parser.add_argument("--ops-dataset", default="agrolog_ops")
