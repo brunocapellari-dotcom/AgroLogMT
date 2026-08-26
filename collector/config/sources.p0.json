@@ -49,6 +49,7 @@
         "period_mode": "latest_complete_month",
         "flow": "export",
         "month_detail": true,
+        "expected_state_name": "Mato Grosso",
         "filters": [
           {"filter": "ncm", "values": [12011000, 12019000]},
           {"filter": "state", "values": [52]}
@@ -57,7 +58,7 @@
         "metrics": ["metricFOB", "metricKG"],
         "timeout_seconds": 120
       },
-      "notes": "P0 Trade. API oficial ComexStat é a rota operacional primária. A competência vem de /general/dates/updated; nunca assume mês corrente completo. O filtro state usa o identificador próprio do ComexStat; Mato Grosso=52, não código IBGE. CSV bruto fica restrito a backfill/reconciliação e não é requisito para atualização operacional."
+      "notes": "P0 Trade. API oficial ComexStat é a rota operacional primária. A competência vem de /general/dates/updated; nunca assume mês corrente completo. O filtro state usa o identificador próprio do ComexStat; Mato Grosso=52, não código IBGE. O pipeline falha fechado se o nome da UF retornada divergir de Mato Grosso. CSV bruto fica restrito a backfill/reconciliação e não é requisito para atualização operacional."
     },
     {
       "source_id": "chm_avisos_navegantes_hidrovias",

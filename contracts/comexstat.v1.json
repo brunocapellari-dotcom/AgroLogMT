@@ -1,50 +1,80 @@
 {
-  "contract_version": "1.0",
-  "source_id": "mdic_comexstat_open_data",
+  "contract_version": "1.1",
+  "source_id": "mdic_comexstat",
   "authority": "MDIC/SECEX",
   "frequency": "monthly",
   "coverage_start": "1997-01",
   "evidence_class": "observado",
   "canonical_rules": [
     "Preservar ano e mes como competencia mensal e registrar data_publicacao/data_coleta separadamente.",
+    "A API oficial ComexStat e a rota operacional primaria para atualizacao incremental; CSV aberto e rota de backfill e reconciliacao.",
+    "A competencia operacional deve vir de /general/dates/updated; nunca assumir que o mes corrente esta completo.",
+    "O filtro state da API usa identificador proprio do catalogo ComexStat; no catalogo validado em 2026-08-26 Mato Grosso=52. Nao tratar esse id como codigo IBGE.",
+    "O valor textual retornado em state deve ser validado contra a UF esperada; para o piloto Soja MT, qualquer resposta diferente de Mato Grosso falha fechado.",
     "Base NCM e base Municipio-SH4 possuem semanticas geograficas diferentes e nao devem ser reconciliadas como se medissem a mesma UF.",
-    "SG_UF_NCM em exportacao representa UF produtora/origem do produto conforme metodologia do modulo geral.",
+    "SG_UF_NCM/UF do produto no modulo geral representa a UF do produto segundo a metodologia ComexStat, nao municipio fisico de origem.",
     "SG_UF_MUN/CO_MUN representam domicilio fiscal da empresa declarante, nao origem fisica da mercadoria.",
-    "CO_URF identifica Unidade da Receita Federal e nao deve ser convertido automaticamente em porto fisico.",
-    "KG_LIQUIDO e VL_FOB sao observados; toneladas e US$/t sao derivados e devem registrar methodology_id.",
-    "Historico deve ser append-only por vintage de arquivo anual; revisoes do ano corrente nao sobrescrevem silenciosamente snapshots anteriores."
+    "CO_URF/urf identifica Unidade da Receita Federal e nao deve ser convertido automaticamente em porto fisico.",
+    "CO_VIA/via e CO_URF/urf podem ser usados para leitura de corredor aduaneiro, sem equiparar automaticamente URF a terminal portuario.",
+    "KG_LIQUIDO/metricKG e VL_FOB/metricFOB sao observados; toneladas e US$/t sao derivados e devem registrar methodology_id.",
+    "Historico deve ser append-only por snapshot/vintage; revisoes nao sobrescrevem silenciosamente snapshots anteriores.",
+    "Cada snapshot materializado deve fechar contagem de registros, soma de kg liquido e soma de valor FOB entre normalizacao e BigQuery."
   ],
   "datasets": {
-    "ncm_export": {
+    "operational_api_general": {
+      "base_url": "https://api-comexstat.mdic.gov.br",
+      "metadata_endpoint": "/general/dates/updated",
+      "query_endpoint": "/general",
+      "module": "general",
+      "target": "comercio_exterior.comexstat_trade_monthly",
+      "latest_view": "comercio_exterior.v_comexstat_trade_monthly_latest",
+      "pilot_scope": {
+        "flow": "export",
+        "ncm": ["12011000", "12019000"],
+        "state_filter_id": "52",
+        "expected_state_name": "Mato Grosso",
+        "details": ["ncm", "state", "country", "via", "urf"],
+        "metrics": ["metricFOB", "metricKG"]
+      }
+    },
+    "ncm_export_backfill": {
       "url_template": "https://balanca.mdic.gov.br/balanca/bd/comexstat-bd/ncm/EXP_{year}.csv",
       "delimiter": ";",
       "columns": ["CO_ANO", "CO_MES", "CO_NCM", "CO_UNID", "CO_PAIS", "SG_UF_NCM", "CO_VIA", "CO_URF", "QT_ESTAT", "KG_LIQUIDO", "VL_FOB"],
-      "target": "comercio_exterior.comexstat_ncm_export"
+      "target": "comercio_exterior.comexstat_ncm_export",
+      "role": "backfill_reconciliation"
     },
-    "ncm_import": {
+    "ncm_import_backfill": {
       "url_template": "https://balanca.mdic.gov.br/balanca/bd/comexstat-bd/ncm/IMP_{year}.csv",
       "delimiter": ";",
       "columns": ["CO_ANO", "CO_MES", "CO_NCM", "CO_UNID", "CO_PAIS", "SG_UF_NCM", "CO_VIA", "CO_URF", "QT_ESTAT", "KG_LIQUIDO", "VL_FOB", "VL_FRETE", "VL_SEGURO"],
-      "target": "comercio_exterior.comexstat_ncm_import"
+      "target": "comercio_exterior.comexstat_ncm_import",
+      "role": "backfill_reconciliation"
     },
     "municipio_sh4_export": {
       "url_template": "https://balanca.mdic.gov.br/balanca/bd/comexstat-bd/mun/EXP_{year}_MUN.csv",
       "delimiter": ";",
       "columns": ["CO_ANO", "CO_MES", "SH4", "CO_PAIS", "SG_UF_MUN", "CO_MUN", "KG_LIQUIDO", "VL_FOB"],
-      "target": "comercio_exterior.comexstat_municipio_sh4_export"
+      "target": "comercio_exterior.comexstat_municipio_sh4_export",
+      "role": "backfill_specialized_geography"
     },
     "municipio_sh4_import": {
       "url_template": "https://balanca.mdic.gov.br/balanca/bd/comexstat-bd/mun/IMP_{year}_MUN.csv",
       "delimiter": ";",
       "columns": ["CO_ANO", "CO_MES", "SH4", "CO_PAIS", "SG_UF_MUN", "CO_MUN", "KG_LIQUIDO", "VL_FOB"],
-      "target": "comercio_exterior.comexstat_municipio_sh4_import"
+      "target": "comercio_exterior.comexstat_municipio_sh4_import",
+      "role": "backfill_specialized_geography"
     }
   },
   "ingestion_requirements": {
-    "mode": "streaming_or_chunked",
-    "reason": "Arquivos anuais podem ser grandes; nao usar o adaptador bytes-in-memory do coletor generico em producao.",
+    "operational_mode": "api_incremental",
+    "backfill_mode": "streaming_or_chunked_csv",
     "point_in_time": true,
     "preserve_raw_hash": true,
-    "validate_against_official_totals": true
+    "preserve_raw_artifact": true,
+    "fail_closed_on_semantic_drift": true,
+    "snapshot_tie_out": ["records", "kg_liquido", "valor_fob_usd"],
+    "cross_reconcile_with_csv_when_verified_path_available": true,
+    "never_disable_tls_verification": true
   }
 }
