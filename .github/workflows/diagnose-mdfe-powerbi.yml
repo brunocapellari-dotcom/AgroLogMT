@@ -14,13 +14,17 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Download second BDMEP ZIP
         run: |
           mkdir -p bdmep_download
-          curl -fL --retry 3 --connect-timeout 30 --max-time 300 \
+          curl -4 --http1.1 -fL \
+            --retry 12 --retry-all-errors --retry-delay 3 \
+            --connect-timeout 30 --max-time 600 \
+            -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36' \
+            -e 'https://bdmep.inmet.gov.br/' \
             'https://bdmep.inmet.gov.br/$2a$10$LJanUGGYAoX8zFNnY1WHOjjRP8ghoJulUeOjIFu4Caq1520xZSK.zip' \
             -o bdmep_download/BDMEP_INMET_2026-08-25_segundo.zip
           unzip -t bdmep_download/BDMEP_INMET_2026-08-25_segundo.zip
