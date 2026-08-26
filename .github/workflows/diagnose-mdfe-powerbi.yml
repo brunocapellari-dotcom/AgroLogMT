@@ -4,11 +4,6 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'scripts/diagnose_mdfe_powerbi.py'
-      - 'scripts/extract_mdfe_powerbi.py'
-      - 'scripts/test_mdfe_filters.py'
-      - 'scripts/test_mdfe_ncm_exact.py'
-      - 'scripts/export_mdfe_destinations.py'
       - '.github/workflows/diagnose-mdfe-powerbi.yml'
   workflow_dispatch:
 
@@ -21,28 +16,17 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: python -m pip install --disable-pip-version-check requests
-      - name: Diagnose public ANTT Power BI
-        run: python scripts/diagnose_mdfe_powerbi.py
-      - name: Extract golden sample
-        run: python scripts/extract_mdfe_powerbi.py
-      - name: Inspect filter breakdowns
-        run: python scripts/test_mdfe_filters.py
-      - name: Validate exact NCM
-        run: python scripts/test_mdfe_ncm_exact.py
-      - name: Export workbook flows
-        run: python scripts/export_mdfe_destinations.py
-      - name: Upload diagnostic artifact
-        if: always()
+      - name: Download second BDMEP ZIP
+        run: |
+          mkdir -p bdmep_download
+          curl -fL --retry 3 --connect-timeout 30 --max-time 300 \
+            'https://bdmep.inmet.gov.br/$2a$10$LJanUGGYAoX8zFNnY1WHOjjRP8ghoJulUeOjIFu4Caq1520xZSK.zip' \
+            -o bdmep_download/BDMEP_INMET_2026-08-25_segundo.zip
+          unzip -t bdmep_download/BDMEP_INMET_2026-08-25_segundo.zip
+      - name: Upload BDMEP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mdfe-powerbi-diagnostic
-          path: |
-            mdfe_powerbi_diagnostic/
-            mdfe_powerbi_extract/
-            mdfe_powerbi_export/
-          if-no-files-found: warn
-          retention-days: 3
+          name: bdmep-second-download
+          path: bdmep_download/BDMEP_INMET_2026-08-25_segundo.zip
+          if-no-files-found: error
+          retention-days: 1
