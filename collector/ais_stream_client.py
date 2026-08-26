@@ -24,7 +24,9 @@ def stream_once(
 
     The service requires a complete subscription shortly after connect. The
     websocket library negotiates permessage-deflate by default, matching the
-    service recommendation for compressed connections.
+    service recommendation for compressed connections. Raw JSON is attached to
+    each normalized record because the upstream service does not provide durable
+    replay and AgroLog must preserve evidence it cannot afford to lose.
     """
     try:
         from websockets.sync.client import connect
@@ -44,6 +46,7 @@ def stream_once(
             row = parse_aisstream_message(payload)
             if row is None:
                 continue
+            row["_raw_message"] = payload
             yield row
             count += 1
             if max_messages is not None and count >= max_messages:
