@@ -2,6 +2,7 @@ from __future__ import annotations
 import hashlib, json, pathlib, urllib.request
 from datetime import datetime, timezone
 
+# Official CVM FCA bridge for point-in-time ticker identity reconstruction.
 OUT=pathlib.Path('mf_fca_2010_2026'); OUT.mkdir(parents=True,exist_ok=True)
 HEADERS={'User-Agent':'Mozilla/5.0 (compatible; MercadoFinanceiroFCABridge/1.0; +https://github.com/)'}
 rows=[]
