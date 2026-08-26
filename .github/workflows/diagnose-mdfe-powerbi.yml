@@ -3,6 +3,7 @@ name: Diagnose MDF-e Power BI
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened]
     paths:
       - '.github/workflows/diagnose-mdfe-powerbi.yml'
   workflow_dispatch:
