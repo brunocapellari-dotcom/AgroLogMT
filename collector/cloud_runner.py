@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .cli import load_sources
 from .cloud_store import DriveBigQueryStore
+from .comexstat_pipeline import SOURCE_ID as COMEXSTAT_SOURCE_ID, run_comexstat_pipeline
 from .conab_armazens import SOURCE_ID as CONAB_ARMAZENS_SOURCE_ID
 from .conab_armazens_pipeline import run_conab_armazens_pipeline
 from .conab_safra import SOURCE_ID as CONAB_SAFRA_SOURCE_ID
@@ -47,7 +48,6 @@ def main() -> int:
                 "missing_env_vars": missing_env,
             }
             print(json.dumps(payload, ensure_ascii=False, sort_keys=True), flush=True)
-            # Execução específica deve falhar de forma explícita; execução de grupo apenas pula a fonte gated.
             if source_id:
                 failed += 1
             continue
@@ -65,6 +65,8 @@ def main() -> int:
             code, payload = run_bcb_ptax_pipeline(spec, store)
         elif spec.source_id == ANA_SOURCE_ID:
             code, payload = run_ana_hydro_pipeline(spec, store)
+        elif spec.source_id == COMEXSTAT_SOURCE_ID:
+            code, payload = run_comexstat_pipeline(spec, store)
         else:
             manifest = engine.run_source(spec)
             print(json.dumps(manifest.to_dict(), ensure_ascii=False, sort_keys=True), flush=True)
