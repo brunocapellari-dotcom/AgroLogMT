@@ -9,6 +9,7 @@ on:
       - 'scripts/test_mdfe_filters.py'
       - 'scripts/test_mdfe_ncm_exact.py'
       - 'scripts/export_mdfe_destinations.py'
+      - 'scripts/fetch_bdmep_temp.py'
       - '.github/workflows/diagnose-mdfe-powerbi.yml'
   workflow_dispatch:
 
@@ -25,6 +26,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check requests
+      - name: Fetch BDMEP temporary ZIP
+        run: python scripts/fetch_bdmep_temp.py
       - name: Diagnose public ANTT Power BI
         run: python scripts/diagnose_mdfe_powerbi.py
       - name: Extract golden sample
