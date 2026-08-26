@@ -1,48 +1,79 @@
-name: Diagnose MDF-e Power BI
+name: TEMP BDMEP second multirunner
 
 on:
   pull_request:
     branches: [main]
     paths:
-      - 'scripts/diagnose_mdfe_powerbi.py'
-      - 'scripts/extract_mdfe_powerbi.py'
-      - 'scripts/test_mdfe_filters.py'
-      - 'scripts/test_mdfe_ncm_exact.py'
-      - 'scripts/export_mdfe_destinations.py'
       - '.github/workflows/diagnose-mdfe-powerbi.yml'
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  diagnose:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  download:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check requests
-      - name: Diagnose public ANTT Power BI
-        run: python scripts/diagnose_mdfe_powerbi.py
-      - name: Extract golden sample
-        run: python scripts/extract_mdfe_powerbi.py
-      - name: Inspect filter breakdowns
-        run: python scripts/test_mdfe_filters.py
-      - name: Validate exact NCM
-        run: python scripts/test_mdfe_ncm_exact.py
-      - name: Export workbook flows
-        run: python scripts/export_mdfe_destinations.py
-      - name: Upload diagnostic artifact
-        if: always()
+      - name: Download BDMEP with resume and retries
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, time, zipfile, requests
+          url='https://bdmep.inmet.gov.br/$2a$10$LJanUGGYAoX8zFNnY1WHOjjRP8ghoJulUeOjIFu4Caq1520xZSK.zip'
+          out='BDMEP_INMET_segundo.zip'
+          headers_base={
+              'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36',
+              'Accept':'*/*',
+              'Accept-Language':'pt-BR,pt;q=0.9,en;q=0.8',
+              'Referer':'https://bdmep.inmet.gov.br/'
+          }
+          for attempt in range(1, 31):
+              size=os.path.getsize(out) if os.path.exists(out) else 0
+              headers=dict(headers_base)
+              if size:
+                  headers['Range']=f'bytes={size}-'
+              try:
+                  with requests.get(url, headers=headers, stream=True, timeout=(30,90)) as r:
+                      print('attempt',attempt,'status',r.status_code,'existing',size,'len',r.headers.get('Content-Length'),'range',r.headers.get('Content-Range'),flush=True)
+                      r.raise_for_status()
+                      if size and r.status_code == 200:
+                          print('server ignored Range; restarting', flush=True)
+                          size=0
+                      mode='ab' if size and r.status_code==206 else 'wb'
+                      with open(out, mode) as f:
+                          for chunk in r.iter_content(chunk_size=256*1024):
+                              if chunk:
+                                  f.write(chunk)
+                  try:
+                      with zipfile.ZipFile(out) as z:
+                          bad=z.testzip()
+                          if bad is None:
+                              print('ZIP_OK bytes',os.path.getsize(out),'files',len(z.namelist()),flush=True)
+                              raise SystemExit(0)
+                          print('bad member',bad,flush=True)
+                  except zipfile.BadZipFile:
+                      print('partial/not zip yet',os.path.getsize(out),flush=True)
+              except SystemExit:
+                  raise
+              except Exception as e:
+                  print(type(e).__name__,str(e),flush=True)
+              time.sleep(min(5+attempt,30))
+          raise SystemExit('download failed after 30 attempts')
+          PY
+      - name: Upload successful ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: mdfe-powerbi-diagnostic
-          path: |
-            mdfe_powerbi_diagnostic/
-            mdfe_powerbi_extract/
-            mdfe_powerbi_export/
-          if-no-files-found: warn
-          retention-days: 3
+          name: bdmep-second-${{ matrix.os }}
+          path: BDMEP_INMET_segundo.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
