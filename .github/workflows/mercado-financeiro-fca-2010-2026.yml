@@ -1,0 +1,31 @@
+name: Mercado Financeiro FCA 2010-2026
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'tools/mercado_financeiro_bridge/download_fca_2010_2026.py'
+      - '.github/workflows/mercado-financeiro-fca-2010-2026.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fca:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download official CVM FCA 2010-2026
+        run: python tools/mercado_financeiro_bridge/download_fca_2010_2026.py
+      - name: Upload FCA bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mf-fca-2010-2026
+          path: mf_fca_2010_2026/
+          retention-days: 2
