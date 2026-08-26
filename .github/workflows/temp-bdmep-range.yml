@@ -1,0 +1,27 @@
+name: TEMP BDMEP range diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/temp-bdmep-range.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe BDMEP headers and ranges
+        shell: bash
+        run: |
+          set -x
+          URL='https://bdmep.inmet.gov.br/$2a$10$LJanUGGYAoX8zFNnY1WHOjjRP8ghoJulUeOjIFu4Caq1520xZSK.zip'
+          curl -4 --http1.1 -v -I --connect-timeout 15 --max-time 30 "$URL" || true
+          curl -4 --http1.1 -v -L --range 0-1023 --connect-timeout 15 --max-time 45 "$URL" -o first1k.bin || true
+          ls -l first1k.bin || true
+          file first1k.bin || true
+          xxd -l 32 first1k.bin || true
