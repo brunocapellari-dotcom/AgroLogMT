@@ -58,14 +58,14 @@
         "metrics": ["metricFOB", "metricKG"],
         "timeout_seconds": 120
       },
-      "notes": "P0 Trade. API oficial ComexStat é a rota operacional primária. A competência vem de /general/dates/updated; nunca assume mês corrente completo. Mato Grosso=state 52 no catálogo ComexStat."
+      "notes": "P0 Trade homologado em canário live. API oficial ComexStat é a rota operacional primária. A competência vem de /general/dates/updated; nunca assume mês corrente completo. Mato Grosso=state 52 no catálogo ComexStat."
     },
     {
       "source_id": "mdic_comexstat_milho_mt_export_api",
       "name": "MDIC/SECEX ComexStat API - exportação de milho em grão MT",
       "group": "dados",
       "method": "comexstat_api",
-      "enabled": true,
+      "enabled": false,
       "expected_frequency": "monthly",
       "file_extension": "json",
       "evidence_class": "observado",
@@ -83,14 +83,14 @@
         "metrics": ["metricFOB", "metricKG"],
         "timeout_seconds": 120
       },
-      "notes": "Milho em grão, exceto para semeadura. Semente 10051000 permanece fluxo separado e não entra neste volume de commodity."
+      "notes": "Preparado/gated. Milho em grão, exceto para semeadura. Ativar somente após canário live específico; semente 10051000 permanece fluxo separado."
     },
     {
       "source_id": "mdic_comexstat_algodao_mt_export_api",
       "name": "MDIC/SECEX ComexStat API - exportação de algodão bruto MT",
       "group": "dados",
       "method": "comexstat_api",
-      "enabled": true,
+      "enabled": false,
       "expected_frequency": "monthly",
       "file_extension": "json",
       "evidence_class": "observado",
@@ -108,14 +108,14 @@
         "metrics": ["metricFOB", "metricKG"],
         "timeout_seconds": 120
       },
-      "notes": "Escopo restrito a algodão não cardado nem penteado. Semente, línter, óleo, farelo e manufaturados permanecem fluxos separados."
+      "notes": "Preparado/gated. Escopo restrito a algodão não cardado nem penteado. Ativar somente após canário live específico; derivados permanecem fluxos separados."
     },
     {
       "source_id": "mdic_comexstat_fertilizantes_core_mt_import_api",
       "name": "MDIC/SECEX ComexStat API - importação fertilizantes core MT",
       "group": "dados",
       "method": "comexstat_api",
-      "enabled": true,
+      "enabled": false,
       "expected_frequency": "monthly",
       "file_extension": "json",
       "evidence_class": "observado",
@@ -133,7 +133,7 @@
         "metrics": ["metricFOB", "metricKG"],
         "timeout_seconds": 120
       },
-      "notes": "Basket operacional inicial: ureia, KCl e MAP com códigos catalogados sem ambiguidade temporal imediata. DAP/superfosfatos permanecem fora até fechar vigência histórica dos NCMs. Não representa total de fertilizantes."
+      "notes": "Preparado/gated. Basket inicial ureia/KCl/MAP; não representa total de fertilizantes. Ativar somente após canário live específico. DAP/superfosfatos permanecem fora até vigência histórica dos NCMs."
     },
     {
       "source_id": "chm_avisos_navegantes_hidrovias",
