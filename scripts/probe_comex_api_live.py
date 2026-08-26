@@ -9,6 +9,15 @@ from collector.comexstat_api import ComexStatApiClient, trade_payload
 
 SOY_NCMS = ("12011000", "12019000")
 MT_COMEX_ID = "52"
+PRODUCT_SEARCH_TERMS = {
+    "milho": ("milho",),
+    "algodao": ("algodão", "algodao"),
+    "ureia": ("ureia",),
+    "cloreto_potassio": ("cloreto de potássio", "cloreto de potassio"),
+    "map_fosfato_monoamonico": ("fosfato monoamônico", "fosfato monoamonico"),
+    "dap_fosfato_diamonico": ("fosfato diamônico", "fosfato diamonico"),
+    "superfosfatos": ("superfosfato",),
+}
 
 
 def _filter_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -35,6 +44,19 @@ def _find_ids(items: list[dict[str, Any]], *, wanted_ids: set[str] | None = None
     return found
 
 
+def _catalog_candidates(items: list[dict[str, Any]], terms: tuple[str, ...], *, limit: int = 100) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    normalized_terms = tuple(term.casefold() for term in terms)
+    for item in items:
+        item_id = str(item.get("id", "")).strip()
+        text = str(item.get("text", "")).strip()
+        if item_id and text and any(term in text.casefold() for term in normalized_terms):
+            out.append({"id": item_id, "text": text})
+            if len(out) >= limit:
+                break
+    return out
+
+
 def _run_canary(client: ComexStatApiClient, competence: str, *, name: str, filters: list[dict[str, Any]], details: list[str]) -> dict[str, Any]:
     query = trade_payload(
         flow="export",
@@ -54,6 +76,21 @@ def _run_canary(client: ComexStatApiClient, competence: str, *, name: str, filte
         "row_count": len(rows),
         "sample": rows[:3],
     }
+
+
+def _optional_cities_metadata(client: ComexStatApiClient) -> dict[str, Any]:
+    try:
+        filters = client.filters(module="cities")
+        details = client.details(module="cities")
+        metrics = client.metrics(module="cities")
+        return {
+            "status": "available",
+            "filters": filters.get("data"),
+            "details": details.get("data"),
+            "metrics": metrics.get("data"),
+        }
+    except Exception as exc:  # diagnóstico complementar não derruba o canário general
+        return {"status": "blocked", "error_type": type(exc).__name__, "error": str(exc)[:500]}
 
 
 def main() -> int:
@@ -78,6 +115,10 @@ def main() -> int:
         if MT_COMEX_ID not in mt_ids:
             raise RuntimeError(f"Catálogo ComexStat não confirmou Mato Grosso={MT_COMEX_ID}; ids detectados={mt_ids}")
 
+        product_candidates = {
+            product: _catalog_candidates(ncm_items, terms)
+            for product, terms in PRODUCT_SEARCH_TERMS.items()
+        }
         canaries = [
             _run_canary(client, update.competence, name="soy_ncm", filters=[{"filter": "ncm", "values": list(SOY_NCMS)}], details=["ncm", "state"]),
             _run_canary(client, update.competence, name="soy_mt", filters=[{"filter": "ncm", "values": list(SOY_NCMS)}, {"filter": "state", "values": [MT_COMEX_ID]}], details=["ncm", "state", "country"]),
@@ -102,6 +143,8 @@ def main() -> int:
                     "mt_ids_detected": mt_ids,
                     "soy_ncm_ids_detected": soy_ids,
                 },
+                "ncm_catalog_candidates": product_candidates,
+                "cities_module_metadata": _optional_cities_metadata(client),
                 "canaries": canaries,
                 "canonical_positive_canaries": [item["name"] for item in positive],
             }
