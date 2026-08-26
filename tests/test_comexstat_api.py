@@ -52,10 +52,10 @@ class ComexStatApiTests(unittest.TestCase):
         self.assertEqual(client.available_years(), (1997, 2026))
 
     def test_soy_payload_preserves_mt_ncm_and_logistics_scope(self) -> None:
-        payload = soybean_export_payload(start="2026-07", end="2026-07", state_code=51)
+        payload = soybean_export_payload(start="2026-07", end="2026-07", state_code=52)
         self.assertEqual(payload["flow"], "export")
         self.assertEqual(payload["filters"][0], {"filter": "ncm", "values": [12011000, 12019000]})
-        self.assertEqual(payload["filters"][1], {"filter": "state", "values": [51]})
+        self.assertEqual(payload["filters"][1], {"filter": "state", "values": [52]})
         self.assertEqual(payload["details"], ["ncm", "state", "country", "via", "urf"])
         self.assertNotIn("city", payload["details"])
 
