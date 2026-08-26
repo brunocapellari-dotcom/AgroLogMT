@@ -5,6 +5,8 @@ on:
     branches: [ main ]
     paths:
       - 'tools/mercado_financeiro_bridge/download_corporate_actions.py'
+      - 'tools/mercado_financeiro_bridge/download_historical_identity.py'
+      - 'tools/mercado_financeiro_bridge/historical_roots_2011_2026.json'
       - '.github/workflows/mercado-financeiro-corporate-actions.yml'
   workflow_dispatch:
 
@@ -12,21 +14,29 @@ permissions:
   contents: read
 
 jobs:
-  acquire-corporate-actions:
+  corporate-actions:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Download official B3 company information and corporate actions
+      - name: Download B3 current corporate actions
         run: python tools/mercado_financeiro_bridge/download_corporate_actions.py
-      - name: Upload corporate actions bundle
+      - name: Upload current corporate actions
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: mf-b3-corporate-actions
           path: mf_corporate_actions/
-          if-no-files-found: error
-          retention-days: 7
+          retention-days: 2
+      - name: Query historical B3 issuer roots
+        run: python tools/mercado_financeiro_bridge/download_historical_identity.py
+      - name: Upload historical identity bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mf-historical-identity-2011-2026
+          path: mf_historical_identity/
+          retention-days: 2
