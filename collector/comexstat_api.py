@@ -180,17 +180,26 @@ class ComexStatApiClient:
 
     @staticmethod
     def data_list(response: dict[str, Any]) -> list[dict[str, Any]]:
+        """Extrai linhas de envelopes observados/documentados da API.
+
+        O ComexStat historicamente expôs ``data.list``; o workflow legado do próprio
+        AgroLog já tratava também ``data.data``. Ambos são aceitos explicitamente,
+        sem procurar recursivamente por listas arbitrárias.
+        """
         data = response.get("data")
         if isinstance(data, list):
-            return [item for item in data if isinstance(item, dict)]
-        if isinstance(data, dict):
+            rows: Any = data
+        elif isinstance(data, dict):
             rows = data.get("list")
             if rows is None:
+                rows = data.get("data")
+            if rows is None:
                 return []
-            if not isinstance(rows, list):
-                raise RuntimeError("ComexStat response.data.list não é lista")
-            return [item for item in rows if isinstance(item, dict)]
-        raise RuntimeError("ComexStat response.data ausente ou inválido")
+        else:
+            raise RuntimeError("ComexStat response.data ausente ou inválido")
+        if not isinstance(rows, list):
+            raise RuntimeError("ComexStat response rows não é lista")
+        return [item for item in rows if isinstance(item, dict)]
 
 
 def trade_payload(
