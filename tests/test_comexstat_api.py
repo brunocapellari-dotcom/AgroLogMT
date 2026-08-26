@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from collector.comexstat_api import ComexStatApiClient, soybean_export_payload
+from collector.comexstat_api import ComexStatApiClient, soybean_export_payload, trade_payload
 
 
 class _Response:
@@ -28,7 +28,9 @@ class _Session:
         self.last = ("GET", url, kwargs)
         if url.endswith("/general/dates/updated"):
             return _Response(url=url, payload={"success": True, "data": {"updated": "2026-08-06", "year": "2026", "monthNumber": "07"}})
-        return _Response(url=url, payload={"success": True, "data": {"min": "1997", "max": "2026"}})
+        if url.endswith("/general/dates/years"):
+            return _Response(url=url, payload={"success": True, "data": {"min": "1997", "max": "2026"}})
+        return _Response(url=url, payload={"success": True, "data": {"list": []}})
 
     def post(self, url, **kwargs):
         self.last = ("POST", url, kwargs)
@@ -46,28 +48,52 @@ class ComexStatApiTests(unittest.TestCase):
         client = ComexStatApiClient(session=_Session())
         update = client.last_update()
         self.assertEqual((update.year, update.month), (2026, 7))
+        self.assertEqual(update.competence, "2026-07")
         self.assertEqual(client.available_years(), (1997, 2026))
 
-    def test_soy_payload_preserves_ncm_scope(self) -> None:
-        payload = soybean_export_payload(start="2026-07", end="2026-07")
+    def test_soy_payload_preserves_mt_ncm_and_logistics_scope(self) -> None:
+        payload = soybean_export_payload(start="2026-07", end="2026-07", state_code=52)
         self.assertEqual(payload["flow"], "export")
-        self.assertEqual(payload["filters"][0]["filter"], "ncm")
-        self.assertEqual(payload["filters"][0]["values"], [12011000, 12019000])
-        self.assertEqual(payload["details"], ["ncm", "state"])
+        self.assertEqual(payload["filters"][0], {"filter": "ncm", "values": [12011000, 12019000]})
+        self.assertEqual(payload["filters"][1], {"filter": "state", "values": [52]})
+        self.assertEqual(payload["details"], ["ncm", "state", "country", "via", "urf"])
         self.assertNotIn("city", payload["details"])
+
+    def test_trade_payload_rejects_empty_metrics(self) -> None:
+        with self.assertRaises(ValueError):
+            trade_payload(
+                flow="export", start="2026-07", end="2026-07",
+                filters=[], details=[], metrics=[],
+            )
 
     def test_invalid_query_is_blocked(self) -> None:
         client = ComexStatApiClient(session=_Session())
         with self.assertRaises(ValueError):
             client.general({"flow": "export", "period": {}, "filters": [], "details": [], "metrics": []})
 
-    def test_redirect_to_other_host_is_blocked(self) -> None:
+    def test_redirect_is_blocked_even_on_same_host(self) -> None:
+        class RedirectSession(_Session):
+            def get(self, url, **kwargs):
+                return _Response(url=url, payload={"success": True, "data": {}}, status=302)
+        client = ComexStatApiClient(session=RedirectSession())
+        with self.assertRaises(RuntimeError):
+            client.last_update()
+
+    def test_other_host_response_is_blocked(self) -> None:
         class RedirectSession(_Session):
             def get(self, url, **kwargs):
                 return _Response(url="https://example.com/data", payload={"success": True, "data": {}})
         client = ComexStatApiClient(session=RedirectSession())
         with self.assertRaises(RuntimeError):
             client.last_update()
+
+    def test_data_list_accepts_documented_shape(self) -> None:
+        rows = ComexStatApiClient.data_list({"success": True, "data": {"list": [{"ncm": "1201"}]}})
+        self.assertEqual(rows, [{"ncm": "1201"}])
+
+    def test_data_list_accepts_legacy_nested_data_shape(self) -> None:
+        rows = ComexStatApiClient.data_list({"success": True, "data": {"data": [{"state": "Mato Grosso"}]}})
+        self.assertEqual(rows, [{"state": "Mato Grosso"}])
 
 
 if __name__ == "__main__":

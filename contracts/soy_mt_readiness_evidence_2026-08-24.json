@@ -1,6 +1,6 @@
 {
   "evidence_version": "SOY_MT_READINESS_EVIDENCE_2026_08_24",
-  "as_of": "2026-08-24T18:58:00-04:00",
+  "as_of": "2026-08-26T10:17:00-04:00",
   "cloud_authenticated": false,
   "blocks": {
     "production": {
@@ -27,17 +27,17 @@
       "local_qa_status": "pass",
       "point_in_time_evidence": true,
       "cloud_table_verified": false,
-      "freshness": "workbook autorizado com dados operacionais ate 2026-07-31; SOURCE_LAG 24d",
+      "freshness": "workbook autorizado com dados operacionais ate 2026-07-31; SOURCE_LAG",
       "evidence": "13138 registros uteis reconciliados; pipeline Drive->RAW->QA->BigQuery implementado mas nao homologado"
     },
     "trade": {
-      "source_state": "blocked_tls_runner",
+      "source_state": "api_primary_ready_live_unverified",
       "source_ready": false,
-      "local_qa_status": "blocked",
+      "local_qa_status": "pass",
       "point_in_time_evidence": false,
       "cloud_table_verified": false,
-      "freshness": "indisponivel no runner GitHub em 2026-08-24",
-      "evidence": "TLS estrito falhou nos dominios testados; nenhum bypass inseguro permitido"
+      "freshness": "API ComexStat oficial definida como rota operacional primaria; conectividade live ainda nao comprovada no runtime atual",
+      "evidence": "cliente API read-only com TLS obrigatorio, host allowlisted, last-update metadata, consulta latest-complete-month e adapter generico implementados; CSV bruto rebaixado a backfill/reconciliacao"
     },
     "climate": {
       "source_state": "live_beta",

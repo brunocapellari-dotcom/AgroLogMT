@@ -9,6 +9,7 @@ from typing import Protocol
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
+from .comexstat_api import ComexStatApiClient
 from .models import SourceSpec
 
 
@@ -218,6 +219,55 @@ class GovBrLatestAttachmentAdapter:
         return _http_get(attachment_url, headers=headers, timeout=timeout)
 
 
+class ComexStatApiAdapter:
+    """Coleta operacional mensal pelo endpoint oficial da API ComexStat.
+
+    O período default é obtido de ``/general/dates/updated``; portanto o AgroLog não
+    assume que o mês corrente já está completo. A resposta oficial é persistida como
+    JSON RAW. CSV aberto permanece fora deste adapter como rota de backfill/reconciliação.
+    """
+
+    def fetch(self, spec: SourceSpec) -> AcquisitionResult:
+        timeout = int(spec.options.get("timeout_seconds", 120))
+        module = str(spec.options.get("module", "general")).strip().lower()
+        if module not in {"general", "cities"}:
+            raise ValueError("comexstat_api options.module deve ser general ou cities")
+
+        client = ComexStatApiClient(timeout=timeout)
+        update = client.last_update()
+        competence = update.competence
+        if not competence:
+            raise RuntimeError("ComexStat API não informou a última competência publicada")
+
+        period_mode = str(spec.options.get("period_mode", "latest_complete_month"))
+        if period_mode != "latest_complete_month":
+            raise ValueError("somente period_mode=latest_complete_month está homologado")
+
+        flow = str(spec.options.get("flow", "export"))
+        filters = spec.options.get("filters", [])
+        details = spec.options.get("details", [])
+        metrics = spec.options.get("metrics", ["metricFOB", "metricKG"])
+        if not isinstance(filters, list) or not isinstance(details, list) or not isinstance(metrics, list):
+            raise ValueError("comexstat_api filters/details/metrics devem ser listas")
+
+        payload = {
+            "flow": flow,
+            "monthDetail": bool(spec.options.get("month_detail", True)),
+            "period": {"from": competence, "to": competence},
+            "filters": filters,
+            "details": details,
+            "metrics": metrics,
+        }
+        response = client.query(payload, module=module)
+        encoded = json.dumps(response, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return AcquisitionResult(
+            payload=encoded,
+            observed_url=f"{client.base_url}/{module}?language=pt",
+            content_type="application/json",
+            last_modified=update.updated,
+        )
+
+
 def get_adapter(method: str) -> Adapter:
     normalized = method.strip().lower()
     if normalized in {"http", "http_file", "json_api", "api"}:
@@ -230,6 +280,8 @@ def get_adapter(method: str) -> Adapter:
         return CkanResourceAdapter()
     if normalized in {"govbr_latest_attachment", "govbr_attachment"}:
         return GovBrLatestAttachmentAdapter()
+    if normalized in {"comexstat_api", "mdic_comexstat_api"}:
+        return ComexStatApiAdapter()
     raise NotImplementedError(
         f"Metodo '{method}' ainda nao implementado. Ordem de fallback aprovada: "
         "HTTP/API/arquivo -> Crawl4AI -> Playwright -> browser-use."

@@ -36,6 +36,30 @@
       "notes": "P0 M04. Nova API canônica ANA; credenciais só por Secret Manager/env. Token efêmero nunca é persistido."
     },
     {
+      "source_id": "mdic_comexstat_soja_mt_export_api",
+      "name": "MDIC/SECEX ComexStat API - exportação de soja MT",
+      "group": "dados",
+      "method": "comexstat_api",
+      "enabled": true,
+      "expected_frequency": "monthly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "module": "general",
+        "period_mode": "latest_complete_month",
+        "flow": "export",
+        "month_detail": true,
+        "filters": [
+          {"filter": "ncm", "values": [12011000, 12019000]},
+          {"filter": "state", "values": [52]}
+        ],
+        "details": ["ncm", "state", "country", "via", "urf"],
+        "metrics": ["metricFOB", "metricKG"],
+        "timeout_seconds": 120
+      },
+      "notes": "P0 Trade. API oficial ComexStat é a rota operacional primária. A competência vem de /general/dates/updated; nunca assume mês corrente completo. O filtro state usa o identificador próprio do ComexStat; Mato Grosso=52, não código IBGE. CSV bruto fica restrito a backfill/reconciliação e não é requisito para atualização operacional."
+    },
+    {
       "source_id": "chm_avisos_navegantes_hidrovias",
       "name": "Marinha/CHM - Avisos aos Navegantes - Hidrovias em Geral",
       "group": "dados",

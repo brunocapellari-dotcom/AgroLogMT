@@ -15,6 +15,12 @@ class ComexUpdate:
     year: int | None
     month: int | None
 
+    @property
+    def competence(self) -> str | None:
+        if self.year is None or self.month is None:
+            return None
+        return f"{self.year:04d}-{self.month:02d}"
+
 
 def _validate_base_url(base_url: str) -> str:
     parsed = urlparse(base_url)
@@ -26,10 +32,13 @@ def _validate_base_url(base_url: str) -> str:
 class ComexStatApiClient:
     """Cliente read-only da API pública ComexStat com TLS obrigatório e host travado.
 
-    Não existe fallback `verify=False`. O cliente serve como rota operacional agregada;
-    os CSVs brutos continuam sendo a fonte preferida para backfill integral quando o
-    runtime conseguir validar a cadeia TLS do host de arquivos. A sessão padrão usa
-    retry bounded para 429/5xx e respeita `Retry-After`, sem retries infinitos.
+    Esta é a rota operacional prioritária do AgroLog MT para consultas mensais e
+    incrementais. Os CSVs abertos permanecem como rota de backfill/reconciliação em
+    grande volume, nunca como requisito para a atualização operacional da API.
+
+    Não existe fallback ``verify=False``. A sessão padrão usa retries limitados para
+    429/5xx, respeita ``Retry-After`` e bloqueia redirects para evitar mudança silenciosa
+    de host ou transporte.
     """
 
     def __init__(self, *, base_url: str = BASE_URL, timeout: int = 120, session: Any | None = None) -> None:
@@ -56,7 +65,13 @@ class ComexStatApiClient:
             )
             session.mount("https://", HTTPAdapter(max_retries=retry))
         self.session = session
-        self.session.headers.update({"User-Agent": "AgroLogMT/0.1 (+ComexStat API)", "Accept": "application/json"})
+        self.session.headers.update(
+            {
+                "User-Agent": "AgroLogMT/0.1 (+ComexStat API)",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+        )
 
     def _url(self, path: str) -> str:
         if not path.startswith("/"):
@@ -71,21 +86,32 @@ class ComexStatApiClient:
     def _validate_payload(payload: dict[str, Any]) -> None:
         if payload.get("flow") not in {"export", "import"}:
             raise ValueError("flow deve ser export ou import")
+        if not isinstance(payload.get("monthDetail"), bool):
+            raise ValueError("monthDetail deve ser booleano")
         period = payload.get("period")
         if not isinstance(period, dict) or not period.get("from") or not period.get("to"):
             raise ValueError("period.from e period.to são obrigatórios")
+        if str(period["from"]) > str(period["to"]):
+            raise ValueError("period.from não pode ser posterior a period.to")
         for key in ("filters", "details", "metrics"):
             if key not in payload or not isinstance(payload[key], list):
                 raise ValueError(f"{key} deve ser lista")
+        if not payload["metrics"]:
+            raise ValueError("metrics não pode ser vazio")
         for item in payload["filters"]:
             if not isinstance(item, dict) or not isinstance(item.get("filter"), str) or not isinstance(item.get("values"), list):
                 raise ValueError("filter inválido")
+            if not item["values"]:
+                raise ValueError("filter.values não pode ser vazio")
 
     def _json_response(self, response: Any) -> dict[str, Any]:
+        status = int(getattr(response, "status_code", 200))
+        if 300 <= status < 400:
+            raise RuntimeError(f"ComexStat API retornou redirect HTTP {status}; redirect automático é bloqueado")
         response.raise_for_status()
         observed = urlparse(response.url)
         if observed.scheme != "https" or observed.hostname != ALLOWED_HOST:
-            raise RuntimeError("ComexStat API redirecionou para host/transporte não autorizado")
+            raise RuntimeError("ComexStat API respondeu por host/transporte não autorizado")
         payload = response.json()
         if not isinstance(payload, dict):
             raise RuntimeError("ComexStat API retornou JSON não-objeto")
@@ -115,6 +141,8 @@ class ComexStatApiClient:
             raise RuntimeError("ComexStat /dates/updated sem objeto data")
         year = int(data["year"]) if data.get("year") not in {None, ""} else None
         month = int(data["monthNumber"]) if data.get("monthNumber") not in {None, ""} else None
+        if month is not None and not 1 <= month <= 12:
+            raise RuntimeError("ComexStat /dates/updated retornou mês inválido")
         return ComexUpdate(updated=data.get("updated"), year=year, month=month)
 
     def available_years(self) -> tuple[int, int]:
@@ -124,21 +152,103 @@ class ComexStatApiClient:
             raise RuntimeError("ComexStat /dates/years sem min/max")
         return int(data["min"]), int(data["max"])
 
+    def filters(self, *, module: str = "general") -> dict[str, Any]:
+        if module not in {"general", "cities"}:
+            raise ValueError("module deve ser general ou cities")
+        return self.get(f"/{module}/filters")
+
+    def details(self, *, module: str = "general") -> dict[str, Any]:
+        if module not in {"general", "cities"}:
+            raise ValueError("module deve ser general ou cities")
+        return self.get(f"/{module}/details")
+
+    def metrics(self, *, module: str = "general") -> dict[str, Any]:
+        if module not in {"general", "cities"}:
+            raise ValueError("module deve ser general ou cities")
+        return self.get(f"/{module}/metrics")
+
+    def query(self, payload: dict[str, Any], *, module: str = "general") -> dict[str, Any]:
+        if module not in {"general", "cities"}:
+            raise ValueError("module deve ser general ou cities")
+        return self.post(f"/{module}", payload)
+
     def general(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return self.post("/general", payload)
+        return self.query(payload, module="general")
+
+    def cities(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.query(payload, module="cities")
+
+    @staticmethod
+    def data_list(response: dict[str, Any]) -> list[dict[str, Any]]:
+        """Extrai linhas de envelopes observados/documentados da API."""
+        data = response.get("data")
+        if isinstance(data, list):
+            rows: Any = data
+        elif isinstance(data, dict):
+            rows = data.get("list")
+            if rows is None:
+                rows = data.get("data")
+            if rows is None:
+                return []
+        else:
+            raise RuntimeError("ComexStat response.data ausente ou inválido")
+        if not isinstance(rows, list):
+            raise RuntimeError("ComexStat response rows não é lista")
+        return [item for item in rows if isinstance(item, dict)]
 
 
-def soybean_export_payload(*, start: str, end: str, month_detail: bool = True) -> dict[str, Any]:
-    """Consulta operacional pequena para soja em grão, preservando UF de produto.
-
-    NCM 12011000 = soja para semeadura; 12019000 = outras sojas.
-    O campo state é SG_UF_NCM/UF do produto na semântica ComexStat, não município físico.
-    """
-    return {
-        "flow": "export",
+def trade_payload(
+    *,
+    flow: str,
+    start: str,
+    end: str,
+    filters: list[dict[str, Any]],
+    details: list[str],
+    metrics: list[str] | None = None,
+    month_detail: bool = True,
+) -> dict[str, Any]:
+    payload = {
+        "flow": flow,
         "monthDetail": bool(month_detail),
         "period": {"from": start, "to": end},
-        "filters": [{"filter": "ncm", "values": [12011000, 12019000]}],
-        "details": ["ncm", "state"],
-        "metrics": ["metricFOB", "metricKG"],
+        "filters": filters,
+        "details": details,
+        "metrics": ["metricFOB", "metricKG"] if metrics is None else metrics,
     }
+    ComexStatApiClient._validate_payload(payload)
+    return payload
+
+
+def soybean_export_payload(
+    *,
+    start: str,
+    end: str,
+    month_detail: bool = True,
+    state_code: int | None = None,
+    include_logistics: bool = True,
+) -> dict[str, Any]:
+    """Consulta operacional de soja em grão pela API ComexStat.
+
+    NCM 12011000 = soja para semeadura; 12019000 = outras sojas. ``state`` usa o
+    identificador próprio do catálogo ComexStat, não o código IBGE. Para Mato Grosso,
+    o catálogo live validado em 26/08/2026 retornou ``state_code=52``.
+
+    Quando ``include_logistics`` é verdadeiro, a consulta preserva país, via e URF
+    para permitir leitura dos corredores de exportação sem confundir programação
+    portuária com comércio efetivamente registrado.
+    """
+    filters: list[dict[str, Any]] = [{"filter": "ncm", "values": [12011000, 12019000]}]
+    if state_code is not None:
+        filters.append({"filter": "state", "values": [int(state_code)]})
+    details = ["ncm", "state", "country"]
+    if include_logistics:
+        details.extend(["via", "urf"])
+    return trade_payload(
+        flow="export",
+        start=start,
+        end=end,
+        month_detail=month_detail,
+        filters=filters,
+        details=details,
+        metrics=["metricFOB", "metricKG"],
+    )
