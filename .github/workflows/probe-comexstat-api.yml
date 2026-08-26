@@ -4,7 +4,10 @@ on:
   pull_request:
     paths:
       - "collector/comexstat_api.py"
+      - "collector/adapters.py"
+      - "collector/config/sources.p0.json"
       - "tests/test_comexstat_api.py"
+      - "tests/test_comexstat_api_adapter.py"
       - ".github/workflows/probe-comexstat-api.yml"
   workflow_dispatch:
 
@@ -14,6 +17,7 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,8 +28,8 @@ jobs:
       - name: Unit tests
         env:
           PYTHONPATH: ${{ github.workspace }}
-        run: python -m unittest tests.test_comexstat_api -v
-      - name: Live metadata and soybean query
+        run: python -m unittest tests.test_comexstat_api tests.test_comexstat_api_adapter -v
+      - name: Live metadata and Mato Grosso soybean query
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
@@ -36,19 +40,19 @@ jobs:
           client = ComexStatApiClient(timeout=120)
           update = client.last_update()
           years = client.available_years()
-          print(json.dumps({"update": update.__dict__, "years": years}, ensure_ascii=False))
+          print(json.dumps({"update": update.__dict__, "competence": update.competence, "years": years}, ensure_ascii=False))
           assert years[0] <= 1997 and years[1] >= 2026
-          assert update.year == 2026 and update.month is not None
+          assert update.competence is not None
 
-          period = f"{update.year:04d}-{update.month:02d}"
-          result = client.general(soybean_export_payload(start=period, end=period))
-          data = result.get("data")
-          assert data is not None
-          if isinstance(data, dict):
-              rows = data.get("list") or data.get("data") or []
-          else:
-              rows = data
-          print(json.dumps({"period": period, "row_count": len(rows) if isinstance(rows, list) else None, "sample": rows[:3] if isinstance(rows, list) else str(type(rows))}, ensure_ascii=False))
-          assert isinstance(rows, list)
-          assert rows, "consulta soja ComexStat retornou zero linhas"
+          result = client.general(
+              soybean_export_payload(
+                  start=update.competence,
+                  end=update.competence,
+                  state_code=51,
+                  include_logistics=True,
+              )
+          )
+          rows = client.data_list(result)
+          print(json.dumps({"period": update.competence, "scope": "MT soja NCM 12011000/12019000", "row_count": len(rows), "sample": rows[:3]}, ensure_ascii=False))
+          assert rows, "consulta soja MT ComexStat retornou zero linhas"
           PY
