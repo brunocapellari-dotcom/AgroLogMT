@@ -6,6 +6,7 @@ on:
       - "collector/comexstat_api.py"
       - "collector/adapters.py"
       - "collector/config/sources.p0.json"
+      - "scripts/probe_comex_api_live.py"
       - "tests/test_comexstat_api.py"
       - "tests/test_comexstat_api_adapter.py"
       - ".github/workflows/probe-comexstat-api.yml"
@@ -17,7 +18,7 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,30 +30,14 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python -m unittest tests.test_comexstat_api tests.test_comexstat_api_adapter -v
-      - name: Live metadata and Mato Grosso soybean query
+      - name: Live API metadata, filter semantics and Mato Grosso soybean canaries
         env:
           PYTHONPATH: ${{ github.workspace }}
-        run: |
-          python - <<'PY'
-          import json
-          from collector.comexstat_api import ComexStatApiClient, soybean_export_payload
-
-          client = ComexStatApiClient(timeout=120)
-          update = client.last_update()
-          years = client.available_years()
-          print(json.dumps({"update": update.__dict__, "competence": update.competence, "years": years}, ensure_ascii=False))
-          assert years[0] <= 1997 and years[1] >= 2026
-          assert update.competence is not None
-
-          result = client.general(
-              soybean_export_payload(
-                  start=update.competence,
-                  end=update.competence,
-                  state_code=51,
-                  include_logistics=True,
-              )
-          )
-          rows = client.data_list(result)
-          print(json.dumps({"period": update.competence, "scope": "MT soja NCM 12011000/12019000", "row_count": len(rows), "sample": rows[:3]}, ensure_ascii=False))
-          assert rows, "consulta soja MT ComexStat retornou zero linhas"
-          PY
+        run: python scripts/probe_comex_api_live.py | tee comex_api_live_report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: comex-api-live-report-${{ github.run_id }}
+          path: comex_api_live_report.json
+          if-no-files-found: warn
+          retention-days: 14
