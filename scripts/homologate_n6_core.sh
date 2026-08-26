@@ -4,7 +4,8 @@ set -euo pipefail
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
 REGION="${REGION:-southamerica-east1}"
 EVIDENCE_DIR="${EVIDENCE_DIR:-outputs/n6-core}"
-SOURCE_ID="conab_armazens_cadastrados"
+CONAB_SOURCE_ID="conab_armazens_cadastrados"
+COMEX_SOURCE_ID="mdic_comexstat_soja_mt_export_api"
 
 if [[ -z "${PROJECT_ID}" || "${PROJECT_ID}" == "(unset)" ]]; then
   echo "Projeto GCP ausente" >&2
@@ -29,19 +30,19 @@ bash scripts/deploy_collectors_gcloud.sh 2>&1 | tee "${RUN_DIR}/02-deploy-collec
 log_step "3. Primeira execução CONAB"
 gcloud run jobs execute agrolog-dados \
   --region "${REGION}" --project "${PROJECT_ID}" --wait \
-  --update-env-vars "AGROLOG_SOURCE_ID=${SOURCE_ID}" \
+  --update-env-vars "AGROLOG_SOURCE_ID=${CONAB_SOURCE_ID}" \
   2>&1 | tee "${RUN_DIR}/03-conab-first.log"
 
-log_step "4. Validação após primeira carga"
+log_step "4. Validação após primeira carga CONAB"
 python scripts/validate_conab_n6.py \
   --project "${PROJECT_ID}" \
   --out "${RUN_DIR}/04-conab-first-validation.json" \
   2>&1 | tee "${RUN_DIR}/04-conab-first-validation.log" || true
 
-log_step "5. Segunda execução do mesmo snapshot para idempotência"
+log_step "5. Segunda execução CONAB para idempotência"
 gcloud run jobs execute agrolog-dados \
   --region "${REGION}" --project "${PROJECT_ID}" --wait \
-  --update-env-vars "AGROLOG_SOURCE_ID=${SOURCE_ID}" \
+  --update-env-vars "AGROLOG_SOURCE_ID=${CONAB_SOURCE_ID}" \
   2>&1 | tee "${RUN_DIR}/05-conab-second.log"
 
 log_step "6. Gate final CONAB"
@@ -50,20 +51,28 @@ python scripts/validate_conab_n6.py \
   --out "${RUN_DIR}/06-conab-final-validation.json" \
   2>&1 | tee "${RUN_DIR}/06-conab-final-validation.log"
 
-log_step "7. Deploy Gateway"
-bash scripts/deploy_gateway_gcloud.sh 2>&1 | tee "${RUN_DIR}/07-deploy-gateway.log"
+log_step "7. Gate ComexStat API -> Drive/BigQuery + idempotência"
+PROJECT_ID="${PROJECT_ID}" REGION="${REGION}" \
+  bash scripts/homologate_comex_gcp.sh \
+  2>&1 | tee "${RUN_DIR}/07-comex-homologation.log"
+grep -Fq 'COMEXSTAT_HOMOLOGATION_PASS' "${RUN_DIR}/07-comex-homologation.log"
 
-log_step "8. Validação Gateway x BigQuery"
+log_step "8. Deploy Gateway"
+bash scripts/deploy_gateway_gcloud.sh 2>&1 | tee "${RUN_DIR}/08-deploy-gateway.log"
+
+log_step "9. Validação Gateway x BigQuery"
 python scripts/validate_gateway_n6.py \
   --project "${PROJECT_ID}" --region "${REGION}" \
-  --out "${RUN_DIR}/08-gateway-validation.json" \
-  2>&1 | tee "${RUN_DIR}/08-gateway-validation.log"
+  --out "${RUN_DIR}/09-gateway-validation.json" \
+  2>&1 | tee "${RUN_DIR}/09-gateway-validation.log"
 
 cat > "${RUN_DIR}/RESULT.txt" <<EOF
 N6 CORE HOMOLOGATION: PASS
 project=${PROJECT_ID}
 region=${REGION}
-source=${SOURCE_ID}
+conab_source=${CONAB_SOURCE_ID}
+comex_source=${COMEX_SOURCE_ID}
+comex_gate=PASS
 generated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 evidence_dir=${RUN_DIR}
 EOF
