@@ -25,6 +25,17 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check requests
+      - name: Download BDMEP ZIP
+        run: |
+          mkdir -p bdmep_download
+          python - <<'PY'
+          import requests
+          url = 'https://bdmep.inmet.gov.br/$2a$10$Il5Utr1Kvotkvb.mOqpuKO.oXEU6jrxcUcOJRvMmiouACVJgVxSm.zip'
+          r = requests.get(url, timeout=120)
+          r.raise_for_status()
+          open('bdmep_download/BDMEP_INMET_2026-08-25.zip','wb').write(r.content)
+          print(len(r.content))
+          PY
       - name: Diagnose public ANTT Power BI
         run: python scripts/diagnose_mdfe_powerbi.py
       - name: Extract golden sample
@@ -44,5 +55,6 @@ jobs:
             mdfe_powerbi_diagnostic/
             mdfe_powerbi_extract/
             mdfe_powerbi_export/
+            bdmep_download/
           if-no-files-found: warn
           retention-days: 3
