@@ -109,6 +109,7 @@ def main() -> int:
     batch_size = int(os.environ.get("AIS_BATCH_SIZE", "250"))
     max_records_raw = os.environ.get("AIS_MAX_RECORDS")
     max_records = int(max_records_raw) if max_records_raw else None
+    capture_seconds = float(os.environ.get("AIS_CAPTURE_SECONDS", "3000"))
 
     store = ShippingBigQueryStore()
     sink = AisBatchSink(store=store, zones=zones, batch_size=batch_size)
@@ -118,9 +119,10 @@ def main() -> int:
         mmsi_filter=mmsi_filter,
         on_record=sink,
         stop_after_records=max_records,
+        stop_after_seconds=capture_seconds,
     )
     sink.flush()
-    print(json.dumps({"status": "ok", "records": delivered, "zones": len(zones)}, sort_keys=True))
+    print(json.dumps({"status": "ok", "records": delivered, "zones": len(zones), "capture_seconds": capture_seconds}, sort_keys=True))
     return 0
 
 
