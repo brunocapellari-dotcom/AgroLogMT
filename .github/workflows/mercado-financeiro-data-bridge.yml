@@ -22,6 +22,16 @@ jobs:
           python-version: '3.12'
       - name: Download official CVM/B3 sources
         run: python tools/mercado_financeiro_bridge/download_official.py
+      - name: Download official CVM FCA 2010-2026
+        run: python tools/mercado_financeiro_bridge/download_fca_2010_2026.py
+      - name: Upload FCA 2010-2026
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mf-fca-2010-2026
+          path: mf_fca_2010_2026/
+          if-no-files-found: ignore
+          retention-days: 2
       - name: Upload manifest
         if: always()
         uses: actions/upload-artifact@v4
