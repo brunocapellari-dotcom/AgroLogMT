@@ -191,8 +191,8 @@ LIMIT 10
         },
         "latest_view_rows": int(latest_view["rows_total"]),
         "latest_view_max_competencia": str(latest_view["max_competencia"]),
-        "raw_drive_evidence": true,
-        "manifest_tie_out": true,
+        "raw_drive_evidence": True,
+        "manifest_tie_out": True,
         "idempotency_proven": idempotent,
     }
 
