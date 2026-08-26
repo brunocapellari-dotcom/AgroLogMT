@@ -46,7 +46,7 @@ Campos mínimos:
 - collected_at.
 
 ### AIS
-O adapter inicial normaliza mensagens compatíveis com AISStream.
+O adapter normaliza mensagens AISStream.
 AIS deve preservar dados brutos/observados e não inferir terminal ou porto antes da camada de geofence.
 
 Campos:
@@ -58,6 +58,8 @@ Campos:
 - SOG/COG;
 - navigation status;
 - destination.
+
+Como o serviço de streaming não oferece replay durável, o AgroLog persiste o JSON bruto recebido junto da observação normalizada no BigQuery. Isso permite auditoria e reprocessamento próprio.
 
 ### Operação portuária
 Fonte observada usada para confirmar realizado:
@@ -80,7 +82,36 @@ O modelo aceita zonas normalizadas:
 - `DEPARTED`;
 - `UNKNOWN`.
 
-A criação e versão dos polígonos de fundeadouro/berço é uma camada separada. Não deve ser embutida no parser AIS bruto.
+A criação e versão dos polígonos de fundeadouro/berço é uma camada separada. Não deve ser embutida no parser AIS bruto e não pode usar polígonos inventados. Cada classificação deve ser reproduzível pela versão da geofence utilizada.
+
+## Captura AIS ao vivo
+
+Implementação:
+- `collector/ais_stream_client.py` — WebSocket, compressão, assinatura, timeout e reconnect/backoff;
+- `collector/ais_worker.py` — geofence + batching + BigQuery + preservação do raw JSON;
+- `scripts/setup_aisstream_secret.sh` — cadastro one-shot da chave AISStream no Secret Manager e, quando disponível, GitHub Actions;
+- `scripts/deploy_ais_worker_gcloud.sh` — deploy do Cloud Run Job e agendamento horário;
+- `.github/workflows/ais-live-probe.yml` — teste manual de conectividade sem revelar a chave.
+
+O worker padrão usa janela limitada de captura para caber em Cloud Run Job. O piloto começa com uma bounding box ampla de Santos; **bounding box de assinatura não é geofence operacional**.
+
+## Reconciliação automática
+
+`collector/shipping_reconcile_worker.py` lê do BigQuery:
+- último snapshot de cada escala do line-up;
+- observações AIS da janela;
+- último evento portuário por escala;
+
+e executa o batch `line-up × AIS × operação`, gravando `shipping_reconciliation`.
+
+O resultado inclui:
+- estado atual;
+- método/confiança do match;
+- ETA error;
+- waiting time;
+- berth time;
+- volume variance;
+- divergências e alertas.
 
 ## Métricas
 
@@ -109,7 +140,7 @@ Tabelas em `agrolog_models`:
 - `shipping_port_operations`;
 - `shipping_reconciliation`.
 
-A implementação está em `collector/shipping_bigquery.py`.
+A implementação está em `collector/shipping_bigquery.py`. Escritas usam IDs estáveis para reduzir duplicação em retries; a auditoria continua dependendo da preservação de snapshot/source timestamps.
 
 ## Integração com M01
 
@@ -153,3 +184,7 @@ Para `OPERATIONAL`:
 - QA de cobertura;
 - alertas de divergência;
 - histórico suficiente para thresholds de espera/atraso.
+
+## Ativação
+
+O código pode ser implantado sem alterar a regra de governança. Para **ativar AIS ao vivo**, é necessária uma API key AISStream armazenada server-side. A chave nunca deve ser enviada no chat ou hardcoded no repositório.
