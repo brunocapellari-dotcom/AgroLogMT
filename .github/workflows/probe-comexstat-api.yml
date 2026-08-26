@@ -15,6 +15,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: comexstat-live-probe
+  cancel-in-progress: true
+
 jobs:
   probe:
     runs-on: ubuntu-latest
@@ -30,14 +34,10 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python -m unittest tests.test_comexstat_api tests.test_comexstat_api_adapter -v
-      - name: Live API metadata, filter semantics and Mato Grosso soybean canaries
+      - name: Live API multi-product and cities canaries
         env:
           PYTHONPATH: ${{ github.workspace }}
-        run: python scripts/probe_comex_api_live.py | tee comex_api_live_report.json
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: comex-api-live-report-${{ github.run_id }}
-          path: comex_api_live_report.json
-          if-no-files-found: warn
-          retention-days: 14
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/probe_comex_api_live.py | tee comex_api_live_report.json

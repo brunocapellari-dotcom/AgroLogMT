@@ -2,13 +2,21 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
 
 from collector.comexstat_api import ComexStatApiClient, trade_payload
 
-SOY_NCMS = ("12011000", "12019000")
 MT_COMEX_ID = "52"
+SOY_NCMS = ("12011000", "12019000")
+CORN_NCMS = ("10059010",)
+COTTON_RAW_NCMS = ("52010010", "52010020", "52010090")
+FERTILIZER_NCMS = {
+    "ureia": ("31021010", "31021090"),
+    "cloreto_potassio": ("31042010",),
+    "map": ("31054000",),
+}
 
 
 def _filter_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -23,21 +31,39 @@ def _filter_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return [item for item in candidates if isinstance(item, dict)]
 
 
-def _find_ids(items: list[dict[str, Any]], *, wanted_ids: set[str] | None = None, text_contains: str | None = None) -> list[str]:
+def _find_ids(items: list[dict[str, Any]], *, wanted_ids: set[str] | None = None, exact_text: str | None = None) -> list[str]:
     found: list[str] = []
     for item in items:
         item_id = str(item.get("id", "")).strip()
         text = str(item.get("text", "")).strip()
         if wanted_ids and item_id in wanted_ids:
             found.append(item_id)
-        elif text_contains and text_contains.lower() in text.lower():
+        elif exact_text and text.casefold() == exact_text.casefold():
             found.append(item_id)
     return found
 
 
-def _run_canary(client: ComexStatApiClient, competence: str, *, name: str, filters: list[dict[str, Any]], details: list[str]) -> dict[str, Any]:
+def _catalog_exact(items: list[dict[str, Any]], ids: tuple[str, ...]) -> list[dict[str, str]]:
+    wanted = set(ids)
+    return [
+        {"id": str(item.get("id", "")).strip(), "text": str(item.get("text", "")).strip()}
+        for item in items
+        if str(item.get("id", "")).strip() in wanted
+    ]
+
+
+def _run_canary(
+    client: ComexStatApiClient,
+    competence: str,
+    *,
+    name: str,
+    flow: str,
+    filters: list[dict[str, Any]],
+    details: list[str],
+    module: str = "general",
+) -> dict[str, Any]:
     query = trade_payload(
-        flow="export",
+        flow=flow,
         start=competence,
         end=competence,
         filters=filters,
@@ -45,15 +71,49 @@ def _run_canary(client: ComexStatApiClient, competence: str, *, name: str, filte
         metrics=["metricFOB", "metricKG"],
         month_detail=True,
     )
-    response = client.general(query)
+    response = client.query(query, module=module)
     rows = client.data_list(response)
-    return {
+    result = {
         "name": name,
+        "module": module,
+        "flow": flow,
         "filters": filters,
         "details": details,
         "row_count": len(rows),
         "sample": rows[:3],
     }
+    if "ncm" in details:
+        result["rows_by_ncm"] = dict(sorted(Counter(str(row.get("coNcm", "")) for row in rows if row.get("coNcm")).items()))
+    return result
+
+
+def _optional_cities_canary(client: ComexStatApiClient, competence: str) -> dict[str, Any]:
+    try:
+        state_items = _filter_items(client.get("/cities/filters/state"))
+        heading_items = _filter_items(client.get("/cities/filters/heading"))
+        mt_ids = _find_ids(state_items, exact_text="Mato Grosso")
+        soy_headings = _find_ids(heading_items, wanted_ids={"1201"})
+        if len(mt_ids) != 1 or "1201" not in soy_headings:
+            return {"status": "metadata_available_canary_blocked", "mt_ids": mt_ids, "soy_heading_ids": soy_headings}
+        canary = _run_canary(
+            client,
+            competence,
+            name="soy_mt_cities_sh4",
+            flow="export",
+            module="cities",
+            filters=[
+                {"filter": "heading", "values": ["1201"]},
+                {"filter": "state", "values": [mt_ids[0]]},
+            ],
+            details=["heading", "state", "city", "country"],
+        )
+        return {
+            "status": "live_pass" if canary["row_count"] > 0 else "live_zero_rows",
+            "semantic_warning": "city/state no módulo cities representam geografia do município/declarante; não origem física da carga",
+            "canary": canary,
+        }
+    except Exception as exc:
+        return {"status": "blocked", "error_type": type(exc).__name__, "error": str(exc)[:700]}
 
 
 def main() -> int:
@@ -64,29 +124,37 @@ def main() -> int:
         "policy": "API is the operational primary path; TLS verification is mandatory; CSV is backfill/reconciliation fallback.",
     }
     try:
-        client = ComexStatApiClient(timeout=90)
+        client = ComexStatApiClient(timeout=60)
         update = client.last_update()
         if not update.competence:
             raise RuntimeError("API não informou competência publicada")
         years = client.available_years()
-        metrics = client.metrics(module="general")
-        details_meta = client.details(module="general")
         state_items = _filter_items(client.get("/general/filters/state"))
         ncm_items = _filter_items(client.get("/general/filters/ncm"))
-        mt_ids = _find_ids(state_items, wanted_ids={MT_COMEX_ID}, text_contains="Mato Grosso")
-        soy_ids = _find_ids(ncm_items, wanted_ids=set(SOY_NCMS))
+        mt_ids = _find_ids(state_items, wanted_ids={MT_COMEX_ID})
         if MT_COMEX_ID not in mt_ids:
             raise RuntimeError(f"Catálogo ComexStat não confirmou Mato Grosso={MT_COMEX_ID}; ids detectados={mt_ids}")
 
+        fertilizer_codes = tuple(code for codes in FERTILIZER_NCMS.values() for code in codes)
+        all_selected = SOY_NCMS + CORN_NCMS + COTTON_RAW_NCMS + fertilizer_codes
+        selected_catalog = _catalog_exact(ncm_items, all_selected)
+        found_codes = {row["id"] for row in selected_catalog}
+        missing_codes = sorted(set(all_selected) - found_codes)
+        if missing_codes:
+            raise RuntimeError(f"Catálogo ComexStat não confirmou NCMs selecionados: {missing_codes}")
+
+        general_details = ["ncm", "state", "country", "via", "urf"]
         canaries = [
-            _run_canary(client, update.competence, name="soy_ncm", filters=[{"filter": "ncm", "values": list(SOY_NCMS)}], details=["ncm", "state"]),
-            _run_canary(client, update.competence, name="soy_mt", filters=[{"filter": "ncm", "values": list(SOY_NCMS)}, {"filter": "state", "values": [MT_COMEX_ID]}], details=["ncm", "state", "country"]),
-            _run_canary(client, update.competence, name="soy_mt_logistics", filters=[{"filter": "ncm", "values": list(SOY_NCMS)}, {"filter": "state", "values": [MT_COMEX_ID]}], details=["ncm", "state", "country", "via", "urf"]),
+            _run_canary(client, update.competence, name="soy_mt_export", flow="export", filters=[{"filter": "ncm", "values": list(SOY_NCMS)}, {"filter": "state", "values": [MT_COMEX_ID]}], details=general_details),
+            _run_canary(client, update.competence, name="corn_grain_mt_export", flow="export", filters=[{"filter": "ncm", "values": list(CORN_NCMS)}, {"filter": "state", "values": [MT_COMEX_ID]}], details=general_details),
+            _run_canary(client, update.competence, name="cotton_raw_mt_export", flow="export", filters=[{"filter": "ncm", "values": list(COTTON_RAW_NCMS)}, {"filter": "state", "values": [MT_COMEX_ID]}], details=general_details),
+            _run_canary(client, update.competence, name="fertilizers_core_mt_import", flow="import", filters=[{"filter": "ncm", "values": list(fertilizer_codes)}, {"filter": "state", "values": [MT_COMEX_ID]}], details=general_details),
         ]
-        positive = [item for item in canaries if item["name"] == "soy_mt_logistics" and item["row_count"] > 0]
+
+        soy_positive = any(item["name"] == "soy_mt_export" and item["row_count"] > 0 for item in canaries)
         report.update(
             {
-                "status": "API_PRIMARY_LIVE_PASS" if positive else "API_PRIMARY_FILTER_SEMANTICS_BLOCKED",
+                "status": "API_PRIMARY_LIVE_PASS" if soy_positive else "API_PRIMARY_FILTER_SEMANTICS_BLOCKED",
                 "last_update": {
                     "updated": update.updated,
                     "year": update.year,
@@ -94,20 +162,15 @@ def main() -> int:
                     "competence": update.competence,
                 },
                 "available_years": list(years),
-                "metadata_endpoints": {
-                    "metrics_success": metrics.get("success") is not False,
-                    "details_success": details_meta.get("success") is not False,
-                    "state_filter_values": len(state_items),
-                    "ncm_filter_values": len(ncm_items),
-                    "mt_ids_detected": mt_ids,
-                    "soy_ncm_ids_detected": soy_ids,
-                },
-                "canaries": canaries,
-                "canonical_positive_canaries": [item["name"] for item in positive],
+                "mt_state_filter_id": MT_COMEX_ID,
+                "selected_ncm_catalog": selected_catalog,
+                "fertilizer_families": {key: list(value) for key, value in FERTILIZER_NCMS.items()},
+                "multi_product_canaries": canaries,
+                "cities_module": _optional_cities_canary(client, update.competence),
             }
         )
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
-        return 0 if positive else 2
+        return 0 if soy_positive else 2
     except Exception as exc:
         report.update(
             {

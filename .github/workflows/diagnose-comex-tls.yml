@@ -4,9 +4,6 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - "collector/comexstat_api.py"
-      - "collector/adapters.py"
-      - "scripts/probe_comex_api_live.py"
       - "scripts/diagnose_comex_tls_transition.py"
       - ".github/workflows/diagnose-comex-tls.yml"
 
@@ -16,7 +13,7 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       PYTHONPATH: ${{ github.workspace }}
     steps:
@@ -25,64 +22,15 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install --disable-pip-version-check "requests>=2.32,<3"
-
-      - name: Probe operational ComexStat API first
-        id: api
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -o pipefail
-          python scripts/probe_comex_api_live.py | tee comex_api_report.json
-
       - name: Probe raw CSV only as backfill fallback
-        id: csv
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           python scripts/diagnose_comex_tls_transition.py | tee comex_csv_fallback_report.json
-
-      - name: Summarize route status
+      - name: State architecture policy
         if: always()
         run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-
-          def load(path):
-              p = Path(path)
-              if not p.exists():
-                  return None
-              try:
-                  return json.loads(p.read_text(encoding='utf-8'))
-              except Exception:
-                  return None
-
-          api = load('comex_api_report.json') or {}
-          csv = load('comex_csv_fallback_report.json') or {}
-          summary = {
-              'operational_primary': 'api',
-              'api_status': api.get('status', 'NO_REPORT'),
-              'api_probe_outcome': '${{ steps.api.outcome }}',
-              'csv_role': 'backfill_reconciliation_fallback',
-              'csv_probe_outcome': '${{ steps.csv.outcome }}',
-              'csv_any_verified_path': bool(
-                  ((csv.get('current') or {}).get('requests') or {}).get('ok')
-                  or ((csv.get('transitional') or {}).get('requests') or {}).get('ok')
-              ),
-              'policy': 'API failure does not authorize verify=false; CSV failure does not downgrade the API architecture.'
-          }
-          Path('comex_route_summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-          print(json.dumps(summary, ensure_ascii=False, indent=2))
-          PY
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: comex-api-and-fallback-report
-          path: |
-            comex_api_report.json
-            comex_csv_fallback_report.json
-            comex_route_summary.json
-          if-no-files-found: warn
-          retention-days: 14
+          echo "ComexStat API remains the operational primary path."
+          echo "Raw CSV is backfill/reconciliation only and its TLS state does not downgrade the API architecture."
+          echo "No verify=false or curl -k is permitted."

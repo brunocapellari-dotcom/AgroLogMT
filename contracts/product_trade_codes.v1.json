@@ -1,6 +1,6 @@
 {
-  "contract_version": "1.0",
-  "source_basis": "MAPA/Comex Stat product summary and Siscomex NCM descriptions, verified 2026-08-24",
+  "contract_version": "1.1",
+  "source_basis": "Catálogo de filtros NCM da API oficial Comex Stat/MDIC, validado ao vivo em 2026-08-26; descrições do próprio catálogo da API.",
   "products": {
     "soja_grao": {
       "ncm8": ["12011000", "12019000"],
@@ -8,7 +8,8 @@
         "12011000": "Soja, mesmo triturada, para semeadura",
         "12019000": "Soja, mesmo triturada, exceto para semeadura"
       },
-      "default_for_soy_mt_trade_v1": true
+      "default_for_soy_mt_trade_v1": true,
+      "catalog_validated": true
     },
     "farelo_soja": {
       "ncm8": ["23040010", "23040090"],
@@ -17,12 +18,79 @@
     "oleo_soja": {
       "ncm8": ["15071000", "15079011", "15079019", "15079090"],
       "default_for_soy_mt_trade_v1": false
+    },
+    "milho_grao": {
+      "ncm8": ["10059010"],
+      "descriptions": {
+        "10059010": "Milho em grão, exceto para semeadura"
+      },
+      "catalog_validated": true,
+      "seeds_excluded": true
+    },
+    "milho_semente": {
+      "ncm8": ["10051000"],
+      "descriptions": {
+        "10051000": "Milho para semeadura"
+      },
+      "catalog_validated": true,
+      "separate_from_grain_flow": true
+    },
+    "algodao_bruto": {
+      "ncm8": ["52010010", "52010020", "52010090"],
+      "descriptions": {
+        "52010010": "Algodão não cardado nem penteado, não debulhado",
+        "52010020": "Algodão não cardado nem penteado, simplesmente debulhado",
+        "52010090": "Outros tipos de algodão não cardado nem penteado"
+      },
+      "catalog_validated": true
+    },
+    "fertilizante_ureia": {
+      "ncm8": ["31021010", "31021090"],
+      "descriptions": {
+        "31021010": "Ureia, mesmo em solução aquosa, com teor de nitrogênio superior a 45% em peso, calculado sobre o produto anidro no estado seco",
+        "31021090": "Outra ureia, mesmo em solução aquosa"
+      },
+      "catalog_validated": true,
+      "flow": "import"
+    },
+    "fertilizante_cloreto_potassio": {
+      "ncm8": ["31042010"],
+      "descriptions": {
+        "31042010": "Cloreto de potássio, com teor de óxido de potássio (K2O) não superior a 60% em peso"
+      },
+      "catalog_validated": true,
+      "flow": "import"
+    },
+    "fertilizante_map": {
+      "ncm8": ["31054000"],
+      "descriptions": {
+        "31054000": "Diidrogeno-ortofosfato de amônio (fosfato monoamônico ou monoamoniacal), mesmo misturado com fosfato diamônico"
+      },
+      "catalog_validated": true,
+      "flow": "import"
+    },
+    "fertilizante_dap_catalog_candidates": {
+      "ncm8": ["31053000", "31053010", "31053090"],
+      "catalog_validated": true,
+      "flow": "import",
+      "temporal_mapping_required": true,
+      "note": "O catálogo expõe códigos de diferentes vintages/nomenclaturas para DAP. Não somar todos automaticamente em histórico sem tabela de vigência por competência."
+    },
+    "fertilizante_superfosfatos_catalog_candidates": {
+      "ncm8": ["31031010", "31031020", "31031030", "31031100", "31031900"],
+      "catalog_validated": true,
+      "flow": "import",
+      "temporal_mapping_required": true,
+      "note": "O catálogo expõe códigos de diferentes vintages/nomenclaturas. A agregação histórica depende de vigência por competência."
     }
   },
   "rules": [
-    "grao, farelo e oleo permanecem fluxos separados",
+    "grao, semente, farelo, oleo e demais derivados permanecem fluxos separados",
     "mudanca futura de NCM exige nova versao do mapping",
     "historico anterior a mudancas de nomenclatura deve usar mapping valido para a competencia",
-    "NCM nao identifica porto nem empresa exportadora por si so"
+    "codigos marcados temporal_mapping_required nao podem ser agregados automaticamente entre vintages sem regra de vigencia",
+    "NCM nao identifica porto nem empresa exportadora por si so",
+    "URF e via podem descrever corredor aduaneiro, mas URF nao e sinonimo automatico de terminal portuario",
+    "municipio do modulo cities representa a geografia declarada pelo modulo e nao deve ser convertido em origem fisica da carga"
   ]
 }

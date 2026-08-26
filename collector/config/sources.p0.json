@@ -58,7 +58,82 @@
         "metrics": ["metricFOB", "metricKG"],
         "timeout_seconds": 120
       },
-      "notes": "P0 Trade. API oficial ComexStat é a rota operacional primária. A competência vem de /general/dates/updated; nunca assume mês corrente completo. O filtro state usa o identificador próprio do ComexStat; Mato Grosso=52, não código IBGE. O pipeline falha fechado se o nome da UF retornada divergir de Mato Grosso. CSV bruto fica restrito a backfill/reconciliação e não é requisito para atualização operacional."
+      "notes": "P0 Trade homologado em canário live. API oficial ComexStat é a rota operacional primária. A competência vem de /general/dates/updated; nunca assume mês corrente completo. Mato Grosso=state 52 no catálogo ComexStat."
+    },
+    {
+      "source_id": "mdic_comexstat_milho_mt_export_api",
+      "name": "MDIC/SECEX ComexStat API - exportação de milho em grão MT",
+      "group": "dados",
+      "method": "comexstat_api",
+      "enabled": false,
+      "expected_frequency": "monthly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "module": "general",
+        "period_mode": "latest_complete_month",
+        "flow": "export",
+        "month_detail": true,
+        "expected_state_name": "Mato Grosso",
+        "filters": [
+          {"filter": "ncm", "values": [10059010]},
+          {"filter": "state", "values": [52]}
+        ],
+        "details": ["ncm", "state", "country", "via", "urf"],
+        "metrics": ["metricFOB", "metricKG"],
+        "timeout_seconds": 120
+      },
+      "notes": "Preparado/gated. Milho em grão, exceto para semeadura. Ativar somente após canário live específico; semente 10051000 permanece fluxo separado."
+    },
+    {
+      "source_id": "mdic_comexstat_algodao_mt_export_api",
+      "name": "MDIC/SECEX ComexStat API - exportação de algodão bruto MT",
+      "group": "dados",
+      "method": "comexstat_api",
+      "enabled": false,
+      "expected_frequency": "monthly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "module": "general",
+        "period_mode": "latest_complete_month",
+        "flow": "export",
+        "month_detail": true,
+        "expected_state_name": "Mato Grosso",
+        "filters": [
+          {"filter": "ncm", "values": [52010010, 52010020, 52010090]},
+          {"filter": "state", "values": [52]}
+        ],
+        "details": ["ncm", "state", "country", "via", "urf"],
+        "metrics": ["metricFOB", "metricKG"],
+        "timeout_seconds": 120
+      },
+      "notes": "Preparado/gated. Escopo restrito a algodão não cardado nem penteado. Ativar somente após canário live específico; derivados permanecem fluxos separados."
+    },
+    {
+      "source_id": "mdic_comexstat_fertilizantes_core_mt_import_api",
+      "name": "MDIC/SECEX ComexStat API - importação fertilizantes core MT",
+      "group": "dados",
+      "method": "comexstat_api",
+      "enabled": false,
+      "expected_frequency": "monthly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "module": "general",
+        "period_mode": "latest_complete_month",
+        "flow": "import",
+        "month_detail": true,
+        "expected_state_name": "Mato Grosso",
+        "filters": [
+          {"filter": "ncm", "values": [31021010, 31021090, 31042010, 31054000]},
+          {"filter": "state", "values": [52]}
+        ],
+        "details": ["ncm", "state", "country", "via", "urf"],
+        "metrics": ["metricFOB", "metricKG"],
+        "timeout_seconds": 120
+      },
+      "notes": "Preparado/gated. Basket inicial ureia/KCl/MAP; não representa total de fertilizantes. Ativar somente após canário live específico. DAP/superfosfatos permanecem fora até vigência histórica dos NCMs."
     },
     {
       "source_id": "chm_avisos_navegantes_hidrovias",

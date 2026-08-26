@@ -54,6 +54,7 @@ jobs:
               'collector/config/sources.p0.json',
               'contracts/canonical_record_metadata.schema.json',
               'contracts/comexstat.v1.json',
+              'contracts/product_trade_codes.v1.json',
               'contracts/imea_agro.v1.json',
               'contracts/climate_hydrology.v1.json',
               'contracts/news_signal.v0_5.schema.json',
