@@ -1,0 +1,137 @@
+from __future__ import annotations
+
+import hashlib
+import re
+import unicodedata
+from datetime import datetime, timezone
+from typing import Any
+
+from models.shipping_reconciliation import LineupCall
+
+
+def _key(value: str) -> str:
+    text = unicodedata.normalize("NFKD", str(value)).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+
+
+def _normalized_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {_key(k): v for k, v in row.items()}
+
+
+def _first(row: dict[str, Any], *aliases: str) -> Any:
+    for alias in aliases:
+        key = _key(alias)
+        value = row.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _parse_datetime(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        text = str(value).strip()
+        candidates = (
+            "%d/%m/%Y %H:%M",
+            "%d/%m/%Y %H:%M:%S",
+            "%d/%m/%Y",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%Y-%m-%d",
+        )
+        dt = None
+        iso = text.replace("Z", "+00:00")
+        try:
+            dt = datetime.fromisoformat(iso)
+        except ValueError:
+            for fmt in candidates:
+                try:
+                    dt = datetime.strptime(text, fmt)
+                    break
+                except ValueError:
+                    continue
+        if dt is None:
+            raise ValueError(f"data/hora nao reconhecida: {value!r}")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _float(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    text = str(value).strip().replace(" ", "")
+    if "," in text and "." in text:
+        text = text.replace(".", "").replace(",", ".")
+    elif "," in text:
+        text = text.replace(",", ".")
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _clean_id(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    digits = re.sub(r"\D", "", str(value))
+    return digits or None
+
+
+def _lineup_status(value: Any) -> str:
+    text = _key(str(value or "programmed"))
+    if any(token in text for token in ("atracad", "berthed")):
+        return "BERTHED"
+    if any(token in text for token in ("funde", "aguard", "waiting", "anchorage")):
+        return "ARRIVED_WAITING"
+    if any(token in text for token in ("conclu", "realiz", "completed", "saido", "departed")):
+        # This remains a line-up claim, not proof of realized operation.
+        return "LINEUP_COMPLETED"
+    if any(token in text for token in ("esperad", "program", "previst", "expected")):
+        return "PROGRAMMED"
+    return str(value or "PROGRAMMED").upper()
+
+
+def normalize_lineup_row(
+    row: dict[str, Any],
+    *,
+    port_id: str,
+    snapshot_id: str,
+    collected_at: datetime | str,
+    source_id: str,
+    default_terminal_id: str | None = None,
+) -> LineupCall:
+    r = _normalized_row(row)
+    vessel_name = _first(r, "navio", "nome_navio", "vessel", "vessel_name", "embarcacao")
+    eta_raw = _first(r, "eta", "previsao_chegada", "data_chegada", "chegada_prevista", "expected_arrival")
+    if not vessel_name or not eta_raw:
+        raise ValueError("line-up requer navio e ETA")
+    eta = _parse_datetime(eta_raw)
+    collected = _parse_datetime(collected_at)
+    terminal = _first(r, "terminal", "terminal_id", "berco_terminal", "operador") or default_terminal_id
+    imo = _clean_id(_first(r, "imo", "imo_number", "numero_imo"))
+    mmsi = _clean_id(_first(r, "mmsi", "mmsi_number"))
+    product = _first(r, "produto", "carga", "commodity", "product")
+    volume = _float(_first(r, "volume_t", "quantidade_t", "toneladas", "volume", "quantity_t"))
+    status = _lineup_status(_first(r, "status", "situacao", "posicao", "condition"))
+    external_id = _first(r, "duv", "call_id", "escala", "viagem", "voyage_id")
+    if external_id:
+        call_id = f"{source_id}:{str(external_id).strip()}"
+    else:
+        raw = "|".join([source_id, snapshot_id, port_id, str(terminal or ""), str(vessel_name), eta.isoformat()])
+        call_id = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return LineupCall(
+        call_id=call_id,
+        port_id=port_id,
+        terminal_id=str(terminal).strip() if terminal else None,
+        vessel_name=str(vessel_name).strip(),
+        imo=imo,
+        mmsi=mmsi,
+        eta=eta,
+        product=str(product).strip() if product else None,
+        planned_volume_t=volume,
+        lineup_status=status,
+        collected_at=collected,
+        source_id=source_id,
+    )

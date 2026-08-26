@@ -1,0 +1,52 @@
+{
+  "contract_id": "shipping_reconciliation.v1",
+  "model_id": "M01-S",
+  "description": "Reconciliacao de line-up portuario, AIS e operacao realizada sem confundir programacao com realizado.",
+  "natural_keys": {
+    "lineup_call": ["call_id", "snapshot_id"],
+    "ais_position": ["observation_id"],
+    "port_operation": ["operation_id"],
+    "reconciliation": ["reconciliation_id"]
+  },
+  "states": [
+    "PROGRAMMED",
+    "IN_TRANSIT",
+    "APPROACHING",
+    "ARRIVED_WAITING",
+    "BERTHED",
+    "DEPARTED_PENDING_REALIZED",
+    "COMPLETED_REALIZED",
+    "AIS_OBSERVED_UNKNOWN_STATE"
+  ],
+  "evidence_classes": [
+    "LINEUP_PROGRAMMED",
+    "AIS_OBSERVED",
+    "PORT_OPERATION_OBSERVED"
+  ],
+  "match_priority": ["IMO", "MMSI", "NAME_FUZZY"],
+  "hard_rules": [
+    "IMO conflitante nunca pode ser sobrescrito por fuzzy name",
+    "MMSI conflitante nunca pode ser sobrescrito por fuzzy name",
+    "AIS departure nao equivale a operacao realizada",
+    "COMPLETED_REALIZED exige evidencia de operacao/porto",
+    "programado, atracado e realizado permanecem estados separados",
+    "volume programado nao equivale a volume realizado",
+    "toda reconciliacao preserva source_id, timestamps e confianca do match"
+  ],
+  "metrics": [
+    "eta_error_hours",
+    "waiting_hours",
+    "berth_hours",
+    "volume_variance_pct",
+    "lineup_reliability_score"
+  ],
+  "pilot_ports": [
+    "SANTOS",
+    "PARANAGUA",
+    "BARCARENA_VILA_DO_CONDE",
+    "SANTAREM",
+    "MIRITITUBA_ITAITUBA"
+  ],
+  "gate": "DATA_PILOT",
+  "promotion_rule": "Nao promover a operacional antes de AIS recorrente, line-up versionado e fonte observada de operacao realizada."
+}
