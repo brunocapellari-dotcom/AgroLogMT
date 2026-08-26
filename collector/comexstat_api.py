@@ -209,7 +209,7 @@ def trade_payload(
         "period": {"from": start, "to": end},
         "filters": filters,
         "details": details,
-        "metrics": metrics or ["metricFOB", "metricKG"],
+        "metrics": ["metricFOB", "metricKG"] if metrics is None else metrics,
     }
     ComexStatApiClient._validate_payload(payload)
     return payload
