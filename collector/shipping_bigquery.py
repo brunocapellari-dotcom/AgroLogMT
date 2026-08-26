@@ -45,9 +45,10 @@ CREATE TABLE IF NOT EXISTS `{self.ais}` (
  sog_kn FLOAT64, cog_deg FLOAT64, navigation_status STRING, destination STRING,
  port_id STRING, terminal_id STRING, zone STRING NOT NULL,
  source_id STRING NOT NULL, collected_at TIMESTAMP NOT NULL,
- raw_artifact_ref STRING
+ raw_artifact_ref STRING, raw_message_json STRING
 ) PARTITION BY DATE(observed_at) CLUSTER BY mmsi, imo, port_id, zone
 """).result()
+        self.client.query(f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS raw_message_json STRING").result()
         self.client.query(f"""
 CREATE TABLE IF NOT EXISTS `{self.operations}` (
  operation_id STRING NOT NULL, call_id STRING NOT NULL, port_id STRING NOT NULL,
