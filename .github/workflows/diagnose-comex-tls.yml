@@ -17,6 +17,8 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -27,12 +29,18 @@ jobs:
       - name: Probe operational ComexStat API first
         id: api
         continue-on-error: true
-        run: python scripts/probe_comex_api_live.py | tee comex_api_report.json
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/probe_comex_api_live.py | tee comex_api_report.json
 
       - name: Probe raw CSV only as backfill fallback
         id: csv
         continue-on-error: true
-        run: python scripts/diagnose_comex_tls_transition.py | tee comex_csv_fallback_report.json
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/diagnose_comex_tls_transition.py | tee comex_csv_fallback_report.json
 
       - name: Summarize route status
         if: always()
@@ -55,7 +63,9 @@ jobs:
           summary = {
               'operational_primary': 'api',
               'api_status': api.get('status', 'NO_REPORT'),
+              'api_probe_outcome': '${{ steps.api.outcome }}',
               'csv_role': 'backfill_reconciliation_fallback',
+              'csv_probe_outcome': '${{ steps.csv.outcome }}',
               'csv_any_verified_path': bool(
                   ((csv.get('current') or {}).get('requests') or {}).get('ok')
                   or ((csv.get('transitional') or {}).get('requests') or {}).get('ok')
