@@ -31,12 +31,29 @@ class PortLifecycleTests(unittest.TestCase):
         result = multiport_readiness([obs("SANTOS")], now=NOW)
         self.assertEqual(result["status"], "PARTIAL_MULTI_PORT")
         self.assertIn("PARANAGUA_ANTONINA", result["missing_or_stale_systems"])
-        self.assertIn("ARCO_NORTE_CDP", result["missing_or_stale_systems"])
+        self.assertIn("BARCARENA_VILA_DO_CONDE", result["missing_or_stale_systems"])
+        self.assertIn("SANTAREM", result["missing_or_stale_systems"])
+        self.assertIn("ITAQUI", result["missing_or_stale_systems"])
 
-    def test_three_geographic_systems_are_required(self) -> None:
-        rows = [obs("SANTOS"), obs("PARANAGUA_ANTONINA"), obs("ARCO_NORTE_CDP")]
+    def test_five_pilot_ports_are_required(self) -> None:
+        rows = [
+            obs("SANTOS"),
+            obs("PARANAGUA_ANTONINA"),
+            obs("BARCARENA_VILA_DO_CONDE"),
+            obs("SANTAREM"),
+            obs("ITAQUI"),
+        ]
         result = multiport_readiness(rows, now=NOW)
         self.assertEqual(result["status"], "MULTIPORT_VALIDATED")
+        self.assertEqual(len(result["covered_systems"]), 5)
+
+    def test_legacy_arco_norte_combined_does_not_fake_two_port_coverage(self) -> None:
+        rows = [obs("SANTOS"), obs("PARANAGUA_ANTONINA"), obs("ARCO_NORTE_CDP"), obs("ITAQUI")]
+        result = multiport_readiness(rows, now=NOW)
+        self.assertEqual(result["status"], "PARTIAL_MULTI_PORT")
+        self.assertIn("BARCARENA_VILA_DO_CONDE", result["missing_or_stale_systems"])
+        self.assertIn("SANTAREM", result["missing_or_stale_systems"])
+        self.assertEqual(result["legacy_observations"], {"ARCO_NORTE_CDP": 1})
 
     def test_programmed_quantity_cannot_be_realized_before_completion(self) -> None:
         with self.assertRaises(ValueError):
