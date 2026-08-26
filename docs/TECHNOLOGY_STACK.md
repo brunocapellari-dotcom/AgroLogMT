@@ -56,16 +56,17 @@ Dolt, lakeFS e XTDB permanecem `REFERENCIA` arquitetural. O conceito de versiona
 |---|---|---:|---|
 | Conversão/ETL geo | GDAL | CORE | Conversão e normalização de formatos geoespaciais. |
 | Arquivo geo analítico | GeoParquet | CORE | Formato preferencial para novos artefatos vetoriais analíticos. |
-| Grade espacial | H3 | POC | Agregação espacial hierárquica para produção, demanda, tráfego e pressão logística. |
+| Grade espacial | H3 | POC | Agregação espacial hierárquica para produção, demanda, tráfego e pressão logística; também QA/derivação de geofences AIS. |
 | Banco transacional geo | PostGIS | FUTURO | Só quando surgir necessidade transacional/live que BigQuery não atenda. |
 | Trajetórias | MobilityDB | FUTURO | Extensão preferencial quando PostGIS entrar para objetos móveis históricos. |
-| Geofencing live | Tile38 | POC | Primeiro candidato para `enter/exit/cross` de AIS/GPS e áreas operacionais. |
+| Geofencing live distribuído | Tile38 | FUTURO | Só promover se geofence em processo não atender escala/latência ou houver múltiplos consumidores de `enter/exit/cross`. |
 | Map matching | FMM | POC | GPS/track → segmento real de rodovia. |
 | Routing | Valhalla | POC | Engine preferencial de rotas e custos de rede. |
-| Tiles dinâmicos | Martin | POC | PostGIS/PMTiles → vector tiles quando houver mapa operacional. |
+| Tiles dinâmicos | Martin | POC | PostGIS/PMTiles → vector tiles quando houver necessidade real de camada dinâmica. |
 | Tiles estáticos | PMTiles | CORE | Camadas estáticas em object storage. |
 | Geração de tiles | Tippecanoe | POC | Geração/compactação de vector tiles para grandes camadas. |
 | Frontend cartográfico | MapLibre | CORE | Base preferencial do mapa operacional. |
+| Renderização massiva/replay | deck.gl | POC | Vessel points, trilhas, H3, heading e replay temporal sobre MapLibre. |
 
 ## 4. Matriz OD, rodovias e otimização
 
@@ -94,21 +95,48 @@ A ordem lógica é: `OD canônica → rede/rotas → assignment → observação
 
 ## 6. AgroLog Maritime Intelligence
 
-O Maritime Intelligence é um subprojeto do AgroLog com runtime próprio, compartilhando contratos, BigQuery, observabilidade e governança.
+O Maritime Intelligence é um subprojeto do AgroLog com runtime próprio, compartilhando contratos, BigQuery, observabilidade e governança. A especificação congelada da V1 está em `docs/MARITIME_INTELLIGENCE_V1.md`.
 
 Stack selecionado:
 
-- `pyais` — decode/normalização inicial AIS (`POC`);
-- `Tile38` — geofences operacionais (`POC`);
-- `PostGIS + MobilityDB` — histórico/trajectórias quando necessário (`FUTURO` até a necessidade transacional);
-- `H3` — densidade/pressão espacial (`POC`);
-- `PMTiles + Martin + MapLibre` — mapa operacional (`POC/CORE` conforme a camada);
+- código AIS existente do AgroLog — ingestão/normalização e geofence em processo (`CORE` para a V1);
+- `pyais` — referência/POC se houver necessidade de ampliar decode AIS além do adapter atual (`POC`);
+- `MapLibre + deck.gl` — tela operacional, renderização em escala e replay (`CORE/POC`);
+- `PMTiles` — camadas cartográficas estáticas (`CORE`);
+- `H3` — densidade, pressão espacial e apoio à geração/QA de geofences (`POC`);
+- `Tippecanoe` — preparação de vector tiles (`POC`);
+- `Martin` — tiles dinâmicos apenas quando a camada live justificar (`POC condicionado`);
+- `Tile38` — geofencing distribuído (`FUTURO`, não entra na V1 inicial);
+- `PostGIS + MobilityDB` — histórico/trajectórias quando BigQuery/API deixarem de atender (`FUTURO`);
 - `OpenCLSim/OpenTNSim` — simulação terminal/hidrovia (`POC`);
 - `Veriflow` — verificação de ETA/fila/forecast (`FUTURO` até existir forecast operacional);
 - `Redpanda Connect` — integração de streams (`FUTURO` até o volume justificar);
 - `RisingWave` — indicadores SQL incrementais/live (`FUTURO` até o volume justificar).
 
-AISdb é `REFERENCIA` por utilidade arquitetural; qualquer incorporação direta exige revisão específica de licença AGPL e implicações de distribuição/serviço.
+### Geofences operacionais
+
+A V1 não aceita polígonos aproximados como verdade operacional. Prioridade:
+
+1. autoridade portuária/hidrográfica;
+2. ENC/S-57/S-101 licenciado/autorizado;
+3. OSM/OpenSeaMap como apoio;
+4. World Port Index apenas como seed/bounding box;
+5. AIS histórico + H3 + DBSCAN para derivação/validação;
+6. QA manual contra eventos e line-up conhecidos.
+
+O `UNECE/AIS Berth Polygon Cookbook` é `REFERENCIA` metodológica para H3 + DBSCAN. `SMAC-M` e `s57-parser` são `REFERENCIA` para ingestão/renderização de cartas S-57 quando houver dados legalmente utilizáveis.
+
+### Port-call engine
+
+O engine permanece código próprio do AgroLog. `thanderoy/ais-tracker`, `xang1234/neptune` e `Snaporaz6/ais-vessel-tracker` são `REFERENCIA` para detecção de visitas, eventos, fusão multi-fonte, histórico e replay. Não tornam seus modelos uma fonte de verdade do AgroLog.
+
+### ETA e congestionamento
+
+A primeira etapa é benchmark: ETA AIS, ETA line-up, ETA cinemático e histórico. O primeiro modelo proprietário deve ser tabular/tree-based e combinar AIS + histórico de port calls + fila/clima quando aplicável. `cut-dicl/ais2eta` e literatura recente de AIS + port-call são `REFERENCIA` metodológica.
+
+AISdb permanece `REFERENCIA` por utilidade arquitetural; qualquer incorporação direta exige revisão específica de licença AGPL e implicações de distribuição/serviço.
+
+`MobilityLakehouse` permanece `REFERENCIA/FUTURO` para TemporalParquet/lakehouse de trajetórias; não entra enquanto BigQuery atender o histórico e replay.
 
 ## 7. Modelos preditivos e MLOps
 
@@ -161,7 +189,7 @@ Nenhuma nova plataforma deve atrasar CONAB Armazéns + AgroLog Gateway. Não sub
 
 1. padronizar quality gates reutilizáveis;
 2. ampliar contratos existentes em direção a ODCS sem duplicar schemas;
-3. testar Pandera em um coletor representativo;
+3. testar Pandera em um coletor representativo apenas quando superar o gate existente;
 4. testar DuckDB/Polars em uma carga pesada/reprocessamento;
 5. testar SQLGlot para lint/lineage de SQL;
 6. testar CloudDQ sobre uma tabela BigQuery homologada;
@@ -176,13 +204,15 @@ Nenhuma nova plataforma deve atrasar CONAB Armazéns + AgroLog Gateway. Não sub
 
 ### Fase 3 — geoespacial e Maritime
 
-1. padronizar GeoParquet;
-2. criar H3 canônico;
-3. estruturar camadas PMTiles/MapLibre;
-4. PoC de Tile38 com geofences AIS;
-5. validar port-call engine AIS × line-up;
-6. introduzir PostGIS/MobilityDB apenas se a necessidade live/transacional for comprovada;
-7. só então considerar Redpanda/RisingWave.
+1. corrigir/versionar geofences dos cinco portos piloto;
+2. aplicar método de QA oficial/ENC/OSM + AIS/H3/DBSCAN;
+3. validar port-call engine AIS × geofence × line-up;
+4. estruturar MapLibre + deck.gl para live/replay;
+5. padronizar GeoParquet/PMTiles para camadas estáticas;
+6. manter BigQuery como histórico e medir latência/custo do replay;
+7. introduzir PostGIS/MobilityDB, Tile38 ou Martin dinâmico somente diante de gargalo comprovado;
+8. só então considerar Redpanda/RisingWave;
+9. criar baselines ETA e fila antes de modelos complexos.
 
 ### Fase 4 — OD, digital twin e otimização
 
