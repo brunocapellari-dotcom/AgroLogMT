@@ -91,6 +91,10 @@ class ComexStatApiTests(unittest.TestCase):
         rows = ComexStatApiClient.data_list({"success": True, "data": {"list": [{"ncm": "1201"}]}})
         self.assertEqual(rows, [{"ncm": "1201"}])
 
+    def test_data_list_accepts_legacy_nested_data_shape(self) -> None:
+        rows = ComexStatApiClient.data_list({"success": True, "data": {"data": [{"state": "Mato Grosso"}]}})
+        self.assertEqual(rows, [{"state": "Mato Grosso"}])
+
 
 if __name__ == "__main__":
     unittest.main()
