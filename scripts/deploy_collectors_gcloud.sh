@@ -6,6 +6,7 @@ REGION="${REGION:-southamerica-east1}"
 DRIVE_FOLDER_ID="${DRIVE_FOLDER_ID:-17AX2iCrQ17Jm86Pp9ijqn3hyEHVaQPqd}"
 OPS_DATASET="${OPS_DATASET:-agrolog_ops}"
 LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
+TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
 BQ_LOCATION="${BQ_LOCATION:-southamerica-east1}"
 AR_REPOSITORY="${AR_REPOSITORY:-agrolog}"
 IMAGE_NAME="${IMAGE_NAME:-collector}"
@@ -84,7 +85,6 @@ ensure_dataset_role() {
 }
 
 ensure_service_account "${COLLECTOR_SA_NAME}" "AgroLog Collector"
-# The scheduler account is unnecessary during P0/P1 unless recurring Cloud Scheduler is explicitly requested.
 if [[ "${MANAGE_SCHEDULER}" == "1" ]]; then
   ensure_service_account "${SCHEDULER_SA_NAME}" "AgroLog Scheduler Invoker"
 fi
@@ -93,8 +93,10 @@ fi
 ensure_project_role "${COLLECTOR_SERVICE_ACCOUNT}" "roles/bigquery.user"
 ensure_dataset "${OPS_DATASET}"
 ensure_dataset "${LOGISTICA_DATASET}"
+ensure_dataset "${TRADE_DATASET}"
 ensure_dataset_role "${OPS_DATASET}" "${COLLECTOR_SERVICE_ACCOUNT}" "roles/bigquery.dataEditor"
 ensure_dataset_role "${LOGISTICA_DATASET}" "${COLLECTOR_SERVICE_ACCOUNT}" "roles/bigquery.dataEditor"
+ensure_dataset_role "${TRADE_DATASET}" "${COLLECTOR_SERVICE_ACCOUNT}" "roles/bigquery.dataEditor"
 
 if [[ "${MANAGE_SCHEDULER}" == "1" ]]; then
   ensure_project_role "${SCHEDULER_SERVICE_ACCOUNT}" "roles/run.invoker"
@@ -106,7 +108,7 @@ fi
 
 gcloud builds submit --tag "${IMAGE}" --project "${PROJECT_ID}" .
 
-common_env="AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_OPS_DATASET=${OPS_DATASET},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION},AGROLOG_DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID},AGROLOG_CONFIG=/app/collector/config/sources.pilot.json"
+common_env="AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_OPS_DATASET=${OPS_DATASET},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_TRADE_DATASET=${TRADE_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION},AGROLOG_DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID},AGROLOG_CONFIG=/app/collector/config/sources.pilot.json"
 
 for group in radar dados conhecimento; do
   job="agrolog-${group}"
@@ -150,7 +152,7 @@ Infraestrutura do coletor criada/atualizada.
 Projeto: ${PROJECT_ID}
 Região: ${REGION}
 BigQuery: ${BQ_LOCATION}
-Datasets de escrita: ${OPS_DATASET}, ${LOGISTICA_DATASET}
+Datasets de escrita: ${OPS_DATASET}, ${LOGISTICA_DATASET}, ${TRADE_DATASET}
 Pasta RAW/Drive: ${DRIVE_FOLDER_ID}
 Collector SA: ${COLLECTOR_SERVICE_ACCOUNT}
 Cloud Scheduler gerenciado nesta execução: ${MANAGE_SCHEDULER}
@@ -158,9 +160,17 @@ Cloud Scheduler gerenciado nesta execução: ${MANAGE_SCHEDULER}
 Gate externo do Drive:
 A pasta RAW deve estar compartilhada como Editor com ${COLLECTOR_SERVICE_ACCOUNT}.
 
-Homologação controlada:
+Homologação controlada CONAB:
 gcloud run jobs execute agrolog-dados --region ${REGION} --project ${PROJECT_ID} --wait --update-env-vars "AGROLOG_SOURCE_ID=conab_armazens_cadastrados"
 python scripts/validate_conab_n6.py --project ${PROJECT_ID}
 
-Repita a execução CONAB e rode novamente validate_conab_n6.py para comprovar idempotência.
+Homologação controlada ComexStat API -> Drive/BigQuery:
+gcloud run jobs execute agrolog-dados --region ${REGION} --project ${PROJECT_ID} --wait --update-env-vars "AGROLOG_CONFIG=/app/collector/config/sources.p0.json,AGROLOG_SOURCE_ID=mdic_comexstat_soja_mt_export_api,AGROLOG_TRADE_DATASET=${TRADE_DATASET}"
+
+A execução Comex deve criar/manter:
+- ${PROJECT_ID}.${TRADE_DATASET}.comexstat_trade_monthly
+- ${PROJECT_ID}.${TRADE_DATASET}.v_comexstat_trade_monthly_latest
+- RAW no Drive sob dados/mdic_comexstat_soja_mt_export_api
+
+Repita a execução da mesma competência para comprovar idempotência e tie-out.
 EOF
