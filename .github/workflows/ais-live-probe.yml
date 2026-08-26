@@ -1,0 +1,55 @@
+name: ais-live-probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      AISSTREAM_API_KEY: ${{ secrets.AISSTREAM_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate AIS secret readiness
+        shell: bash
+        run: |
+          if [ -z "$AISSTREAM_API_KEY" ]; then
+            echo "MISSING AISSTREAM_API_KEY"
+            exit 2
+          fi
+          echo "READY AISSTREAM_API_KEY"
+      - name: Install AIS dependency
+        run: python -m pip install "websockets>=15,<16"
+      - name: Receive one Santos-area AIS message
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python - <<'PY'
+          import os
+          from collector.ais_stream_client import stream_once
+
+          boxes = [[[-25.0, -47.0], [-23.0, -45.0]]]
+          rows = list(stream_once(
+              api_key=os.environ['AISSTREAM_API_KEY'],
+              bounding_boxes=boxes,
+              max_messages=1,
+              max_seconds=60,
+          ))
+          if not rows:
+              raise SystemExit('No AIS message received in 60s; key may be valid but coverage/activity must be checked.')
+          row = rows[0]
+          print({
+              'mmsi': row.get('mmsi'),
+              'vessel_name': row.get('vessel_name'),
+              'observed_at': row.get('observed_at'),
+              'latitude': row.get('latitude'),
+              'longitude': row.get('longitude'),
+          })
+          PY
