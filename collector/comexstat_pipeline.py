@@ -5,7 +5,7 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -26,6 +26,13 @@ class ComexScope:
     state_filter_id: str
     expected_state_name: str
     allowed_ncms: frozenset[str]
+
+
+@dataclass(frozen=True)
+class SnapshotStats:
+    records: int
+    kg_liquido: int
+    valor_fob_usd: int
 
 
 def _safe_identifier(value: str, label: str) -> str:
@@ -52,6 +59,16 @@ def _metric_int(value: Any, label: str) -> int:
     if not number.is_finite() or number < 0 or number != number.to_integral_value():
         raise ValueError(f"{label} deve ser inteiro não negativo: {value!r}")
     return int(number)
+
+
+def _published_date(value: str | None) -> str | None:
+    if not value:
+        return None
+    candidate = str(value).strip()[:10]
+    try:
+        return date.fromisoformat(candidate).isoformat()
+    except ValueError as exc:
+        raise ValueError(f"data de publicação ComexStat inválida: {value!r}") from exc
 
 
 def _scope(spec: SourceSpec) -> ComexScope:
@@ -120,6 +137,7 @@ def normalize_comex_response(
     spec: SourceSpec,
     snapshot_id: str,
     data_coleta: str,
+    data_publicacao: str | None,
     source_url: str,
     raw_artifact_ref: str | None,
 ) -> tuple[str, list[dict[str, Any]]]:
@@ -136,6 +154,7 @@ def normalize_comex_response(
         raise RuntimeError("ComexStat retornou zero linhas para o escopo homologado")
 
     scope = _scope(spec)
+    publication_date = _published_date(data_publicacao)
     normalized: list[dict[str, Any]] = []
     competences: set[str] = set()
     for raw in raw_rows:
@@ -167,6 +186,7 @@ def normalize_comex_response(
             "urf_name": str(_first(raw, "urf", "urfName") or "").strip() or None,
             "kg_liquido": _metric_int(_first(raw, "metricKG", "kgLiquido", "KG_LIQUIDO"), "metricKG"),
             "valor_fob_usd": _metric_int(_first(raw, "metricFOB", "valorFOB", "VL_FOB"), "metricFOB"),
+            "data_publicacao": publication_date,
             "data_coleta": data_coleta,
             "source_url": source_url,
             "source_hash": snapshot_id,
@@ -180,6 +200,14 @@ def normalize_comex_response(
     if len(competences) != 1:
         raise RuntimeError(f"ComexStat misturou competências em uma consulta mensal: {sorted(competences)}")
     return next(iter(competences)), normalized
+
+
+def expected_snapshot_stats(rows: list[dict[str, Any]]) -> SnapshotStats:
+    return SnapshotStats(
+        records=len(rows),
+        kg_liquido=sum(int(row["kg_liquido"]) for row in rows),
+        valor_fob_usd=sum(int(row["valor_fob_usd"]) for row in rows),
+    )
 
 
 class ComexStatBigQueryLoader:
@@ -221,6 +249,7 @@ class ComexStatBigQueryLoader:
             field("urf_name", "STRING"),
             field("kg_liquido", "INT64", mode="REQUIRED"),
             field("valor_fob_usd", "INT64", mode="REQUIRED"),
+            field("data_publicacao", "DATE"),
             field("data_coleta", "TIMESTAMP", mode="REQUIRED"),
             field("source_url", "STRING"),
             field("source_hash", "STRING", mode="REQUIRED"),
@@ -254,6 +283,7 @@ CREATE TABLE IF NOT EXISTS `{self.target_table}` (
   urf_name STRING,
   kg_liquido INT64 NOT NULL,
   valor_fob_usd INT64 NOT NULL,
+  data_publicacao DATE,
   data_coleta TIMESTAMP NOT NULL,
   source_url STRING,
   source_hash STRING NOT NULL,
@@ -274,7 +304,7 @@ WITH ranked AS (
                  COALESCE(country_code, country_name, ''),
                  COALESCE(via_code, via_name, ''),
                  COALESCE(urf_code, urf_name, '')
-    ORDER BY data_coleta DESC, snapshot_id DESC
+    ORDER BY data_publicacao DESC, data_coleta DESC, snapshot_id DESC
   ) AS _rn
   FROM `{self.target_table}`
 )
@@ -282,29 +312,47 @@ SELECT * EXCEPT(_rn) FROM ranked WHERE _rn=1
 """
         ).result()
 
-    def _snapshot_count(self, snapshot_id: str) -> int:
+    def _snapshot_stats(self, snapshot_id: str) -> SnapshotStats:
         cfg = self._bigquery.QueryJobConfig(
             query_parameters=[self._bigquery.ScalarQueryParameter("snapshot_id", "STRING", snapshot_id)]
         )
         rows = list(
             self.client.query(
-                f"SELECT COUNT(*) n FROM `{self.target_table}` WHERE snapshot_id=@snapshot_id",
+                f"""
+SELECT COUNT(*) records,
+       COALESCE(SUM(kg_liquido), 0) kg_liquido,
+       COALESCE(SUM(valor_fob_usd), 0) valor_fob_usd
+FROM `{self.target_table}`
+WHERE snapshot_id=@snapshot_id
+""",
                 job_config=cfg,
             ).result()
         )
-        return int(rows[0]["n"]) if rows else 0
+        if not rows:
+            return SnapshotStats(0, 0, 0)
+        row = rows[0]
+        return SnapshotStats(int(row["records"]), int(row["kg_liquido"]), int(row["valor_fob_usd"]))
+
+    @staticmethod
+    def _assert_tie_out(expected: SnapshotStats, actual: SnapshotStats) -> None:
+        if actual != expected:
+            raise RuntimeError(f"Tie-out ComexStat falhou: esperado={expected} persistido={actual}")
 
     def load(self, rows: list[dict[str, Any]], *, snapshot_id: str) -> dict[str, Any]:
         if not rows:
             raise ValueError("ComexStat loader recusou lote vazio")
         self.ensure_objects()
-        existing = self._snapshot_count(snapshot_id)
-        if existing:
+        expected = expected_snapshot_stats(rows)
+        existing = self._snapshot_stats(snapshot_id)
+        if existing.records:
+            self._assert_tie_out(expected, existing)
             return {
                 "status": "already_loaded",
                 "snapshot_id": snapshot_id,
                 "records_inserted": 0,
-                "records_existing": existing,
+                "records_existing": existing.records,
+                "kg_liquido": existing.kg_liquido,
+                "valor_fob_usd": existing.valor_fob_usd,
             }
 
         started = datetime.now(timezone.utc)
@@ -326,16 +374,15 @@ WHEN NOT MATCHED THEN INSERT ROW
         finally:
             self.client.delete_table(stage_ref, not_found_ok=True)
 
-        inserted = self._snapshot_count(snapshot_id)
-        if inserted != len(rows):
-            raise RuntimeError(
-                f"Tie-out ComexStat falhou: normalizados={len(rows)} persistidos_snapshot={inserted}"
-            )
+        actual = self._snapshot_stats(snapshot_id)
+        self._assert_tie_out(expected, actual)
         return {
             "status": "loaded",
             "snapshot_id": snapshot_id,
-            "records_inserted": inserted,
+            "records_inserted": actual.records,
             "records_existing": 0,
+            "kg_liquido": actual.kg_liquido,
+            "valor_fob_usd": actual.valor_fob_usd,
         }
 
 
@@ -367,6 +414,7 @@ def run_comexstat_pipeline(spec: SourceSpec, store: DriveBigQueryStore) -> tuple
             spec=spec,
             snapshot_id=digest,
             data_coleta=collected.isoformat(),
+            data_publicacao=result.last_modified,
             source_url=result.observed_url,
             raw_artifact_ref=raw.path,
         )
@@ -378,6 +426,7 @@ def run_comexstat_pipeline(spec: SourceSpec, store: DriveBigQueryStore) -> tuple
         )
         load = loader.load(rows, snapshot_id=digest)
         finished = datetime.now(timezone.utc)
+        scope = _scope(spec)
         manifest.finished_at = finished.isoformat()
         manifest.status = "updated" if changed else "unchanged"
         manifest.data_coleta = collected.isoformat()
@@ -393,14 +442,15 @@ def run_comexstat_pipeline(spec: SourceSpec, store: DriveBigQueryStore) -> tuple
         manifest.records_rejected = 0
         manifest.duplicates_removed = 0
         manifest.data_referencia = f"{competence}-01"
+        manifest.data_publicacao = _published_date(result.last_modified)
         manifest.competencia = competence
         manifest.extra = {
             "load": load,
             "table": loader.target_table,
             "latest_view": loader.latest_view,
-            "state_filter_id": _scope(spec).state_filter_id,
-            "expected_state_name": _scope(spec).expected_state_name,
-            "allowed_ncms": sorted(_scope(spec).allowed_ncms),
+            "state_filter_id": scope.state_filter_id,
+            "expected_state_name": scope.expected_state_name,
+            "allowed_ncms": sorted(scope.allowed_ncms),
             "api_last_update": result.last_modified,
         }
         store.write_manifest(manifest)
@@ -413,6 +463,7 @@ def run_comexstat_pipeline(spec: SourceSpec, store: DriveBigQueryStore) -> tuple
                 "last_checked_at": finished.isoformat(),
                 "last_raw_artifact_ref": raw.path,
                 "table": loader.target_table,
+                "latest_view": loader.latest_view,
             },
         )
         return 0, {"status": "ok", "acquisition": manifest.to_dict(), "load": load}
