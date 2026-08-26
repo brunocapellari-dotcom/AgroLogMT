@@ -5,6 +5,7 @@ Este arquivo define as instruções de trabalho do Codex no repositório AgroLog
 Antes de alterar qualquer arquivo, leia:
 - `README.md`
 - `docs/ARCHITECTURE.md`
+- `docs/TECHNOLOGY_STACK.md`
 - `docs/DATA_GOVERNANCE.md`
 - `docs/REPOSITORY_GOVERNANCE.md`
 - `docs/AI_TOOLING.md`
@@ -34,6 +35,7 @@ O Codex não cria uma segunda fonte de verdade. GitHub continua canônico para c
 - Para mudanças não triviais: analisar → planejar → revisar → implementar → testar → revisar diff.
 - Quando chamado via MCP pelo Claude Code, forneça revisão independente; não concorde automaticamente com a proposta inicial.
 - Divergências entre Claude e Codex devem ser resolvidas pelo código, testes, documentação canônica e evidência, não por preferência de modelo.
+- Componentes do `docs/TECHNOLOGY_STACK.md` só entram no runtime conforme estado e gate definidos; não instalar todo o stack por antecipação.
 
 ## Prioridade atual
 

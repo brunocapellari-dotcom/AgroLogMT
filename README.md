@@ -26,7 +26,7 @@ As melhorias derivadas do Radar GitHub são incorporadas como três frentes comp
 2. **Inteligência, conhecimento e observabilidade** — RAG, memória, agentes, avaliação previsto × realizado, BI, observabilidade e geointeligência.
 3. **Expansão operacional e comercial** — Freight Listener, sinais de mercado, telemetria/IoT/visão futuros e produtos controlados pelo AgroLog Gateway.
 
-Os componentes open source avaliados são peças substituíveis. Eles não substituem as fontes canônicas do projeto apenas por oferecerem função semelhante.
+Os componentes open source avaliados são peças substituíveis. Eles não substituem as fontes canônicas do projeto apenas por oferecerem função semelhante. A seleção tecnológica e os gates de adoção estão em `docs/TECHNOLOGY_STACK.md`.
 
 ### Freight Listener
 
@@ -39,6 +39,7 @@ O **Geopolitical Watch** é um projeto independente. Ele pode fornecer eventos, 
 ## Documentação principal
 
 - `docs/ARCHITECTURE.md` — arquitetura oficial.
+- `docs/TECHNOLOGY_STACK.md` — seleção tecnológica, estados de adoção e gates de promoção.
 - `docs/DATA_GOVERNANCE.md` — governança dos dados.
 - `docs/REPOSITORY_GOVERNANCE.md` — governança do GitHub.
 - `docs/AI_TOOLING.md` — agentes, ferramentas, Radar Tecnológico e extensões avaliadas.
