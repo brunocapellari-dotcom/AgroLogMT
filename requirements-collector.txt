@@ -3,3 +3,4 @@ google-auth>=2.40,<3
 google-cloud-bigquery>=3.35,<4
 requests>=2.32,<3
 cdsapi>=0.7,<1
+websockets>=15,<16

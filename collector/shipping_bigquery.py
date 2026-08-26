@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from datetime import datetime, timezone
@@ -45,9 +46,10 @@ CREATE TABLE IF NOT EXISTS `{self.ais}` (
  sog_kn FLOAT64, cog_deg FLOAT64, navigation_status STRING, destination STRING,
  port_id STRING, terminal_id STRING, zone STRING NOT NULL,
  source_id STRING NOT NULL, collected_at TIMESTAMP NOT NULL,
- raw_artifact_ref STRING
+ raw_artifact_ref STRING, raw_message_json STRING
 ) PARTITION BY DATE(observed_at) CLUSTER BY mmsi, imo, port_id, zone
 """).result()
+        self.client.query(f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS raw_message_json STRING").result()
         self.client.query(f"""
 CREATE TABLE IF NOT EXISTS `{self.operations}` (
  operation_id STRING NOT NULL, call_id STRING NOT NULL, port_id STRING NOT NULL,
@@ -70,10 +72,15 @@ CREATE TABLE IF NOT EXISTS `{self.reconciliation}` (
 ) PARTITION BY DATE(calculated_at) CLUSTER BY state, match_method, call_id
 """).result()
 
-    def _insert(self, table: str, rows: list[dict[str, Any]]) -> int:
+    @staticmethod
+    def stable_id(*parts: Any) -> str:
+        payload = "|".join("" if p is None else str(p) for p in parts)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def _insert(self, table: str, rows: list[dict[str, Any]], *, row_ids: list[str] | None = None) -> int:
         if not rows:
             return 0
-        errors = self.client.insert_rows_json(table, rows)
+        errors = self.client.insert_rows_json(table, rows, row_ids=row_ids)
         if errors:
             raise RuntimeError(f"Falha BigQuery {table}: {errors}")
         return len(rows)
@@ -84,15 +91,21 @@ CREATE TABLE IF NOT EXISTS `{self.reconciliation}` (
 
     def load_lineup(self, rows: Iterable[dict[str, Any]]) -> int:
         self.ensure_objects()
-        return self._insert(self.lineup, list(rows))
+        data = list(rows)
+        ids = [self.stable_id(r.get("call_id"), r.get("snapshot_id")) for r in data]
+        return self._insert(self.lineup, data, row_ids=ids)
 
     def load_ais(self, rows: Iterable[dict[str, Any]]) -> int:
         self.ensure_objects()
-        return self._insert(self.ais, list(rows))
+        data = list(rows)
+        ids = [str(r["observation_id"]) for r in data]
+        return self._insert(self.ais, data, row_ids=ids)
 
     def load_operations(self, rows: Iterable[dict[str, Any]]) -> int:
         self.ensure_objects()
-        return self._insert(self.operations, list(rows))
+        data = list(rows)
+        ids = [str(r["operation_id"]) for r in data]
+        return self._insert(self.operations, data, row_ids=ids)
 
     def load_reconciliation(self, rows: Iterable[dict[str, Any]], *, model_version: str = "M01-S-v0.1") -> int:
         self.ensure_objects()
@@ -117,4 +130,5 @@ CREATE TABLE IF NOT EXISTS `{self.reconciliation}` (
                 "metadata_json": json.dumps(row.get("metadata", {}), ensure_ascii=False, sort_keys=True),
                 "model_version": model_version,
             })
-        return self._insert(self.reconciliation, normalized)
+        ids = [str(r["reconciliation_id"]) for r in normalized]
+        return self._insert(self.reconciliation, normalized, row_ids=ids)
