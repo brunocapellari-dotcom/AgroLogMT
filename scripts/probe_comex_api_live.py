@@ -10,14 +10,12 @@ from collector.comexstat_api import ComexStatApiClient, trade_payload
 
 MT_COMEX_ID = "52"
 SOY_NCMS = ("12011000", "12019000")
-CORN_NCMS = ("10051000", "10059010")
+CORN_NCMS = ("10059010",)
 COTTON_RAW_NCMS = ("52010010", "52010020", "52010090")
 FERTILIZER_NCMS = {
     "ureia": ("31021010", "31021090"),
     "cloreto_potassio": ("31042010",),
     "map": ("31054000",),
-    "dap": ("31053000", "31053010", "31053090"),
-    "superfosfatos": ("31031010", "31031020", "31031030", "31031100", "31031900"),
 }
 
 
@@ -148,9 +146,9 @@ def main() -> int:
         general_details = ["ncm", "state", "country", "via", "urf"]
         canaries = [
             _run_canary(client, update.competence, name="soy_mt_export", flow="export", filters=[{"filter": "ncm", "values": list(SOY_NCMS)}, {"filter": "state", "values": [MT_COMEX_ID]}], details=general_details),
-            _run_canary(client, update.competence, name="corn_mt_export", flow="export", filters=[{"filter": "ncm", "values": list(CORN_NCMS)}, {"filter": "state", "values": [MT_COMEX_ID]}], details=general_details),
+            _run_canary(client, update.competence, name="corn_grain_mt_export", flow="export", filters=[{"filter": "ncm", "values": list(CORN_NCMS)}, {"filter": "state", "values": [MT_COMEX_ID]}], details=general_details),
             _run_canary(client, update.competence, name="cotton_raw_mt_export", flow="export", filters=[{"filter": "ncm", "values": list(COTTON_RAW_NCMS)}, {"filter": "state", "values": [MT_COMEX_ID]}], details=general_details),
-            _run_canary(client, update.competence, name="fertilizers_mt_import", flow="import", filters=[{"filter": "ncm", "values": list(fertilizer_codes)}, {"filter": "state", "values": [MT_COMEX_ID]}], details=general_details),
+            _run_canary(client, update.competence, name="fertilizers_core_mt_import", flow="import", filters=[{"filter": "ncm", "values": list(fertilizer_codes)}, {"filter": "state", "values": [MT_COMEX_ID]}], details=general_details),
         ]
 
         soy_positive = any(item["name"] == "soy_mt_export" and item["row_count"] > 0 for item in canaries)
