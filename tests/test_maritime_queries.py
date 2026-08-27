@@ -34,6 +34,11 @@ class MaritimeQueryTests(unittest.TestCase):
         self.assertIn("@limit", sql)
         self.assertNotIn("SANTOS;", sql)
 
+    def test_paranagua_filter_keeps_only_safe_legacy_alias(self) -> None:
+        sql = build_live_vessels_sql("project-1", "agrolog_models")
+        self.assertIn("PARANAGUA_ANTONINA", sql)
+        self.assertNotIn("ARCO_NORTE_CDP", sql)
+
     def test_replay_is_ordered_and_parameterized(self) -> None:
         sql = build_vessel_replay_sql("project-1", "agrolog_models")
         self.assertIn("mmsi = @mmsi", sql)
