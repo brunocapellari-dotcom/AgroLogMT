@@ -11,11 +11,13 @@ Estados externos principais:
 1. `PROGRAMMED` — consta no line-up, sem confirmação operacional;
 2. `IN_TRANSIT` / `APPROACHING` — AIS confirma deslocamento/aproximação;
 3. `ARRIVED_WAITING` — AIS/operação confirma chegada/fundeio;
-4. `BERTHED` — AIS ou fonte portuária confirma atracação;
-5. `DEPARTED_PENDING_REALIZED` — AIS confirma saída, mas a operação realizada ainda não foi confirmada;
+4. `BERTHED` — AIS ou fonte portuária confirma presença em geofence de berço validada ou atracação observada;
+5. `DEPARTED_PENDING_REALIZED` — AIS confirma/informa uma saída compatível, mas a operação realizada ainda não foi confirmada;
 6. `COMPLETED_REALIZED` — somente fonte operacional/portuária observada confirma conclusão.
 
 **AIS de saída nunca transforma sozinho um line-up em REALIZADO.**
+
+Quando não existe uma zona explícita `DEPARTED`, o port-call engine pode reconhecer a sequência `BERTH → SEA/APPROACH` como evidência de saída. Esse timestamp é tratado como **limite superior observado da saída**, recebe a flag `ais_departure_from_berth_exit_transition` e permanece `DEPARTED_PENDING_REALIZED`. Uma fonte operacional de desatracação substitui esse limite quando disponível.
 
 ## Identidade do navio
 
@@ -46,8 +48,7 @@ Campos mínimos:
 - collected_at.
 
 ### AIS
-O adapter normaliza mensagens AISStream.
-AIS deve preservar dados brutos/observados e não inferir terminal ou porto antes da camada de geofence.
+O adapter normaliza mensagens AISStream. AIS deve preservar dados brutos/observados e não inferir terminal ou porto antes da camada de geofence.
 
 Campos:
 - MMSI;
@@ -79,10 +80,13 @@ O modelo aceita zonas normalizadas:
 - `APPROACH`;
 - `ANCHORAGE`;
 - `BERTH`;
-- `DEPARTED`;
 - `UNKNOWN`.
 
-A criação e versão dos polígonos de fundeadouro/berço é uma camada separada. Não deve ser embutida no parser AIS bruto e não pode usar polígonos inventados. Cada classificação deve ser reproduzível pela versão da geofence utilizada.
+`DEPARTED` continua aceito como estado AIS explícito quando uma fonte/processo confiável o fornecer, mas não é necessário para detectar saída na V1.
+
+A criação e versão dos polígonos de aproximação, fundeadouro e berço é uma camada separada. Não deve ser embutida no parser AIS bruto e **não pode usar polígonos inventados**. Cada classificação deve ser reproduzível pela versão da geofence utilizada.
+
+O contrato `contracts/maritime_geofences.v1.json` exige fonte, versão, validação e geometria plausível. `models/port_geofence.py` bloqueia coordenadas fora dos limites físicos e polígonos degenerados antes de classificar uma posição.
 
 ## Captura AIS ao vivo
 
@@ -90,10 +94,10 @@ Implementação:
 - `collector/ais_stream_client.py` — WebSocket, compressão, assinatura, timeout e reconnect/backoff;
 - `collector/ais_worker.py` — geofence + batching + BigQuery + preservação do raw JSON;
 - `scripts/setup_aisstream_secret.sh` — cadastro one-shot da chave AISStream no Secret Manager e, quando disponível, GitHub Actions;
-- `scripts/deploy_ais_worker_gcloud.sh` — deploy do Cloud Run Job e agendamento horário;
+- `scripts/deploy_ais_worker_gcloud.sh` — deploy do Cloud Run Job e agendamento;
 - `.github/workflows/ais-live-probe.yml` — teste manual de conectividade sem revelar a chave.
 
-O worker padrão usa janela limitada de captura para caber em Cloud Run Job. O piloto começa com uma bounding box ampla de Santos; **bounding box de assinatura não é geofence operacional**.
+A bounding box de assinatura AIS é apenas filtro de aquisição; **não é geofence operacional**.
 
 ## Reconciliação automática
 
@@ -111,7 +115,20 @@ O resultado inclui:
 - waiting time;
 - berth time;
 - volume variance;
-- divergências e alertas.
+- divergências e alertas;
+- método de detecção da saída quando aplicável.
+
+## API e tela Maritime V1
+
+O AgroLog Gateway expõe leituras específicas para a interface operacional:
+
+- `/v1/maritime/config`;
+- `/v1/maritime/vessels` — posição AIS mais recente por navio;
+- `/v1/maritime/vessels/{mmsi}/replay` — trajetória histórica para replay;
+- `/v1/maritime/lineup` — último line-up cruzado com última reconciliação;
+- `/v1/maritime/summary` — contagens e estatísticas derivadas existentes.
+
+A interface `maritime_ui` usa **MapLibre + deck.gl**, é compilada dentro da mesma imagem do Gateway e servida em `/maritime/`. Em produção usa a API same-origin, preservando o Gateway privado. O enquadramento do mapa usa posições AIS retornadas; não existem coordenadas portuárias aproximadas hardcoded na tela.
 
 ## Métricas
 
@@ -129,6 +146,8 @@ Por porto/terminal:
 - distribuição de erro ETA;
 - espera P50/P90/P95;
 - atraso/cancelamento/divergência.
+
+A tela V1 publica somente métricas sustentadas pelas tabelas atuais. **DWT em espera, carga efetiva e volume realizado não são inferidos** quando a evidência necessária não existe.
 
 O Reliability Score v0.1 é **descritivo**, não modelo preditivo.
 
@@ -151,19 +170,21 @@ O M01-S produz features/targets para o Índice de Pressão Logística:
 - navios aguardando;
 - divergência line-up×AIS;
 - atraso da programação;
-- capacidade efetivamente realizada;
+- capacidade efetivamente realizada quando observada;
 - reliability por terminal/porto.
 
 Isso entra no M01 junto com frete, MDF-e, ferrovia, hidrovias e fluxo portuário.
 
-## Piloto
+## Piloto Maritime V1
 
-Ordem:
-1. Santos;
-2. Paranaguá;
-3. Barcarena/Vila do Conde;
-4. Santarém;
-5. Miritituba/Itaituba.
+Ordem e IDs canônicos:
+1. `SANTOS` — Santos;
+2. `PARANAGUA` — Paranaguá;
+3. `BARCARENA_VILA_DO_CONDE` — Barcarena/Vila do Conde;
+4. `SANTAREM` — Santarém;
+5. `ITAQUI` — Itaqui.
+
+Os IDs legados `PARANAGUA_ANTONINA` e `ARCO_NORTE_CDP` permanecem legíveis para auditoria histórica, mas não satisfazem o gate de cobertura individual da V1.
 
 A expansão depende da qualidade e cobertura de AIS + line-up + fonte observada de operação.
 
@@ -188,3 +209,5 @@ Para `OPERATIONAL`:
 ## Ativação
 
 O código pode ser implantado sem alterar a regra de governança. Para **ativar AIS ao vivo**, é necessária uma API key AISStream armazenada server-side. A chave nunca deve ser enviada no chat ou hardcoded no repositório.
+
+O deploy do Gateway concede leitura somente às tabelas canônicas existentes e mantém `--no-allow-unauthenticated`. Para acesso interativo, pode-se usar `gcloud run services proxy` e abrir `/maritime/` localmente.

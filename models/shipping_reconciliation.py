@@ -18,6 +18,10 @@ AIS_ZONE_PRIORITY = {
     "DEPARTED": 5,
 }
 
+SAFE_PORT_ALIASES = {
+    "PARANAGUA": frozenset({"PARANAGUA", "PARANAGUA_ANTONINA"}),
+}
+
 
 def _utc(value: datetime | str | None) -> datetime | None:
     if value is None:
@@ -49,6 +53,17 @@ def name_similarity(a: str | None, b: str | None) -> float:
     if left == right:
         return 1.0
     return SequenceMatcher(None, left, right).ratio()
+
+
+def _same_port(expected: str | None, observed: str | None) -> bool:
+    if not expected or not observed:
+        return False
+    left = expected.strip().upper()
+    right = observed.strip().upper()
+    if left == right:
+        return True
+    aliases = SAFE_PORT_ALIASES.get(left)
+    return aliases is not None and right in aliases
 
 
 @dataclass(frozen=True)
@@ -181,7 +196,7 @@ def match_lineup_call(
             continue
         score = 0.70 + 0.20 * sim
         reasons = [f"name_similarity={sim:.3f}"]
-        if obs.port_id and obs.port_id == call.port_id:
+        if obs.port_id and _same_port(call.port_id, obs.port_id):
             score += 0.06
             reasons.append("same_port")
         if call.terminal_id and obs.terminal_id and call.terminal_id == obs.terminal_id:
@@ -212,6 +227,31 @@ def observations_for_match(match: VesselMatch, observations: Iterable[AISObserva
     return sorted(selected, key=lambda x: x.observed_at_utc)
 
 
+def observations_for_call(
+    call: LineupCall,
+    match: VesselMatch,
+    observations: Iterable[AISObservation],
+    *,
+    time_window_days: int = 21,
+) -> list[AISObservation]:
+    """Scope matched AIS to the current port call before deriving lifecycle metrics.
+
+    Observations assigned to a different known port are excluded. Open-sea observations
+    with `port_id=None` remain eligible so arrival/departure transitions can be detected.
+    The legacy `PARANAGUA_ANTONINA` alias is accepted for canonical `PARANAGUA`; the
+    combined `ARCO_NORTE_CDP` identifier is intentionally never split automatically.
+    """
+    start = call.eta_utc - timedelta(days=time_window_days)
+    end = call.eta_utc + timedelta(days=time_window_days)
+    selected = observations_for_match(match, observations)
+    return [
+        obs
+        for obs in selected
+        if start <= obs.observed_at_utc <= end
+        and (obs.port_id is None or _same_port(call.port_id, obs.port_id))
+    ]
+
+
 def _first_zone(observations: Sequence[AISObservation], zone: str) -> datetime | None:
     times = [o.observed_at_utc for o in observations if o.zone.upper() == zone]
     return min(times) if times else None
@@ -222,6 +262,24 @@ def _last_zone(observations: Sequence[AISObservation], zone: str) -> datetime | 
     return max(times) if times else None
 
 
+def _first_post_berth_exit(observations: Sequence[AISObservation]) -> datetime | None:
+    """Return first observed point outside berth after the last BERTH observation.
+
+    This is an AIS/geofence transition bound, not an official unberthing timestamp.
+    Only SEA/APPROACH/DEPARTED are accepted as exit evidence; a later ANCHORAGE point
+    is intentionally not treated as port departure.
+    """
+    last_berth = _last_zone(observations, "BERTH")
+    if last_berth is None:
+        return None
+    exits = [
+        o.observed_at_utc
+        for o in observations
+        if o.observed_at_utc > last_berth and o.zone.upper() in {"SEA", "APPROACH", "DEPARTED"}
+    ]
+    return min(exits) if exits else None
+
+
 def derive_ais_state(call: LineupCall, observations: Sequence[AISObservation]) -> tuple[str, tuple[str, ...]]:
     if not observations:
         return "PROGRAMMED", ("no_ais_match",)
@@ -229,7 +287,7 @@ def derive_ais_state(call: LineupCall, observations: Sequence[AISObservation]) -
     zone = latest.zone.upper()
     flags: list[str] = []
 
-    if latest.port_id and latest.port_id != call.port_id:
+    if latest.port_id and not _same_port(call.port_id, latest.port_id):
         flags.append("ais_port_divergence")
     if call.terminal_id and latest.terminal_id and latest.terminal_id != call.terminal_id and zone == "BERTH":
         flags.append("terminal_divergence")
@@ -238,10 +296,16 @@ def derive_ais_state(call: LineupCall, observations: Sequence[AISObservation]) -
         return "BERTHED", tuple(flags)
     if zone == "ANCHORAGE":
         return "ARRIVED_WAITING", tuple(flags)
-    if zone == "APPROACH":
-        return "APPROACHING", tuple(flags)
     if zone == "DEPARTED":
         return "DEPARTED_PENDING_REALIZED", tuple(flags)
+
+    last_berth = _last_zone(observations, "BERTH")
+    if last_berth is not None and latest.observed_at_utc > last_berth and zone in {"SEA", "APPROACH"}:
+        flags.append("ais_departure_from_berth_exit_transition")
+        return "DEPARTED_PENDING_REALIZED", tuple(flags)
+
+    if zone == "APPROACH":
+        return "APPROACHING", tuple(flags)
 
     speed = latest.sog_kn if latest.sog_kn is not None and math.isfinite(latest.sog_kn) else 0.0
     if zone == "SEA" or speed > 0.5:
@@ -267,13 +331,19 @@ def reconcile_call(
     operation: PortOperation | None = None,
 ) -> ReconciledCall:
     match = match_lineup_call(call, observations)
-    vessel_obs = observations_for_match(match, observations)
+    vessel_obs = observations_for_call(call, match, observations)
     state, state_flags = derive_ais_state(call, vessel_obs)
     flags = list(state_flags)
 
     arrival = _first_zone(vessel_obs, "ANCHORAGE") or _first_zone(vessel_obs, "BERTH")
     berth = _first_zone(vessel_obs, "BERTH")
-    departed = _first_zone(vessel_obs, "DEPARTED")
+    explicit_departed = _first_zone(vessel_obs, "DEPARTED")
+    transition_departed = _first_post_berth_exit(vessel_obs)
+    departed = explicit_departed or transition_departed
+    departure_detection = "explicit_zone" if explicit_departed else None
+    if departed is not None and explicit_departed is None:
+        flags.append("ais_departure_from_berth_exit_transition")
+        departure_detection = "berth_exit_transition_upper_bound"
     evidence_class = "AIS_OBSERVED" if match.matched else "LINEUP_PROGRAMMED"
 
     if operation is not None:
@@ -283,7 +353,9 @@ def reconcile_call(
         op_completed = _utc(operation.completed_at)
         arrival = op_arrival or arrival
         berth = op_berth or berth
-        departed = op_unberth or departed
+        if op_unberth is not None:
+            departed = op_unberth
+            departure_detection = "port_operation_observed"
         status = (operation.operation_status or "").upper()
         if op_completed is not None or status in {"COMPLETED", "REALIZED", "CONCLUDED"}:
             state = "COMPLETED_REALIZED"
@@ -320,6 +392,8 @@ def reconcile_call(
             "arrival_at": arrival.isoformat() if arrival else None,
             "berth_at": berth.isoformat() if berth else None,
             "departure_at": departed.isoformat() if departed else None,
+            "departure_detection": departure_detection,
+            "ais_observations_scoped": len(vessel_obs),
             "planned_volume_t": call.planned_volume_t,
             "actual_volume_t": operation.actual_volume_t if operation else None,
         },

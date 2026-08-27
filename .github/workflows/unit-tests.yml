@@ -5,6 +5,7 @@ on:
     paths:
       - "collector/**"
       - "gateway/**"
+      - "maritime_ui/**"
       - "models/**"
       - "tests/**"
       - "contracts/**"
@@ -41,7 +42,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: python scripts/run_n6_synthetic_backtest.py
       - name: Compile N6, connector, Comex and shipping Python modules
-        run: python -m py_compile scripts/validate_conab_n6.py scripts/validate_gateway_n6.py scripts/validate_comexstat_bigquery.py scripts/run_n6_synthetic_backtest.py scripts/inspect_n6_bigquery_readiness.py scripts/probe_news_signal_writer.py models/point_in_time.py models/readiness.py models/baselines.py models/feature_matrix.py models/training_dataset.py models/evaluation.py models/promotion.py models/shipping_reconciliation.py models/shipping_pipeline.py models/port_geofence.py collector/comexstat_pipeline.py collector/ais_stream.py collector/ais_stream_client.py collector/ais_worker.py collector/lineup_normalizer.py collector/shipping_bigquery.py collector/shipping_reconcile_worker.py ckan_connector/client.py ckan_connector/portals.py socrata_connector/client.py cftc_cot/client.py cftc_cot/datasets.py usda_agtransport/client.py usda_agtransport/datasets.py
+        run: python -m py_compile scripts/validate_conab_n6.py scripts/validate_gateway_n6.py scripts/validate_comexstat_bigquery.py scripts/run_n6_synthetic_backtest.py scripts/inspect_n6_bigquery_readiness.py scripts/probe_news_signal_writer.py models/point_in_time.py models/readiness.py models/baselines.py models/feature_matrix.py models/training_dataset.py models/evaluation.py models/promotion.py models/shipping_reconciliation.py models/shipping_pipeline.py models/port_geofence.py gateway/maritime_queries.py collector/comexstat_pipeline.py collector/ais_stream.py collector/ais_stream_client.py collector/ais_worker.py collector/lineup_normalizer.py collector/shipping_bigquery.py collector/shipping_reconcile_worker.py collector/port_lifecycle.py ckan_connector/client.py ckan_connector/portals.py socrata_connector/client.py cftc_cot/client.py cftc_cot/datasets.py usda_agtransport/client.py usda_agtransport/datasets.py
       - name: Validate shell syntax
         run: bash -n scripts/preflight_n6_gcp.sh scripts/deploy_collectors_gcloud.sh scripts/deploy_gateway_gcloud.sh scripts/homologate_n6_core.sh scripts/homologate_comex_gcp.sh scripts/setup_github_gcp_wif.sh scripts/setup_aisstream_secret.sh scripts/deploy_ais_worker_gcloud.sh
       - name: Validate JSON contracts/config
@@ -60,6 +61,7 @@ jobs:
               'contracts/news_signal.v0_5.schema.json',
               'contracts/soy_mt_datamart.v1.json',
               'contracts/shipping_reconciliation.v1.json',
+              'contracts/maritime_geofences.v1.json',
               'models/registry.json',
               'models/feature_contracts.json',
           ]
@@ -67,3 +69,11 @@ jobs:
               json.loads(Path(path).read_text(encoding='utf-8'))
               print('OK', path)
           PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build Maritime UI
+        working-directory: maritime_ui
+        run: |
+          npm install --package-lock=false
+          npm run build

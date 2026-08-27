@@ -45,7 +45,7 @@
     "PARANAGUA",
     "BARCARENA_VILA_DO_CONDE",
     "SANTAREM",
-    "MIRITITUBA_ITAITUBA"
+    "ITAQUI"
   ],
   "gate": "DATA_PILOT",
   "promotion_rule": "Nao promover a operacional antes de AIS recorrente, line-up versionado e fonte observada de operacao realizada."

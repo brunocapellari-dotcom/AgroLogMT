@@ -7,10 +7,15 @@ from typing import Any, Iterable
 
 OFFICIAL_SOURCES = {
     "SANTOS": "https://www.portodesantos.com.br/informacoes-operacionais/operacoes-portuarias/navegacao-e-movimento-de-navios/atracacoes-programadas/",
-    "PARANAGUA_ANTONINA": "https://www.portosdoparana.pr.gov.br/Operacional/Pagina/Atas-do-Corredor-de-Exportacao",
-    "ARCO_NORTE_CDP": "https://www.cdp.com.br/companhia-docas-do-para/programacao-de-navios/",
+    "PARANAGUA": "https://www.portosdoparana.pr.gov.br/Operacional/Pagina/Atas-do-Corredor-de-Exportacao",
+    "BARCARENA_VILA_DO_CONDE": "https://www.cdp.com.br/companhia-docas-do-para/programacao-de-navios/",
+    "SANTAREM": "https://www.cdp.com.br/companhia-docas-do-para/programacao-de-navios/",
+    "ITAQUI": "https://www.portodoitaqui.com/",
 }
 REQUIRED_SYSTEMS = frozenset(OFFICIAL_SOURCES)
+# Historical identifiers remain readable but never satisfy a V1 port-specific readiness gate.
+LEGACY_SYSTEMS = frozenset({"PARANAGUA_ANTONINA", "ARCO_NORTE_CDP"})
+KNOWN_SYSTEMS = REQUIRED_SYSTEMS | LEGACY_SYSTEMS
 
 
 class PortCallState(IntEnum):
@@ -56,7 +61,7 @@ def _state(value: str) -> PortCallState:
 
 
 def validate_observation(row: PortCallObservation) -> None:
-    if row.port_system not in REQUIRED_SYSTEMS:
+    if row.port_system not in KNOWN_SYSTEMS:
         raise ValueError(f"port_system nao canonico: {row.port_system}")
     if not (row.duv or row.imo or row.ship_name):
         raise ValueError("observacao portuaria exige DUV, IMO ou nome do navio")
@@ -98,11 +103,16 @@ def multiport_readiness(
     now: datetime,
     freshness_hours: int = 96,
 ) -> dict[str, Any]:
-    """Require recent official evidence in Santos, Paranagua/Antonina and Arco Norte."""
+    """Require recent official evidence for every port in the Maritime V1 pilot.
+
+    Vila do Conde and Santarem share the CDP publication surface but remain separate
+    readiness systems: evidence for one cannot satisfy the other. Legacy combined
+    identifiers remain auditable historical observations but do not satisfy V1 gates.
+    """
     cutoff = now.astimezone(timezone.utc) - timedelta(hours=freshness_hours)
     covered: set[str] = set()
     stale: set[str] = set()
-    counts: dict[str, int] = {system: 0 for system in REQUIRED_SYSTEMS}
+    counts: dict[str, int] = {system: 0 for system in KNOWN_SYSTEMS}
     for row in observations:
         validate_observation(row)
         observed = datetime.fromisoformat(row.observed_at.replace("Z", "+00:00"))
@@ -110,7 +120,8 @@ def multiport_readiness(
             raise ValueError("observed_at deve ter timezone")
         counts[row.port_system] += 1
         if observed.astimezone(timezone.utc) >= cutoff:
-            covered.add(row.port_system)
+            if row.port_system in REQUIRED_SYSTEMS:
+                covered.add(row.port_system)
         else:
             stale.add(row.port_system)
     missing = sorted(REQUIRED_SYSTEMS - covered)
@@ -118,7 +129,10 @@ def multiport_readiness(
         "status": "MULTIPORT_VALIDATED" if not missing else "PARTIAL_MULTI_PORT",
         "covered_systems": sorted(covered),
         "missing_or_stale_systems": missing,
-        "stale_systems": sorted(stale - covered),
+        "stale_systems": sorted((stale & REQUIRED_SYSTEMS) - covered),
+        "legacy_observations": {
+            system: counts[system] for system in sorted(LEGACY_SYSTEMS) if counts[system]
+        },
         "counts": counts,
         "required_systems": sorted(REQUIRED_SYSTEMS),
     }

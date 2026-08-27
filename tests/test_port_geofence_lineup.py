@@ -10,6 +10,39 @@ class PortGeofenceAndLineupTest(unittest.TestCase):
         self.assertTrue(point_in_polygon(-24.0, -46.3, polygon))
         self.assertFalse(point_in_polygon(-23.0, -46.3, polygon))
 
+    def test_invalid_geofence_latitude_is_rejected(self):
+        with self.assertRaises(ValueError):
+            PortZone(
+                zone_id="BAD-LAT", port_id="SANTOS", zone="ANCHORAGE",
+                polygon=((91.0, -46.4), (-24.1, -46.2), (-23.9, -46.2)),
+                geofence_version="2026-08-26", source_id="fixture",
+            )
+
+    def test_invalid_geofence_longitude_is_rejected(self):
+        with self.assertRaises(ValueError):
+            PortZone(
+                zone_id="BAD-LON", port_id="SANTOS", zone="BERTH",
+                polygon=((-24.1, -181.0), (-24.1, -46.2), (-23.9, -46.2)),
+                geofence_version="2026-08-26", source_id="fixture",
+            )
+
+    def test_degenerate_geofence_is_rejected(self):
+        with self.assertRaises(ValueError):
+            PortZone(
+                zone_id="BAD-AREA", port_id="SANTOS", zone="BERTH",
+                polygon=((-24.0, -46.0), (-24.1, -46.1), (-24.2, -46.2)),
+                geofence_version="2026-08-26", source_id="fixture",
+            )
+
+    def test_invalid_observation_coordinate_is_rejected(self):
+        polygon = ((-24.1, -46.4), (-24.1, -46.2), (-23.9, -46.2), (-23.9, -46.4))
+        zone = PortZone(
+            zone_id="SANTOS-ANCH-1", port_id="SANTOS", zone="ANCHORAGE",
+            polygon=polygon, geofence_version="2026-08-26", source_id="fixture",
+        )
+        with self.assertRaises(ValueError):
+            classify_position(-24.0, 220.0, [zone])
+
     def test_berth_zone_beats_anchorage(self):
         anchorage = PortZone(
             zone_id="SANTOS-ANCH-1", port_id="SANTOS", zone="ANCHORAGE",

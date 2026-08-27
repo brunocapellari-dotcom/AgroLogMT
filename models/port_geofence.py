@@ -1,10 +1,32 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Iterable, Sequence
 
 
 ZONE_PRIORITY = {"UNKNOWN": 0, "SEA": 1, "APPROACH": 2, "ANCHORAGE": 3, "BERTH": 4}
+
+
+def _validate_coordinate(latitude: float, longitude: float) -> tuple[float, float]:
+    lat = float(latitude)
+    lon = float(longitude)
+    if not math.isfinite(lat) or not math.isfinite(lon):
+        raise ValueError("coordenada de geofence deve ser finita")
+    if not -90.0 <= lat <= 90.0:
+        raise ValueError(f"latitude de geofence fora do limite fisico: {lat}")
+    if not -180.0 <= lon <= 180.0:
+        raise ValueError(f"longitude de geofence fora do limite fisico: {lon}")
+    return lat, lon
+
+
+def _polygon_area(polygon: Sequence[tuple[float, float]]) -> float:
+    """Planar shoelace area in degree², sufficient as a degeneracy guard for small port polygons."""
+    area = 0.0
+    for index, (lat_a, lon_a) in enumerate(polygon):
+        lat_b, lon_b = polygon[(index + 1) % len(polygon)]
+        area += lon_a * lat_b - lon_b * lat_a
+    return abs(area) / 2.0
 
 
 @dataclass(frozen=True)
@@ -18,15 +40,27 @@ class PortZone:
     source_id: str | None = None
 
     def __post_init__(self) -> None:
+        if not self.zone_id.strip():
+            raise ValueError("zone_id obrigatorio")
+        if not self.port_id.strip():
+            raise ValueError("port_id obrigatorio")
+        if not self.geofence_version.strip():
+            raise ValueError("geofence_version obrigatoria")
         if self.zone.upper() not in ZONE_PRIORITY:
             raise ValueError(f"zone invalida: {self.zone}")
         if len(self.polygon) < 3:
             raise ValueError("polygon precisa de ao menos 3 vertices")
 
+        normalized = tuple(_validate_coordinate(lat, lon) for lat, lon in self.polygon)
+        if len(set(normalized)) < 3:
+            raise ValueError("polygon precisa de ao menos 3 vertices distintos")
+        if _polygon_area(normalized) <= 1e-12:
+            raise ValueError("polygon degenerado ou com area nula")
+
 
 def point_in_polygon(latitude: float, longitude: float, polygon: Sequence[tuple[float, float]]) -> bool:
     """Ray-casting for small port polygons away from the antimeridian."""
-    x, y = float(longitude), float(latitude)
+    y, x = _validate_coordinate(latitude, longitude)
     inside = False
     n = len(polygon)
     j = n - 1
@@ -49,6 +83,7 @@ def classify_position(
     *,
     preferred_port_id: str | None = None,
 ) -> dict[str, str | None]:
+    _validate_coordinate(latitude, longitude)
     hits: list[PortZone] = []
     for zone in zones:
         if preferred_port_id and zone.port_id != preferred_port_id:

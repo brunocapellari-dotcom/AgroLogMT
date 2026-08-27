@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07121f" />
+    <title>AgroLog Maritime Intelligence</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">AGROLOG MT</div>
+          <h1>Maritime Intelligence</h1>
+        </div>
+        <div class="toolbar">
+          <label>
+            Porto
+            <select id="port-select">
+              <option value="">Todos do piloto</option>
+            </select>
+          </label>
+          <button id="refresh-button" type="button">Atualizar</button>
+          <span id="connection-status" class="status status-idle">iniciando</span>
+        </div>
+      </header>
+
+      <section class="metrics" aria-label="Resumo operacional">
+        <article><span>Navios live</span><strong id="metric-live">—</strong></article>
+        <article><span>Aproximando</span><strong id="metric-approach">—</strong></article>
+        <article><span>Aguardando</span><strong id="metric-waiting">—</strong></article>
+        <article><span>Atracados</span><strong id="metric-berthed">—</strong></article>
+        <article><span>Line-up</span><strong id="metric-lineup">—</strong></article>
+        <article><span>Match AIS × line-up</span><strong id="metric-match">—</strong></article>
+        <article><span>Espera P50</span><strong id="metric-p50">—</strong></article>
+        <article><span>Espera P90</span><strong id="metric-p90">—</strong></article>
+      </section>
+
+      <main class="workspace">
+        <section class="map-panel">
+          <div id="map"></div>
+          <div class="map-legend">
+            <span><i class="dot approach"></i>Aproximação</span>
+            <span><i class="dot anchorage"></i>Fundeio</span>
+            <span><i class="dot berth"></i>Berço</span>
+            <span><i class="dot sea"></i>Mar/sem zona</span>
+          </div>
+          <div id="map-empty" class="map-empty hidden">Sem posições AIS recentes para o filtro atual.</div>
+        </section>
+
+        <aside class="side-panel">
+          <section class="card vessel-card">
+            <div class="card-title-row">
+              <h2>Navio selecionado</h2>
+              <button id="replay-button" type="button" disabled>Replay 24h</button>
+            </div>
+            <div id="vessel-detail" class="vessel-detail muted">Clique em um navio no mapa.</div>
+            <div id="replay-controls" class="replay-controls hidden">
+              <button id="replay-toggle" type="button">Pausar</button>
+              <input id="replay-slider" type="range" min="0" max="100" value="0" />
+              <span id="replay-time">—</span>
+            </div>
+          </section>
+
+          <section class="card lineup-card">
+            <div class="card-title-row">
+              <div>
+                <h2>Line-up × AIS</h2>
+                <p>Programação não é tratada como realizado.</p>
+              </div>
+              <span id="lineup-count" class="count-pill">0</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Navio</th>
+                    <th>ETA</th>
+                    <th>Produto</th>
+                    <th>Programado</th>
+                    <th>Estado reconciliado</th>
+                    <th>Match</th>
+                  </tr>
+                </thead>
+                <tbody id="lineup-body"></tbody>
+              </table>
+            </div>
+          </section>
+        </aside>
+      </main>
+
+      <footer>
+        <span id="last-update">Sem atualização</span>
+        <span>AIS observado · line-up observado · realizado somente com evidência operacional</span>
+      </footer>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
