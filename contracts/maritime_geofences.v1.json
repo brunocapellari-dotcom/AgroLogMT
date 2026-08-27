@@ -1,0 +1,41 @@
+{
+  "contract_id": "maritime_geofences.v1",
+  "description": "Contrato de governanca para geofences operacionais do AgroLog Maritime Intelligence.",
+  "pilot_ports": [
+    "SANTOS",
+    "PARANAGUA",
+    "BARCARENA_VILA_DO_CONDE",
+    "SANTAREM",
+    "ITAQUI"
+  ],
+  "zones": ["APPROACH", "ANCHORAGE", "BERTH"],
+  "required_feature_fields": [
+    "zone_id",
+    "port_id",
+    "zone",
+    "geometry",
+    "geofence_version",
+    "source_kind",
+    "source_ref",
+    "validated_at",
+    "validation_method"
+  ],
+  "source_priority": [
+    "PORT_AUTHORITY_OR_HYDROGRAPHIC_AUTHORITY",
+    "ENC_S57_OR_EQUIVALENT",
+    "OSM_OR_OPENSEAMAP_VALIDATED",
+    "AIS_DERIVED_H3_DBSCAN_VALIDATED",
+    "MANUAL_VALIDATED_WITH_EVIDENCE"
+  ],
+  "hard_rules": [
+    "Nao publicar coordenadas ou poligonos inventados.",
+    "World Port Index pode iniciar descoberta ou bounding box, mas nao constitui geofence operacional de berco.",
+    "Toda geofence operacional deve preservar fonte, versao e data de validacao.",
+    "Geofence derivada de AIS deve registrar parametros de H3/DBSCAN ou metodologia equivalente.",
+    "Mudanca de geometria cria nova geofence_version e nao sobrescreve silenciosamente o historico.",
+    "Classificacoes AIS historicas devem ser reproduziveis com a geofence_version registrada.",
+    "BERTH exige granularidade de berco ou terminal validada; poligono amplo de porto nao pode ser rotulado como BERTH."
+  ],
+  "recommended_geometry_format": "GeoJSON Polygon/MultiPolygon em EPSG:4326; GeoParquet para persistencia analitica em lote",
+  "gate": "GEOFENCE_VALIDATED"
+}
