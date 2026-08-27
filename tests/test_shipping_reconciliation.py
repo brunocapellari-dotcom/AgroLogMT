@@ -71,6 +71,19 @@ class ShippingReconciliationTest(unittest.TestCase):
         self.assertEqual(result.evidence_class, "AIS_OBSERVED")
         self.assertAlmostEqual(result.waiting_hours, 6.0)
 
+    def test_berth_to_sea_transition_is_departure_pending_not_realized(self):
+        obs = [
+            AISObservation(ts(20, 10), imo="9876543", mmsi="710123456", vessel_name="AGRO STAR", port_id="SANTOS", zone="ANCHORAGE"),
+            AISObservation(ts(20, 16), imo="9876543", mmsi="710123456", vessel_name="AGRO STAR", port_id="SANTOS", terminal_id="T1", zone="BERTH"),
+            AISObservation(ts(21, 4), imo="9876543", mmsi="710123456", vessel_name="AGRO STAR", port_id=None, zone="SEA", sog_kn=9.0),
+        ]
+        result = reconcile_call(self.call(), obs)
+        self.assertEqual(result.state, "DEPARTED_PENDING_REALIZED")
+        self.assertEqual(result.evidence_class, "AIS_OBSERVED")
+        self.assertIn("ais_departure_from_berth_exit_transition", result.flags)
+        self.assertEqual(result.metadata["departure_detection"], "berth_exit_transition_upper_bound")
+        self.assertAlmostEqual(result.berth_hours, 12.0)
+
     def test_port_operation_confirms_realized(self):
         obs = [
             AISObservation(ts(20, 10), imo="9876543", mmsi="710123456", vessel_name="AGRO STAR", port_id="SANTOS", zone="ANCHORAGE"),
@@ -91,6 +104,7 @@ class ShippingReconciliationTest(unittest.TestCase):
         result = reconcile_call(self.call(), obs, operation)
         self.assertEqual(result.state, "COMPLETED_REALIZED")
         self.assertEqual(result.evidence_class, "PORT_OPERATION_OBSERVED")
+        self.assertEqual(result.metadata["departure_detection"], "port_operation_observed")
         self.assertAlmostEqual(result.volume_variance_pct, -2.5)
         self.assertAlmostEqual(result.eta_error_hours, -2.0)
 
