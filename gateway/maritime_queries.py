@@ -24,9 +24,25 @@ def normalize_mmsi(value: str) -> str:
     return normalized
 
 
+def _port_filter_sql(column: str = "port_id") -> str:
+    """Canonical filter plus the only safe legacy alias in Maritime V1.
+
+    `PARANAGUA_ANTONINA` can be read under the canonical `PARANAGUA` filter.
+    `ARCO_NORTE_CDP` is intentionally not aliased because it cannot be split safely
+    between Vila do Conde and Santarem without source-specific evidence.
+    """
+    if column not in {"port_id", "l.port_id"}:
+        raise ValueError("coluna de porto nao autorizada")
+    return (
+        f"(@port_id IS NULL OR {column} = @port_id "
+        f"OR (@port_id = 'PARANAGUA' AND {column} = 'PARANAGUA_ANTONINA'))"
+    )
+
+
 def build_live_vessels_sql(project: str, dataset: str) -> str:
     project = safe_identifier(project, label="project")
     dataset = safe_identifier(dataset, label="dataset")
+    port_filter = _port_filter_sql()
     return f"""
 WITH ranked AS (
   SELECT
@@ -41,7 +57,7 @@ WITH ranked AS (
   WHERE latitude BETWEEN -90 AND 90
     AND longitude BETWEEN -180 AND 180
     AND TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), observed_at, HOUR) BETWEEN 0 AND @hours
-    AND (@port_id IS NULL OR port_id = @port_id)
+    AND {port_filter}
 )
 SELECT
   observation_id, mmsi, imo, vessel_name, observed_at,
@@ -75,6 +91,7 @@ LIMIT @limit
 def build_lineup_reconciliation_sql(project: str, dataset: str) -> str:
     project = safe_identifier(project, label="project")
     dataset = safe_identifier(dataset, label="dataset")
+    port_filter = _port_filter_sql()
     return f"""
 WITH latest_lineup AS (
   SELECT * EXCEPT(rn)
@@ -87,7 +104,7 @@ WITH latest_lineup AS (
         ORDER BY collected_at DESC, snapshot_id DESC
       ) AS rn
     FROM `{project}.{dataset}.shipping_lineup_calls`
-    WHERE (@port_id IS NULL OR port_id = @port_id)
+    WHERE {port_filter}
       AND TIMESTAMP_DIFF(eta, CURRENT_TIMESTAMP(), HOUR) BETWEEN (0 - @past_hours) AND @future_hours
   )
   WHERE rn = 1
@@ -128,6 +145,7 @@ LIMIT @limit
 def build_port_summary_sql(project: str, dataset: str) -> str:
     project = safe_identifier(project, label="project")
     dataset = safe_identifier(dataset, label="dataset")
+    port_filter = _port_filter_sql()
     return f"""
 WITH latest_positions AS (
   SELECT * EXCEPT(rn)
@@ -140,7 +158,7 @@ WITH latest_positions AS (
       ) AS rn
     FROM `{project}.{dataset}.shipping_ais_positions`
     WHERE TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), observed_at, HOUR) BETWEEN 0 AND @hours
-      AND (@port_id IS NULL OR port_id = @port_id)
+      AND {port_filter}
   )
   WHERE rn = 1
 ),
@@ -151,7 +169,7 @@ latest_lineup AS (
       call_id, port_id, eta,
       ROW_NUMBER() OVER (PARTITION BY call_id ORDER BY collected_at DESC, snapshot_id DESC) AS rn
     FROM `{project}.{dataset}.shipping_lineup_calls`
-    WHERE (@port_id IS NULL OR port_id = @port_id)
+    WHERE {port_filter}
       AND TIMESTAMP_DIFF(eta, CURRENT_TIMESTAMP(), HOUR) BETWEEN -24 AND @future_hours
   )
   WHERE rn = 1
