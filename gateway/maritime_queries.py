@@ -88,7 +88,7 @@ WITH latest_lineup AS (
       ) AS rn
     FROM `{project}.{dataset}.shipping_lineup_calls`
     WHERE (@port_id IS NULL OR port_id = @port_id)
-      AND TIMESTAMP_DIFF(eta, CURRENT_TIMESTAMP(), HOUR) BETWEEN -@past_hours AND @future_hours
+      AND TIMESTAMP_DIFF(eta, CURRENT_TIMESTAMP(), HOUR) BETWEEN (0 - @past_hours) AND @future_hours
   )
   WHERE rn = 1
 ),
@@ -133,9 +133,9 @@ WITH latest_positions AS (
   SELECT * EXCEPT(rn)
   FROM (
     SELECT
-      mmsi, imo, vessel_name, observed_at, port_id, terminal_id, zone,
+      observation_id, mmsi, imo, vessel_name, observed_at, port_id, terminal_id, zone,
       ROW_NUMBER() OVER (
-        PARTITION BY COALESCE(NULLIF(mmsi, ''), NULLIF(imo, ''), NULLIF(vessel_name, ''))
+        PARTITION BY COALESCE(NULLIF(mmsi, ''), NULLIF(imo, ''), NULLIF(vessel_name, ''), observation_id)
         ORDER BY observed_at DESC, collected_at DESC
       ) AS rn
     FROM `{project}.{dataset}.shipping_ais_positions`
