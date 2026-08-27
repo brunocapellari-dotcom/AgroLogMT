@@ -18,6 +18,10 @@ AIS_ZONE_PRIORITY = {
     "DEPARTED": 5,
 }
 
+SAFE_PORT_ALIASES = {
+    "PARANAGUA": frozenset({"PARANAGUA", "PARANAGUA_ANTONINA"}),
+}
+
 
 def _utc(value: datetime | str | None) -> datetime | None:
     if value is None:
@@ -49,6 +53,17 @@ def name_similarity(a: str | None, b: str | None) -> float:
     if left == right:
         return 1.0
     return SequenceMatcher(None, left, right).ratio()
+
+
+def _same_port(expected: str | None, observed: str | None) -> bool:
+    if not expected or not observed:
+        return False
+    left = expected.strip().upper()
+    right = observed.strip().upper()
+    if left == right:
+        return True
+    aliases = SAFE_PORT_ALIASES.get(left)
+    return aliases is not None and right in aliases
 
 
 @dataclass(frozen=True)
@@ -181,7 +196,7 @@ def match_lineup_call(
             continue
         score = 0.70 + 0.20 * sim
         reasons = [f"name_similarity={sim:.3f}"]
-        if obs.port_id and obs.port_id == call.port_id:
+        if obs.port_id and _same_port(call.port_id, obs.port_id):
             score += 0.06
             reasons.append("same_port")
         if call.terminal_id and obs.terminal_id and call.terminal_id == obs.terminal_id:
@@ -210,6 +225,31 @@ def observations_for_match(match: VesselMatch, observations: Iterable[AISObserva
         elif match.method == "NAME_FUZZY" and name_similarity(match.vessel_name, obs.vessel_name) >= 0.94:
             selected.append(obs)
     return sorted(selected, key=lambda x: x.observed_at_utc)
+
+
+def observations_for_call(
+    call: LineupCall,
+    match: VesselMatch,
+    observations: Iterable[AISObservation],
+    *,
+    time_window_days: int = 21,
+) -> list[AISObservation]:
+    """Scope matched AIS to the current port call before deriving lifecycle metrics.
+
+    Observations assigned to a different known port are excluded. Open-sea observations
+    with `port_id=None` remain eligible so arrival/departure transitions can be detected.
+    The legacy `PARANAGUA_ANTONINA` alias is accepted for canonical `PARANAGUA`; the
+    combined `ARCO_NORTE_CDP` identifier is intentionally never split automatically.
+    """
+    start = call.eta_utc - timedelta(days=time_window_days)
+    end = call.eta_utc + timedelta(days=time_window_days)
+    selected = observations_for_match(match, observations)
+    return [
+        obs
+        for obs in selected
+        if start <= obs.observed_at_utc <= end
+        and (obs.port_id is None or _same_port(call.port_id, obs.port_id))
+    ]
 
 
 def _first_zone(observations: Sequence[AISObservation], zone: str) -> datetime | None:
@@ -247,7 +287,7 @@ def derive_ais_state(call: LineupCall, observations: Sequence[AISObservation]) -
     zone = latest.zone.upper()
     flags: list[str] = []
 
-    if latest.port_id and latest.port_id != call.port_id:
+    if latest.port_id and not _same_port(call.port_id, latest.port_id):
         flags.append("ais_port_divergence")
     if call.terminal_id and latest.terminal_id and latest.terminal_id != call.terminal_id and zone == "BERTH":
         flags.append("terminal_divergence")
@@ -291,7 +331,7 @@ def reconcile_call(
     operation: PortOperation | None = None,
 ) -> ReconciledCall:
     match = match_lineup_call(call, observations)
-    vessel_obs = observations_for_match(match, observations)
+    vessel_obs = observations_for_call(call, match, observations)
     state, state_flags = derive_ais_state(call, vessel_obs)
     flags = list(state_flags)
 
@@ -353,6 +393,7 @@ def reconcile_call(
             "berth_at": berth.isoformat() if berth else None,
             "departure_at": departed.isoformat() if departed else None,
             "departure_detection": departure_detection,
+            "ais_observations_scoped": len(vessel_obs),
             "planned_volume_t": call.planned_volume_t,
             "actual_volume_t": operation.actual_volume_t if operation else None,
         },
