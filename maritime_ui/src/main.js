@@ -6,7 +6,7 @@ import './styles.css';
 
 const search = new URLSearchParams(window.location.search);
 const API_BASE = (
-  search.get('api') || import.meta.env.VITE_AGROLOG_GATEWAY_URL || 'http://localhost:8080'
+  search.get('api') || import.meta.env.VITE_AGROLOG_GATEWAY_URL || (import.meta.env.DEV ? 'http://localhost:8080' : window.location.origin)
 ).replace(/\/$/, '');
 const MAP_STYLE = search.get('style') || import.meta.env.VITE_MAP_STYLE_URL || 'https://demotiles.maplibre.org/style.json';
 
