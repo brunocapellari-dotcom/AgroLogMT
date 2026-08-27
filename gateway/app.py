@@ -6,10 +6,12 @@ import os
 import time
 import uuid
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from google.cloud import bigquery
 
 from .maritime_queries import (
@@ -284,3 +286,8 @@ def maritime_summary(
         "filters": {"port_id": port_id, "hours": hours, "future_hours": future_hours},
         "data": _jsonable(rows[0] if rows else {}),
     }
+
+
+UI_DIR = Path(os.environ.get("AGROLOG_MARITIME_UI_DIR", "/app/maritime_ui/dist"))
+if UI_DIR.is_dir():
+    app.mount("/maritime", StaticFiles(directory=str(UI_DIR), html=True), name="maritime-ui")
