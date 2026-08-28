@@ -6,21 +6,22 @@ REGION="${REGION:-southamerica-east1}"
 BQ_LOCATION="${BQ_LOCATION:-southamerica-east1}"
 OPS_DATASET="${OPS_DATASET:-agrolog_ops}"
 LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
+TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
 COLLECTOR_SA_NAME="${COLLECTOR_SA_NAME:-agrolog-collector}"
 GATEWAY_SA_NAME="${GATEWAY_SA_NAME:-agrolog-gateway}"
+BUILD_SA_NAME="${BUILD_SA_NAME:-agrolog-builder}"
+DEPLOYER_SA_NAME="${DEPLOYER_SA_NAME:-agrolog-github-deployer}"
 AR_REPOSITORY="${AR_REPOSITORY:-agrolog}"
 
 failures=0
 warnings=0
-
 ok() { printf 'OK   %s\n' "$*"; }
 warn() { printf 'WARN %s\n' "$*"; warnings=$((warnings+1)); }
 fail() { printf 'FAIL %s\n' "$*"; failures=$((failures+1)); }
 
 command -v gcloud >/dev/null 2>&1 || { echo 'gcloud ausente' >&2; exit 2; }
 command -v bq >/dev/null 2>&1 || { echo 'bq ausente' >&2; exit 2; }
-
-if [[ -z "${PROJECT_ID}" || "${PROJECT_ID}" == "(unset)" ]]; then
+if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo 'Projeto GCP não configurado.' >&2
   exit 2
 fi
@@ -31,7 +32,10 @@ ok "projeto: $PROJECT_ID"
 ok "região Cloud Run: $REGION"
 ok "localização BigQuery esperada: $BQ_LOCATION"
 
-for api in run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com bigquery.googleapis.com drive.googleapis.com iam.googleapis.com; do
+for api in \
+  run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com \
+  bigquery.googleapis.com drive.googleapis.com iam.googleapis.com \
+  iamcredentials.googleapis.com sts.googleapis.com logging.googleapis.com; do
   if gcloud services list --enabled --project "$PROJECT_ID" --filter="config.name=$api" --format='value(config.name)' | grep -qx "$api"; then
     ok "API habilitada: $api"
   else
@@ -39,14 +43,12 @@ for api in run.googleapis.com cloudbuild.googleapis.com artifactregistry.googlea
   fi
 done
 
-for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET"; do
-  if bq show --project_id="$PROJECT_ID" --format=prettyjson "${PROJECT_ID}:${dataset}" >/tmp/agrolog-dataset.json 2>/dev/null; then
-    actual_location="$(python - <<'PY'
-import json
-try:
-    print(json.load(open('/tmp/agrolog-dataset.json')).get('location',''))
-except Exception:
-    print('')
+for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET"; do
+  tmp="/tmp/agrolog-dataset-${dataset}.json"
+  if bq show --project_id="$PROJECT_ID" --format=prettyjson "${PROJECT_ID}:${dataset}" >"$tmp" 2>/dev/null; then
+    actual_location="$(python - "$tmp" <<'PY'
+import json,sys
+print(json.load(open(sys.argv[1])).get('location',''))
 PY
 )"
     if [[ -n "$actual_location" && "$actual_location" != "$BQ_LOCATION" ]]; then
@@ -55,24 +57,23 @@ PY
       ok "dataset existente: ${dataset} (${actual_location:-localização não informada})"
     fi
   else
-    warn "dataset ainda não existe: ${dataset}; deploy deverá criá-lo sob controle"
+    fail "dataset obrigatório ausente: ${dataset}; execute o bootstrap administrativo"
   fi
 done
 
-COLLECTOR_SA="${COLLECTOR_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
-GATEWAY_SA="${GATEWAY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
-for sa in "$COLLECTOR_SA" "$GATEWAY_SA"; do
+for name in "$DEPLOYER_SA_NAME" "$BUILD_SA_NAME" "$COLLECTOR_SA_NAME" "$GATEWAY_SA_NAME"; do
+  sa="${name}@${PROJECT_ID}.iam.gserviceaccount.com"
   if gcloud iam service-accounts describe "$sa" --project "$PROJECT_ID" >/dev/null 2>&1; then
     ok "service account existe: $sa"
   else
-    warn "service account ainda não existe: $sa"
+    fail "service account obrigatória ausente: $sa"
   fi
 done
 
 if gcloud artifacts repositories describe "$AR_REPOSITORY" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
   ok "Artifact Registry: $AR_REPOSITORY"
 else
-  warn "Artifact Registry ainda não existe: $AR_REPOSITORY"
+  fail "Artifact Registry ausente: $AR_REPOSITORY"
 fi
 
 for job in agrolog-dados agrolog-radar agrolog-conhecimento; do
