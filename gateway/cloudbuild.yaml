@@ -3,3 +3,6 @@ steps:
     args: ["build", "-f", "gateway/Dockerfile", "-t", "${_IMAGE}", "."]
 images:
   - "${_IMAGE}"
+serviceAccount: "projects/$PROJECT_ID/serviceAccounts/${_BUILD_SERVICE_ACCOUNT}"
+options:
+  logging: CLOUD_LOGGING_ONLY
