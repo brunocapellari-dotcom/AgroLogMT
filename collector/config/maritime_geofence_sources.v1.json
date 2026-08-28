@@ -1,0 +1,255 @@
+{
+  "config_id": "maritime_geofence_sources.v1",
+  "version": "1.0.0",
+  "reference_date": "2026-08-28",
+  "purpose": "Manifesto canônico de aquisição de fontes para geofences do piloto Maritime V1. Este arquivo registra evidência e próximos passos; ele não contém geofences operacionais e não habilita AIS_PORT_ZONES_JSON.",
+  "governance": {
+    "operational_gate": "GEOFENCE_VALIDATED",
+    "default_runtime_state": "DATA_GATED",
+    "hard_rules": [
+      "Nenhuma bounding box de assinatura AIS pode ser promovida a geofence operacional.",
+      "Poligonal legal do porto não equivale automaticamente a fundeadouro, canal, terminal ou berço.",
+      "Geometria derivada de coordenadas oficiais deve preservar ordem dos vértices, datum e ato normativo de origem.",
+      "Carta raster do CHM pode validar contexto espacial e objetos náuticos, mas não deve ser vetorizada automaticamente como verdade operacional sem QA.",
+      "ENC vetorial da DHN/CHM somente pode ser usada conforme licença/autorização aplicável.",
+      "Antes do runtime, cada zona deve passar por validade geométrica, CRS/datum, plausibilidade de área, inspeção visual e teste com AIS histórico.",
+      "Berço deve ser validado em fonte portuária/terminal ou evidência equivalente; nunca inferido apenas da poligonal geral do porto."
+    ]
+  },
+  "shared_hydrographic_sources": [
+    {
+      "source_id": "CHM_NAUTICAL_CHART_CATALOG",
+      "authority": "Centro de Hidrografia da Marinha / DHN",
+      "url": "https://www.marinha.mil.br/chm/dados-do-segnav-cartas-nauticas",
+      "source_type": "HYDROGRAPHIC_CATALOG",
+      "status": "CONFIRMED",
+      "use": "Identificar cartas oficiais de acesso a porto, canal e fundeadouro para QA espacial."
+    },
+    {
+      "source_id": "CHM_RASTER_CHARTS",
+      "authority": "Centro de Hidrografia da Marinha / DHN",
+      "url": "https://www.marinha.mil.br/chm/dados-do-segnav/cartas-raster",
+      "source_type": "HYDROGRAPHIC_RASTER",
+      "status": "AVAILABLE_FREE_DOWNLOAD",
+      "format": "NOAA-BSB / GeoTIFF",
+      "use": "QA visual/georreferenciado de canais, áreas de fundeio, linha de costa e auxílios à navegação."
+    },
+    {
+      "source_id": "CHM_ENC",
+      "authority": "Centro de Hidrografia da Marinha / DHN",
+      "url": "https://www.marinha.mil.br/chm/dados-do-segnav-cartas-nauticas",
+      "source_type": "ENC_S57_S101",
+      "status": "LICENSED_DISTRIBUTION_ONLY",
+      "distribution": "IC-ENC/RENC",
+      "use": "Opção futura para objetos náuticos vetoriais quando custo/licença forem justificados; não é dependência da V1."
+    }
+  ],
+  "ports": [
+    {
+      "port_id": "SANTOS",
+      "port_polygon": {
+        "readiness": "VECTOR_AVAILABLE_PENDING_INGESTION_QA",
+        "canonical_authority": "Autoridade Portuária de Santos / Ministério de Portos e Aeroportos",
+        "legal_act": "Portaria GM-MPOR nº 5/2026",
+        "datum": "VERIFY_IN_SOURCE_ARTIFACT",
+        "primary_source": {
+          "url": "https://www.portodesantos.com.br/oportunidades-de-negocios/planejamento-portuario/",
+          "source_type": "PORT_AUTHORITY_VECTOR_KMZ",
+          "status": "AVAILABLE",
+          "evidence": "A APS publica desenho PDF, arquivo vetorial KMZ e a Portaria GM-MPOR nº 5/2026 da poligonal vigente."
+        },
+        "secondary_source": {
+          "url": "https://www.gov.br/portos-e-aeroportos/pt-br/assuntos/noticias/2026/02/ministro-silvio-costa-filho-assina-portaria-que-revisa-a-ampliacao-da-poligonal-do-porto-de-santos",
+          "source_type": "FEDERAL_GOVERNMENT_NOTICE",
+          "status": "CONFIRMED"
+        },
+        "next_action": "DOWNLOAD_OFFICIAL_KMZ_VALIDATE_CRS_GEOMETRY_AND_ACT_VERSION"
+      },
+      "hydrographic_qa": {
+        "chart_ids": ["1711", "1712", "1713"],
+        "titles": [
+          "PROXIMIDADES DO PORTO DE SANTOS",
+          "PORTO DE SANTOS (PARTE NORTE)",
+          "PORTO DE SANTOS (PARTE SUL)"
+        ],
+        "status": "RASTER_AVAILABLE",
+        "next_action": "DOWNLOAD_GEOTIFF_FOR_CHANNEL_ANCHORAGE_QA"
+      },
+      "berth_geometry": {
+        "status": "PENDING_SOURCE_ACQUISITION",
+        "next_action": "EXTRACT_FROM_CURRENT_PDZ_TERMINAL_MAPS_AND_VALIDATE_WITH_AIS_DWELL_CLUSTERS"
+      }
+    },
+    {
+      "port_id": "PARANAGUA",
+      "port_polygon": {
+        "readiness": "LEGAL_COORDINATES_AVAILABLE_PENDING_EXTRACTION_QA",
+        "canonical_authority": "Ministério da Infraestrutura / Portos do Paraná",
+        "legal_act": "Portaria nº 117, de 14/09/2021",
+        "datum": "SIRGAS 2000",
+        "primary_source": {
+          "url": "https://pesquisa.in.gov.br/imprensa/servlet/INPDFViewer?captchafield=firstAccess&data=15%2F09%2F2021&jornal=515&pagina=197",
+          "source_type": "OFFICIAL_GAZETTE_LEGAL_VERTICES",
+          "status": "AVAILABLE",
+          "evidence": "A Portaria define a área por polígonos cujos vértices estão nos Anexos 1 e 2, em SIRGAS 2000."
+        },
+        "secondary_source": {
+          "url": "https://www.portosdoparana.pr.gov.br/Operacional/Pagina/Mapa-da-Poligonal",
+          "source_type": "PORT_AUTHORITY_MAP",
+          "status": "AVAILABLE"
+        },
+        "pdz_source": {
+          "url": "https://www.gov.br/transportes/pt-br/assuntos/PIT/politica-e-planejamento/arquivos-pdz/pdz-paranagua-aprovado-pela-portaria-mpor-142-de-27-de-abril-de-2023.pdf",
+          "source_type": "APPROVED_PDZ",
+          "status": "AVAILABLE",
+          "evidence": "O PDZ 2022/2023 reproduz a poligonal com base nas coordenadas da Portaria nº 117/2021."
+        },
+        "next_action": "PARSE_ALL_LEGAL_VERTICES_PRESERVING_POLYGON_GROUPS_AND_VALIDATE_AGAINST_PDZ_MAP"
+      },
+      "hydrographic_qa": {
+        "chart_ids": ["1820", "1821", "1822"],
+        "titles": [
+          "PROXIMIDADES DA BARRA DE PARANAGUÁ",
+          "BARRA DE PARANAGUÁ",
+          "PORTOS DE PARANAGUÁ E ANTONINA"
+        ],
+        "status": "RASTER_AVAILABLE",
+        "next_action": "DOWNLOAD_GEOTIFF_FOR_CHANNEL_ANCHORAGE_QA"
+      },
+      "berth_geometry": {
+        "status": "PENDING_SOURCE_ACQUISITION",
+        "next_action": "USE_CURRENT_PDZ_OPERATIONAL_MAPS_AND_PORT_AUTHORITY_DOCUMENTS_THEN_AIS_DWELL_QA"
+      }
+    },
+    {
+      "port_id": "BARCARENA_VILA_DO_CONDE",
+      "port_polygon": {
+        "readiness": "LEGAL_COORDINATES_AVAILABLE_PENDING_TRANSFORMATION_QA",
+        "canonical_authority": "Presidência da República / Companhia Docas do Pará",
+        "legal_act": "Decreto nº 8.394/2015",
+        "datum": "SIRGAS 2000",
+        "primary_source": {
+          "url": "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2015/decreto/d8394.htm",
+          "source_type": "FEDERAL_DECREE_LEGAL_VERTICES",
+          "status": "AVAILABLE",
+          "evidence": "O anexo do Decreto traz 16 vértices oficiais e fecha a poligonal retornando ao ponto 1."
+        },
+        "secondary_source": {
+          "url": "https://www.cdp.com.br/companhia-docas-do-para/areas-de-porto-organizado/",
+          "source_type": "PORT_AUTHORITY_POLYGON_PAGE",
+          "status": "AVAILABLE"
+        },
+        "pdz_source": {
+          "url": "https://www.cdp.com.br/wp-content/uploads/2025/09/PDZ-RELATORIO-PORTO-DE-VILA-DO-CONDE-2025.pdf",
+          "source_type": "CURRENT_PDZ",
+          "status": "AVAILABLE",
+          "evidence": "O PDZ 2025 reproduz as coordenadas geodésicas da poligonal."
+        },
+        "next_action": "PARSE_16_LEGAL_VERTICES_TO_CANDIDATE_GEOJSON_THEN_VALIDATE"
+      },
+      "hydrographic_qa": {
+        "chart_ids": ["321", "304"],
+        "titles": ["PORTO DE VILA DO CONDE", "DE MOSQUEIRO A VILA DO CONDE"],
+        "status": "RASTER_AVAILABLE",
+        "next_action": "DOWNLOAD_GEOTIFF_FOR_CHANNEL_ANCHORAGE_QA"
+      },
+      "berth_geometry": {
+        "status": "DOCUMENTATION_AVAILABLE_PENDING_EXTRACTION",
+        "source": "https://www.cdp.com.br/wp-content/uploads/2024/12/PDZ-PRODUTO-05-R8-PORTO-DE-VILA-DO-CONDE.pdf",
+        "next_action": "EXTRACT_CURRENT_BERTH_LAYOUT_FROM_PDZ_AND_CROSS_VALIDATE_WITH_AIS_DWELL_CLUSTERS"
+      }
+    },
+    {
+      "port_id": "SANTAREM",
+      "port_polygon": {
+        "readiness": "CURRENT_COORDINATES_AVAILABLE_PENDING_GEOJSON_QA",
+        "canonical_authority": "Companhia Docas do Pará / Ministério de Portos e Aeroportos",
+        "legal_act": "Portaria MINFRA nº 539/2022",
+        "datum": "SIRGAS 2000",
+        "primary_source": {
+          "url": "https://www.cdp.com.br/companhia-docas-do-para/areas-de-porto-organizado/",
+          "source_type": "PORT_AUTHORITY_POLYGON_PAGE",
+          "status": "AVAILABLE"
+        },
+        "coordinate_source": {
+          "url": "https://www.cdp.com.br/wp-content/uploads/2026/02/PGRS-Porto-de-Santarem-2025.pdf",
+          "source_type": "PORT_AUTHORITY_CURRENT_DOCUMENT",
+          "status": "AVAILABLE",
+          "evidence": "Tabela 4 lista BRSTM-01 a BRSTM-21 conforme a Portaria que estabeleceu a poligonal vigente."
+        },
+        "pdz_source": {
+          "url": "https://www.gov.br/portos-e-aeroportos/pt-br/assuntos/transporte-aquaviario/planejamento-portuario/plano-de-desenvolvimento-e-zoneamento-pdz/arquivos-pdz/Texto_PDZ_Santarem_aprovado_portaria_mpor_644_2024.pdf",
+          "source_type": "APPROVED_PDZ",
+          "status": "AVAILABLE"
+        },
+        "next_action": "PARSE_BRSTM_01_TO_21_TO_CANDIDATE_GEOJSON_AND_COMPARE_WITH_CURRENT_PDZ"
+      },
+      "hydrographic_qa": {
+        "chart_ids": ["4020A", "4020", "4103A", "4102A", "4102B"],
+        "titles": ["PORTO DE SANTARÉM", "DA ILHA DO ITUQUI A ARAPIXUNA", "REGIONAL_ACCESS_CHARTS"],
+        "status": "RASTER_AVAILABLE",
+        "next_action": "DOWNLOAD_GEOTIFF_FOR_RIVER_CHANNEL_ANCHORAGE_QA"
+      },
+      "berth_geometry": {
+        "status": "PENDING_SOURCE_EXTRACTION",
+        "next_action": "EXTRACT_PORT_AND_TERMINAL_LAYOUT_FROM_CDP_PDZ_THEN_VALIDATE_WITH_AIS_DWELL"
+      }
+    },
+    {
+      "port_id": "ITAQUI",
+      "port_polygon": {
+        "readiness": "LEGAL_COORDINATES_AVAILABLE_PENDING_CURRENCY_AND_GEOMETRY_QA",
+        "canonical_authority": "Presidência da República / EMAP",
+        "legal_act": "Decreto de 25/07/2005",
+        "datum": "GEOGRAPHIC_COORDINATES_VERIFY_DATUM_IN_METADATA",
+        "primary_source": {
+          "url": "https://www.planalto.gov.br/ccivil_03/_ato2004-2006/2005/dnn/dnn10590.htm",
+          "source_type": "FEDERAL_DECREE_LEGAL_VERTICES",
+          "status": "AVAILABLE",
+          "evidence": "O anexo lista M01, M02, PT A’, PT A, PT B, M F, MG, PT 6, PT H e PT J. O valor legal de M F é 44°21’47,0 W."
+        },
+        "secondary_source": {
+          "url": "https://website.portodoitaqui.com.br/porto-itaqui/localizacao",
+          "source_type": "PORT_AUTHORITY_LOCATION_PAGE",
+          "status": "AVAILABLE_WITH_TRANSCRIPTION_ERROR",
+          "warning": "A tabela web da EMAP repete a latitude na longitude do ponto M F. Não usar esse valor; o Decreto federal contém 44°21’47,0 W."
+        },
+        "currency_risk": {
+          "status": "REVIEW_REQUIRED",
+          "evidence": "Ata CAP/EMAP de março de 2025 menciona necessidade de renovação da Portaria e proposta de nova poligonal. Verificar se ato posterior substituiu o Decreto de 2005 antes de promover a produção."
+        },
+        "next_action": "CHECK_FOR_NEW_2025_2026_POLYGON_ACT_THEN_PARSE_CANONICAL_VERTICES"
+      },
+      "hydrographic_qa": {
+        "chart_ids": ["410", "411", "412", "413", "414"],
+        "titles": [
+          "PROXIMIDADES DA BAÍA DE SÃO MARCOS",
+          "BAÍA DE SÃO MARCOS",
+          "BAÍA DE SÃO MARCOS PROXIMIDADES DO TERMINAL DA PONTA DA MADEIRA E ITAQUI",
+          "TERMINAL DA PONTA DA MADEIRA E PORTO DE ITAQUI",
+          "BAÍA DE SÃO MARCOS DE ITAQUI AO TERMINAL DA ALUMAR"
+        ],
+        "status": "RASTER_AVAILABLE",
+        "next_action": "DOWNLOAD_GEOTIFF_FOR_CHANNEL_ANCHORAGE_QA"
+      },
+      "berth_geometry": {
+        "status": "PENDING_SOURCE_ACQUISITION",
+        "next_action": "EXTRACT_FROM_CURRENT_EMAP_PDZ_PORT_MANUAL_AND_VALIDATE_WITH_AIS_DWELL_CLUSTERS"
+      }
+    }
+  ],
+  "promotion_checklist": [
+    "SOURCE_PRIMARY_CONFIRMED",
+    "LEGAL_ACT_CURRENT_CONFIRMED",
+    "VERTEX_ORDER_CONFIRMED",
+    "CRS_DATUM_CONFIRMED",
+    "GEOMETRY_VALID",
+    "AREA_PLAUSIBLE",
+    "OFFICIAL_MAP_VISUAL_QA",
+    "HYDROGRAPHIC_QA_WHEN_APPLICABLE",
+    "AIS_HISTORICAL_QA",
+    "SOURCE_REF_PERSISTED",
+    "GEOFENCE_VERSION_ASSIGNED",
+    "INDEPENDENT_REVIEW_PASS"
+  ]
+}
