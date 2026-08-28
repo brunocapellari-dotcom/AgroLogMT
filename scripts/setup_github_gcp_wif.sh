@@ -38,7 +38,6 @@ gh auth status >/dev/null 2>&1 || { echo 'ERRO: gh não autenticado; execute gh 
 echo "Projeto: $PROJECT_ID"
 echo "Repo:    $REPO"
 
-# Apenas o bootstrap humano habilita serviços.
 gcloud services enable \
   iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com \
   bigquery.googleapis.com run.googleapis.com cloudbuild.googleapis.com \
@@ -98,7 +97,6 @@ GATEWAY_SA_EMAIL="${GATEWAY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
 BUILD_SERVICE_AGENT="service-${PROJECT_NUMBER}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
 
-# Revoga privilégios amplos concedidos por versões anteriores do bootstrap.
 for role in \
   roles/serviceusage.serviceUsageAdmin \
   roles/iam.serviceAccountAdmin \
@@ -111,7 +109,6 @@ for role in \
   remove_legacy_project_role "$DEPLOYER_SA_EMAIL" "$role"
 done
 
-# Recursos permanentes.
 for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$MARITIME_DATASET"; do
   ensure_dataset "$dataset"
 done
@@ -128,31 +125,29 @@ cat >/tmp/agrolog-build-lifecycle.json <<'JSON'
 JSON
 gcloud storage buckets update "gs://${BUILD_SOURCE_BUCKET}" --lifecycle-file=/tmp/agrolog-build-lifecycle.json >/dev/null
 
-# Collector: cria jobs BQ; escrita apenas nos datasets operacionais do AgroLog.
 ensure_project_role "$COLLECTOR_SA_EMAIL" roles/bigquery.user
 for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$MARITIME_DATASET"; do
   ensure_dataset_role "$dataset" "$COLLECTOR_SA_EMAIL" roles/bigquery.dataEditor
 done
 
-# Gateway: executa queries; leitura limitada aos datasets expostos pela API/UI.
 ensure_project_role "$GATEWAY_SA_EMAIL" roles/bigquery.jobUser
 ensure_dataset_role "$LOGISTICA_DATASET" "$GATEWAY_SA_EMAIL" roles/bigquery.dataViewer
 ensure_dataset_role "$MARITIME_DATASET" "$GATEWAY_SA_EMAIL" roles/bigquery.dataViewer
 
-# Builder dedicado: imagem no AR, logs no Cloud Logging, leitura somente do staging próprio.
 ensure_project_role "$BUILD_SA_EMAIL" roles/logging.logWriter
 gcloud artifacts repositories add-iam-policy-binding "$AR_REPOSITORY" \
   --location "$REGION" --project "$PROJECT_ID" \
   --member="serviceAccount:${BUILD_SA_EMAIL}" --role=roles/artifactregistry.writer --quiet >/dev/null
 gcloud storage buckets add-iam-policy-binding "gs://${BUILD_SOURCE_BUCKET}" \
   --member="serviceAccount:${BUILD_SA_EMAIL}" --role=roles/storage.objectViewer --quiet >/dev/null
+gcloud storage buckets add-iam-policy-binding "gs://${BUILD_SOURCE_BUCKET}" \
+  --member="serviceAccount:${BUILD_SA_EMAIL}" --role=roles/storage.bucketViewer --quiet >/dev/null
 
 gcloud iam service-accounts add-iam-policy-binding "$BUILD_SA_EMAIL" \
   --project "$PROJECT_ID" \
   --member="serviceAccount:${BUILD_SERVICE_AGENT}" \
   --role=roles/iam.serviceAccountTokenCreator --quiet >/dev/null
 
-# Deployer federado: cria builds, atualiza Cloud Run e usa APIs já habilitadas.
 for role in roles/serviceusage.serviceUsageConsumer roles/cloudbuild.builds.editor roles/run.developer; do
   ensure_project_role "$DEPLOYER_SA_EMAIL" "$role"
 done
@@ -161,8 +156,9 @@ gcloud artifacts repositories add-iam-policy-binding "$AR_REPOSITORY" \
   --member="serviceAccount:${DEPLOYER_SA_EMAIL}" --role=roles/artifactregistry.reader --quiet >/dev/null
 gcloud storage buckets add-iam-policy-binding "gs://${BUILD_SOURCE_BUCKET}" \
   --member="serviceAccount:${DEPLOYER_SA_EMAIL}" --role=roles/storage.objectUser --quiet >/dev/null
+gcloud storage buckets add-iam-policy-binding "gs://${BUILD_SOURCE_BUCKET}" \
+  --member="serviceAccount:${DEPLOYER_SA_EMAIL}" --role=roles/storage.bucketViewer --quiet >/dev/null
 
-# actAs somente nas identidades usadas por build/deploy.
 for sa in "$BUILD_SA_EMAIL" "$COLLECTOR_SA_EMAIL" "$GATEWAY_SA_EMAIL"; do
   gcloud iam service-accounts add-iam-policy-binding "$sa" \
     --project "$PROJECT_ID" \
@@ -170,8 +166,6 @@ for sa in "$BUILD_SA_EMAIL" "$COLLECTOR_SA_EMAIL" "$GATEWAY_SA_EMAIL"; do
     --role=roles/iam.serviceAccountUser --quiet >/dev/null
 done
 
-# Privacidade do Gateway é configuração administrativa. Novos serviços são privados por padrão;
-# se já existir um Gateway legado, reforça a verificação IAM e remove eventual allUsers/invoker.
 if gcloud run services describe "$GATEWAY_SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
   gcloud run services update "$GATEWAY_SERVICE_NAME" \
     --region "$REGION" --project "$PROJECT_ID" --invoker-iam-check --quiet >/dev/null
@@ -180,7 +174,6 @@ if gcloud run services describe "$GATEWAY_SERVICE_NAME" --region "$REGION" --pro
     --member=allUsers --role=roles/run.invoker --quiet >/dev/null 2>&1 || true
 fi
 
-# WIF restrito ao repositório e à branch main.
 if ! gcloud iam workload-identity-pools describe "$POOL_ID" --location=global --project "$PROJECT_ID" >/dev/null 2>&1; then
   gcloud iam workload-identity-pools create "$POOL_ID" --location=global --project "$PROJECT_ID" --display-name="GitHub Actions"
 fi
@@ -199,7 +192,6 @@ PRINCIPAL="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/location
 gcloud iam service-accounts add-iam-policy-binding "$DEPLOYER_SA_EMAIL" \
   --project "$PROJECT_ID" --role=roles/iam.workloadIdentityUser --member="$PRINCIPAL" --quiet >/dev/null
 
-# GitHub guarda somente referências/nomes, nunca chave de service account.
 printf '%s' "$PROVIDER_RESOURCE" | gh secret set GCP_WORKLOAD_IDENTITY_PROVIDER --repo "$REPO"
 printf '%s' "$DEPLOYER_SA_EMAIL" | gh secret set GCP_SERVICE_ACCOUNT --repo "$REPO"
 printf '%s' "$DEPLOYER_SA_EMAIL" | gh secret set GCP_DEPLOYER_SERVICE_ACCOUNT --repo "$REPO"
