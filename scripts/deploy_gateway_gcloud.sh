@@ -63,15 +63,15 @@ gcloud builds submit . \
   --config gateway/cloudbuild.yaml \
   --substitutions "_IMAGE=${IMAGE}"
 
+# A exigência de autenticação é administrada no bootstrap. O deploy recorrente atualiza apenas a revisão.
 gcloud run deploy "$SERVICE_NAME" \
   --image "$IMAGE" \
   --region "$REGION" \
   --project "$PROJECT_ID" \
   --service-account "$GATEWAY_SERVICE_ACCOUNT" \
-  --no-allow-unauthenticated \
   --set-env-vars "AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_MARITIME_DATASET=${MARITIME_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION}"
 
-echo "Gateway implantado com autenticação obrigatória: ${SERVICE_NAME}"
+echo "Gateway implantado; autenticação obrigatória é governada pelo bootstrap administrativo."
 echo "Maritime UI preservada em /maritime/"
 echo "Dataset Maritime: ${PROJECT_ID}.${MARITIME_DATASET}"
 echo "Build staging: gs://${BUILD_SOURCE_BUCKET}"
