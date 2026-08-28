@@ -9,51 +9,57 @@ AR_REPOSITORY="${AR_REPOSITORY:-agrolog}"
 IMAGE_NAME="${IMAGE_NAME:-gateway}"
 IMAGE_TAG="${IMAGE_TAG:-$(date +%Y%m%d%H%M%S)}"
 GATEWAY_SA_NAME="${GATEWAY_SA_NAME:-agrolog-gateway}"
+BUILD_SA_NAME="${BUILD_SA_NAME:-agrolog-builder}"
 SERVICE_NAME="${SERVICE_NAME:-agrolog-gateway}"
 
-if [[ -z "${PROJECT_ID}" || "${PROJECT_ID}" == "(unset)" ]]; then
-  echo "Nenhum projeto GCP configurado. Execute: gcloud config set project SEU_PROJECT_ID" >&2
+if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
+  echo "ERRO: projeto GCP não configurado" >&2
   exit 2
 fi
+for cmd in gcloud bq; do
+  command -v "$cmd" >/dev/null || { echo "ERRO: $cmd ausente" >&2; exit 2; }
+done
 
 GATEWAY_SERVICE_ACCOUNT="${GATEWAY_SERVICE_ACCOUNT:-${GATEWAY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
+BUILD_SERVICE_ACCOUNT="${BUILD_SERVICE_ACCOUNT:-${BUILD_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}"
-TABLE="${PROJECT_ID}:${LOGISTICA_DATASET}.armazens_conab"
 
-gcloud config set project "${PROJECT_ID}" >/dev/null
+gcloud config set project "$PROJECT_ID" >/dev/null
 
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com bigquery.googleapis.com iam.googleapis.com
-
-if ! gcloud iam service-accounts describe "${GATEWAY_SERVICE_ACCOUNT}" >/dev/null 2>&1; then
-  gcloud iam service-accounts create "${GATEWAY_SA_NAME}" --display-name "AgroLog Gateway"
+for api in run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com bigquery.googleapis.com; do
+  gcloud services list --enabled --project "$PROJECT_ID" --filter="config.name=$api" --format='value(config.name)' | grep -qx "$api" || {
+    echo "ERRO: API $api não habilitada. Execute scripts/setup_github_gcp_wif.sh com identidade administradora." >&2
+    exit 3
+  }
+done
+for sa in "$GATEWAY_SERVICE_ACCOUNT" "$BUILD_SERVICE_ACCOUNT"; do
+  gcloud iam service-accounts describe "$sa" --project "$PROJECT_ID" >/dev/null 2>&1 || {
+    echo "ERRO: service account ausente: $sa. Execute o bootstrap administrativo." >&2
+    exit 3
+  }
+done
+if ! bq show --project_id="$PROJECT_ID" "${PROJECT_ID}:${LOGISTICA_DATASET}" >/dev/null 2>&1; then
+  echo "ERRO: dataset ${LOGISTICA_DATASET} ausente. Bootstrap administrativo obrigatório." >&2
+  exit 3
 fi
+gcloud artifacts repositories describe "$AR_REPOSITORY" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1 || {
+  echo "ERRO: Artifact Registry ${AR_REPOSITORY} ausente. Execute o bootstrap administrativo." >&2
+  exit 3
+}
 
-# Executa queries no projeto; leitura fica restrita à primeira tabela exposta pelo Gateway.
-gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-  --member="serviceAccount:${GATEWAY_SERVICE_ACCOUNT}" \
-  --role="roles/bigquery.jobUser" \
-  --condition=None >/dev/null
-
-if ! gcloud artifacts repositories describe "${AR_REPOSITORY}" --location "${REGION}" >/dev/null 2>&1; then
-  gcloud artifacts repositories create "${AR_REPOSITORY}" --repository-format=docker --location "${REGION}"
-fi
-
+# Build com builder dedicado. IAM/datasets não são alterados neste script.
 gcloud builds submit . \
+  --project "$PROJECT_ID" \
   --config gateway/cloudbuild.yaml \
-  --substitutions "_IMAGE=${IMAGE}"
+  --substitutions "_IMAGE=${IMAGE},_BUILD_SERVICE_ACCOUNT=${BUILD_SERVICE_ACCOUNT}"
 
-# A tabela deve existir após a primeira carga CONAB. Não concede dataViewer no projeto inteiro.
-bq add-iam-policy-binding \
-  --member="serviceAccount:${GATEWAY_SERVICE_ACCOUNT}" \
-  --role="roles/bigquery.dataViewer" \
-  --table=true \
-  "${TABLE}"
-
-gcloud run deploy "${SERVICE_NAME}" \
-  --image "${IMAGE}" \
-  --region "${REGION}" \
-  --service-account "${GATEWAY_SERVICE_ACCOUNT}" \
+gcloud run deploy "$SERVICE_NAME" \
+  --image "$IMAGE" \
+  --region "$REGION" \
+  --project "$PROJECT_ID" \
+  --service-account "$GATEWAY_SERVICE_ACCOUNT" \
   --no-allow-unauthenticated \
   --set-env-vars "AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION}"
 
 echo "Gateway implantado com autenticação obrigatória: ${SERVICE_NAME}"
+echo "IAM, APIs e permissões de BigQuery permanecem responsabilidade do bootstrap administrativo."
