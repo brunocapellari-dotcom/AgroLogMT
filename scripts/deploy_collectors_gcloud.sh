@@ -9,6 +9,7 @@ LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
 TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
 BQ_LOCATION="${BQ_LOCATION:-southamerica-east1}"
 AR_REPOSITORY="${AR_REPOSITORY:-agrolog}"
+BUILD_SOURCE_BUCKET="${BUILD_SOURCE_BUCKET:-${PROJECT_ID}-agrolog-build-source}"
 IMAGE_NAME="${IMAGE_NAME:-collector}"
 IMAGE_TAG="${IMAGE_TAG:-$(date +%Y%m%d%H%M%S)}"
 COLLECTOR_SA_NAME="${COLLECTOR_SA_NAME:-agrolog-collector}"
@@ -59,7 +60,7 @@ PY
   fi
 }
 
-for api in run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com bigquery.googleapis.com; do
+for api in run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com bigquery.googleapis.com storage.googleapis.com; do
   require_api "$api"
 done
 for sa in "$COLLECTOR_SERVICE_ACCOUNT" "$BUILD_SERVICE_ACCOUNT"; do
@@ -75,11 +76,16 @@ gcloud artifacts repositories describe "$AR_REPOSITORY" --location "$REGION" --p
   echo "ERRO: Artifact Registry ${AR_REPOSITORY} ausente. Execute o bootstrap administrativo." >&2
   exit 3
 }
+gcloud storage buckets describe "gs://${BUILD_SOURCE_BUCKET}" --project "$PROJECT_ID" >/dev/null 2>&1 || {
+  echo "ERRO: staging bucket ${BUILD_SOURCE_BUCKET} ausente. Execute o bootstrap administrativo." >&2
+  exit 3
+}
 
-# Build com identidade própria de menor privilégio; o deployer apenas cria o build e atualiza Cloud Run.
+# Build com identidade própria e staging exclusivo; deploy recorrente não cria recursos/IAM.
 gcloud builds submit . \
   --project "$PROJECT_ID" \
   --service-account "$BUILD_SERVICE_ACCOUNT" \
+  --gcs-source-staging-dir "gs://${BUILD_SOURCE_BUCKET}/source" \
   --config collector/cloudbuild.yaml \
   --substitutions "_IMAGE=${IMAGE}"
 
@@ -103,6 +109,7 @@ Projeto: ${PROJECT_ID}
 Região: ${REGION}
 Imagem: ${IMAGE}
 Builder: ${BUILD_SERVICE_ACCOUNT}
+Build staging: gs://${BUILD_SOURCE_BUCKET}
 Collector: ${COLLECTOR_SERVICE_ACCOUNT}
 Datasets: ${OPS_DATASET}, ${LOGISTICA_DATASET}, ${TRADE_DATASET}
 Pasta RAW/Drive: ${DRIVE_FOLDER_ID}
