@@ -2,6 +2,7 @@ import maplibregl from 'maplibre-gl';
 import {MapboxOverlay} from '@deck.gl/mapbox';
 import {ScatterplotLayer, TextLayer} from '@deck.gl/layers';
 import {TripsLayer} from '@deck.gl/geo-layers';
+import {buildOperationalBrief, buildSourceHealth, classifyMatch, summarizeMatches} from './intelligence.js';
 import './styles.css';
 
 const search = new URLSearchParams(window.location.search);
@@ -24,6 +25,9 @@ const els = {
   replayTime: document.querySelector('#replay-time'),
   lineupBody: document.querySelector('#lineup-body'),
   lineupCount: document.querySelector('#lineup-count'),
+  sourceHealthList: document.querySelector('#source-health-list'),
+  briefBody: document.querySelector('#brief-body'),
+  briefGenerated: document.querySelector('#brief-generated'),
   metrics: {
     live: document.querySelector('#metric-live'),
     approach: document.querySelector('#metric-approach'),
@@ -33,12 +37,16 @@ const els = {
     match: document.querySelector('#metric-match'),
     p50: document.querySelector('#metric-p50'),
     p90: document.querySelector('#metric-p90'),
+    eta: document.querySelector('#metric-eta'),
+    berth: document.querySelector('#metric-berth'),
   },
 };
 
 const state = {
   vessels: [],
   lineup: [],
+  summary: {},
+  sourceHealth: [],
   selected: null,
   replay: null,
   replayCurrent: 0,
@@ -89,6 +97,14 @@ function fmtDate(value) {
   return new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   }).format(date);
+}
+
+function fmtAge(minutes) {
+  const value = Number(minutes);
+  if (!Number.isFinite(value)) return 'sem dado';
+  if (value < 60) return `${Math.round(value)} min`;
+  if (value < 1440) return `${(value / 60).toFixed(1)} h`;
+  return `${(value / 1440).toFixed(1)} d`;
 }
 
 function zoneColor(zone) {
@@ -262,16 +278,26 @@ function stateClass(value) {
   return 'programmed';
 }
 
+function matchClass(value) {
+  switch (value) {
+    case 'CONFIRMADO': return 'match-confirmed';
+    case 'PROVAVEL': return 'match-probable';
+    case 'CONFLITO': return 'match-conflict';
+    default: return 'match-unmatched';
+  }
+}
+
 function renderLineup() {
   els.lineupCount.textContent = String(state.lineup.length);
   if (!state.lineup.length) {
-    els.lineupBody.innerHTML = '<tr><td colspan="6" class="muted">Sem line-up no horizonte selecionado.</td></tr>';
+    els.lineupBody.innerHTML = '<tr><td colspan="7" class="muted">Sem line-up no horizonte selecionado.</td></tr>';
     return;
   }
   els.lineupBody.innerHTML = state.lineup.map(row => {
     const match = row.match_confidence == null
       ? '—'
       : `${fmtNumber(Number(row.match_confidence) * 100, 0)}% ${row.match_method || ''}`.trim();
+    const matchState = classifyMatch(row);
     const volume = row.planned_volume_t == null ? '—' : `${fmtNumber(row.planned_volume_t, 0)} t`;
     const reconciled = row.reconciled_state || 'PROGRAMMED';
     return `<tr>
@@ -280,6 +306,7 @@ function renderLineup() {
       <td>${escapeHtml(row.product || '—')}</td>
       <td>${escapeHtml(volume)}</td>
       <td><span class="state ${stateClass(reconciled)}">${escapeHtml(reconciled)}</span><br><span class="muted">${escapeHtml(row.evidence_class || '')}</span></td>
+      <td><span class="match-state ${matchClass(matchState.key)}">${escapeHtml(matchState.label)}</span></td>
       <td>${escapeHtml(match)}</td>
     </tr>`;
   }).join('');
@@ -298,6 +325,53 @@ function renderSummary(summary = {}) {
     : '—';
   els.metrics.p50.textContent = fmtHours(summary.waiting_p50_hours);
   els.metrics.p90.textContent = fmtHours(summary.waiting_p90_hours);
+  els.metrics.eta.textContent = fmtHours(summary.eta_mae_hours);
+  els.metrics.berth.textContent = fmtHours(summary.berth_avg_hours);
+}
+
+function renderSourceHealth() {
+  if (!state.sourceHealth.length) {
+    els.sourceHealthList.innerHTML = '<div class="source-row"><span>Sem metadados de freshness</span><strong>indisponível</strong></div>';
+    return;
+  }
+  els.sourceHealthList.innerHTML = state.sourceHealth.map(source => {
+    const statusLabel = source.status === 'FRESH'
+      ? 'recente'
+      : source.status === 'DELAYED'
+        ? 'atrasado'
+        : source.status === 'STALE'
+          ? 'stale'
+          : 'sem dado';
+    const threshold = source.monitoringThresholdMinutes == null
+      ? ''
+      : ` · limiar UI ${fmtAge(source.monitoringThresholdMinutes)}`;
+    return `<div class="source-row">
+      <div>
+        <strong>${escapeHtml(source.label)}</strong>
+        <span>${source.latestAt ? `último ${escapeHtml(fmtDate(source.latestAt))}` : 'nenhum timestamp disponível'}${escapeHtml(threshold)}</span>
+      </div>
+      <span class="freshness freshness-${source.status.toLowerCase()}">${escapeHtml(statusLabel)} · ${escapeHtml(fmtAge(source.ageMinutes))}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderOperationalBrief() {
+  const report = buildOperationalBrief(state.summary, state.lineup);
+  els.briefGenerated.textContent = new Intl.DateTimeFormat('pt-BR', {hour: '2-digit', minute: '2-digit'}).format(new Date());
+  const divergenceRows = [...report.conflicts, ...report.unmatched].slice(0, 5);
+  const divergenceHtml = divergenceRows.length
+    ? `<div class="brief-divergences"><h3>Divergências prioritárias</h3>${divergenceRows.map(row => {
+        const match = classifyMatch(row);
+        return `<div class="brief-divergence"><span class="match-state ${matchClass(match.key)}">${escapeHtml(match.label)}</span><strong>${escapeHtml(row.vessel_name || '—')}</strong><span>${escapeHtml(row.port_id || '')} · ETA ${escapeHtml(fmtDate(row.eta))}</span></div>`;
+      }).join('')}</div>`
+    : '<div class="brief-ok">Sem conflitos ou escalas sem match no horizonte atual.</div>';
+
+  els.briefBody.innerHTML = report.sections.map(section => (
+    `<article class="brief-section">
+      <div><h3>${escapeHtml(section.title)}</h3><span class="evidence-tag">${escapeHtml(section.evidence)}</span></div>
+      <p>${escapeHtml(section.text)}</p>
+    </article>`
+  )).join('') + divergenceHtml;
 }
 
 async function refreshAll({fit = false} = {}) {
@@ -312,6 +386,8 @@ async function refreshAll({fit = false} = {}) {
     ]);
     state.vessels = vesselsResponse.data || [];
     state.lineup = lineupResponse.data || [];
+    state.summary = summaryResponse.data || {};
+    state.sourceHealth = buildSourceHealth(state.vessels, state.lineup, new Date());
 
     if (state.selected?.mmsi) {
       const refreshed = state.vessels.find(v => v.mmsi === state.selected.mmsi);
@@ -321,11 +397,13 @@ async function refreshAll({fit = false} = {}) {
     renderMapLayers();
     renderVesselDetail();
     renderLineup();
-    renderSummary(summaryResponse.data || {});
+    renderSummary(state.summary);
+    renderSourceHealth();
+    renderOperationalBrief();
     els.mapEmpty.classList.toggle('hidden', state.vessels.length > 0);
     if (fit) fitToVessels(state.vessels);
-    els.lastUpdate.textContent = `Atualizado ${new Intl.DateTimeFormat('pt-BR', {hour: '2-digit', minute: '2-digit', second: '2-digit'}).format(new Date())}`;
-    setStatus('ok', 'online');
+    els.lastUpdate.textContent = `Gateway consultado ${new Intl.DateTimeFormat('pt-BR', {hour: '2-digit', minute: '2-digit', second: '2-digit'}).format(new Date())}`;
+    setStatus('ok', 'gateway ok');
   } catch (error) {
     console.error(error);
     setStatus('error', 'erro de dados');
