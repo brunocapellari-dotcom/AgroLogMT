@@ -1,0 +1,48 @@
+{
+  "config_id": "maritime_ais_subscription.v1",
+  "purpose": "Bounding boxes amplas para assinatura AIS do piloto Maritime V1. Sao AOIs de captura e nunca devem ser tratadas como geofences operacionais de porto, fundeadouro, canal ou berco.",
+  "pilot_ports": [
+    "SANTOS",
+    "PARANAGUA",
+    "BARCARENA_VILA_DO_CONDE",
+    "SANTAREM",
+    "ITAQUI"
+  ],
+  "hard_rules": [
+    "Bounding box de assinatura AIS e somente area ampla de captura.",
+    "Nenhuma classificacao PORT, ANCHORAGE, CHANNEL ou BERTH pode ser derivada desta configuracao.",
+    "Geofences operacionais continuam subordinadas ao contrato maritime_geofences.v1 e ao gate GEOFENCE_VALIDATED."
+  ],
+  "areas": [
+    {
+      "port_id": "SANTOS",
+      "reference_point": [-23.956667, -46.310278],
+      "reference_source": "https://www.portodesantos.com.br/wp-content/uploads/ANNUAL-REPORT-2021-ENGLISH-VERSION.pdf",
+      "bounding_box": [[-24.5, -46.9], [-23.4, -45.7]]
+    },
+    {
+      "port_id": "PARANAGUA",
+      "reference_point": [-25.50375, -48.514306],
+      "reference_source": "https://www.portosdoparana.pr.gov.br/sites/portos/arquivos_restritos/files/documento/2025-03/appa_-_pga_-_pl-appa-sgi-001a_-_pae_pce_portos_do_parana_2025_rev07_c_anexos.pdf",
+      "bounding_box": [[-26.1, -49.1], [-24.9, -47.9]]
+    },
+    {
+      "port_id": "BARCARENA_VILA_DO_CONDE",
+      "reference_point": [-1.543667, -48.7465],
+      "reference_source": "https://www.cdp.com.br/porto-de-vila-do-conde/",
+      "bounding_box": [[-2.2, -49.2], [-0.9, -48.2]]
+    },
+    {
+      "port_id": "SANTAREM",
+      "reference_point": [-2.415167, -54.7385],
+      "reference_source": "https://www.cdp.com.br/companhia-docas-do-para/porto-de-santarem/",
+      "bounding_box": [[-2.9, -55.2], [-1.9, -54.2]]
+    },
+    {
+      "port_id": "ITAQUI",
+      "reference_point": [-2.583333, -44.375],
+      "reference_source": "https://website.portodoitaqui.com/porto-itaqui/localizacao",
+      "bounding_box": [[-3.2, -45.0], [-2.0, -43.8]]
+    }
+  ]
+}
