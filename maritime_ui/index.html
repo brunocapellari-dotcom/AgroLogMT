@@ -26,7 +26,7 @@
       </header>
 
       <section class="metrics" aria-label="Resumo operacional">
-        <article><span>Navios live</span><strong id="metric-live">—</strong></article>
+        <article><span>Navios recentes</span><strong id="metric-live">—</strong></article>
         <article><span>Aproximando</span><strong id="metric-approach">—</strong></article>
         <article><span>Aguardando</span><strong id="metric-waiting">—</strong></article>
         <article><span>Atracados</span><strong id="metric-berthed">—</strong></article>
@@ -34,6 +34,8 @@
         <article><span>Match AIS × line-up</span><strong id="metric-match">—</strong></article>
         <article><span>Espera P50</span><strong id="metric-p50">—</strong></article>
         <article><span>Espera P90</span><strong id="metric-p90">—</strong></article>
+        <article><span>Erro ETA médio</span><strong id="metric-eta">—</strong></article>
+        <article><span>Berço médio</span><strong id="metric-berth">—</strong></article>
       </section>
 
       <main class="workspace">
@@ -62,6 +64,27 @@
             </div>
           </section>
 
+          <section class="card source-health-card">
+            <div class="card-title-row">
+              <div>
+                <h2>Source Health / Freshness</h2>
+                <p>Idade do dado disponível no Gateway; limiares são operacionais da UI, não SLA da fonte.</p>
+              </div>
+            </div>
+            <div id="source-health-list" class="source-health-list"></div>
+          </section>
+
+          <section class="card brief-card">
+            <div class="card-title-row">
+              <div>
+                <h2>Relatório confrontado</h2>
+                <p>AIS físico × line-up informado, sem promover programação a realizado.</p>
+              </div>
+              <span id="brief-generated" class="count-pill">—</span>
+            </div>
+            <div id="brief-body" class="brief-body"></div>
+          </section>
+
           <section class="card lineup-card">
             <div class="card-title-row">
               <div>
@@ -78,7 +101,8 @@
                     <th>ETA</th>
                     <th>Produto</th>
                     <th>Programado</th>
-                    <th>Estado reconciliado</th>
+                    <th>Estado operacional</th>
+                    <th>Confronto</th>
                     <th>Match</th>
                   </tr>
                 </thead>
@@ -91,7 +115,7 @@
 
       <footer>
         <span id="last-update">Sem atualização</span>
-        <span>AIS observado · line-up observado · realizado somente com evidência operacional</span>
+        <span>AIS observado · line-up programado/informado · realizado somente com evidência operacional</span>
       </footer>
     </div>
     <script type="module" src="/src/main.js"></script>
