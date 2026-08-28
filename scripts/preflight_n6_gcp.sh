@@ -12,6 +12,7 @@ GATEWAY_SA_NAME="${GATEWAY_SA_NAME:-agrolog-gateway}"
 BUILD_SA_NAME="${BUILD_SA_NAME:-agrolog-builder}"
 DEPLOYER_SA_NAME="${DEPLOYER_SA_NAME:-agrolog-github-deployer}"
 AR_REPOSITORY="${AR_REPOSITORY:-agrolog}"
+BUILD_SOURCE_BUCKET="${BUILD_SOURCE_BUCKET:-${PROJECT_ID}-agrolog-build-source}"
 
 failures=0
 warnings=0
@@ -34,7 +35,7 @@ ok "localização BigQuery esperada: $BQ_LOCATION"
 
 for api in \
   run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com \
-  bigquery.googleapis.com drive.googleapis.com iam.googleapis.com \
+  bigquery.googleapis.com drive.googleapis.com iam.googleapis.com storage.googleapis.com \
   iamcredentials.googleapis.com sts.googleapis.com logging.googleapis.com; do
   if gcloud services list --enabled --project "$PROJECT_ID" --filter="config.name=$api" --format='value(config.name)' | grep -qx "$api"; then
     ok "API habilitada: $api"
@@ -74,6 +75,11 @@ if gcloud artifacts repositories describe "$AR_REPOSITORY" --location "$REGION" 
   ok "Artifact Registry: $AR_REPOSITORY"
 else
   fail "Artifact Registry ausente: $AR_REPOSITORY"
+fi
+if gcloud storage buckets describe "gs://${BUILD_SOURCE_BUCKET}" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  ok "Build staging bucket: gs://${BUILD_SOURCE_BUCKET}"
+else
+  fail "Build staging bucket ausente: gs://${BUILD_SOURCE_BUCKET}"
 fi
 
 for job in agrolog-dados agrolog-radar agrolog-conhecimento; do
