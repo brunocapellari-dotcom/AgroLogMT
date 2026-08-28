@@ -79,8 +79,9 @@ gcloud artifacts repositories describe "$AR_REPOSITORY" --location "$REGION" --p
 # Build com identidade própria de menor privilégio; o deployer apenas cria o build e atualiza Cloud Run.
 gcloud builds submit . \
   --project "$PROJECT_ID" \
+  --service-account "$BUILD_SERVICE_ACCOUNT" \
   --config collector/cloudbuild.yaml \
-  --substitutions "_IMAGE=${IMAGE},_BUILD_SERVICE_ACCOUNT=${BUILD_SERVICE_ACCOUNT}"
+  --substitutions "_IMAGE=${IMAGE}"
 
 common_env="AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_OPS_DATASET=${OPS_DATASET},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_TRADE_DATASET=${TRADE_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION},AGROLOG_DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID},AGROLOG_CONFIG=/app/collector/config/sources.pilot.json"
 
