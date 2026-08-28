@@ -19,6 +19,7 @@ jobs:
       WIF_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
       BUILD_SERVICE_ACCOUNT: ${{ secrets.GCP_BUILD_SERVICE_ACCOUNT }}
+      BUILD_SOURCE_BUCKET: ${{ secrets.GCP_BUILD_SOURCE_BUCKET }}
       PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
       REGION: southamerica-east1
       BQ_LOCATION: southamerica-east1
@@ -30,7 +31,7 @@ jobs:
       - name: Fail closed if bootstrap secrets are missing
         run: |
           missing=0
-          for key in WIF_PROVIDER GCP_SERVICE_ACCOUNT BUILD_SERVICE_ACCOUNT PROJECT_ID; do
+          for key in WIF_PROVIDER GCP_SERVICE_ACCOUNT BUILD_SERVICE_ACCOUNT BUILD_SOURCE_BUCKET PROJECT_ID; do
             if [ -z "${!key}" ]; then
               echo "MISSING ${key}"
               missing=1
