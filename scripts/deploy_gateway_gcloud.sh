@@ -50,8 +50,9 @@ gcloud artifacts repositories describe "$AR_REPOSITORY" --location "$REGION" --p
 # Build com builder dedicado. IAM/datasets não são alterados neste script.
 gcloud builds submit . \
   --project "$PROJECT_ID" \
+  --service-account "$BUILD_SERVICE_ACCOUNT" \
   --config gateway/cloudbuild.yaml \
-  --substitutions "_IMAGE=${IMAGE},_BUILD_SERVICE_ACCOUNT=${BUILD_SERVICE_ACCOUNT}"
+  --substitutions "_IMAGE=${IMAGE}"
 
 gcloud run deploy "$SERVICE_NAME" \
   --image "$IMAGE" \
