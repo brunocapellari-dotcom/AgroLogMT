@@ -3,3 +3,5 @@ steps:
     args: ["build", "-f", "gateway/Dockerfile", "-t", "${_IMAGE}", "."]
 images:
   - "${_IMAGE}"
+options:
+  logging: CLOUD_LOGGING_ONLY
