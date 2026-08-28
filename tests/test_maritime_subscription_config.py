@@ -26,7 +26,7 @@ class MaritimeSubscriptionConfigTests(unittest.TestCase):
 
     def test_subscription_boxes_are_valid_but_not_geofences(self) -> None:
         rules = " ".join(self.payload["hard_rules"]).upper()
-        self.assertIn("NAO", rules.replace("Ã", "A"))
+        self.assertIn("NENHUMA CLASSIFICACAO", rules)
         self.assertIn("GEOFENCE", rules)
 
         for area in self.payload["areas"]:
