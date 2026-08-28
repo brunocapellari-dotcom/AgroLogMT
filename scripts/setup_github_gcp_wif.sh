@@ -20,6 +20,7 @@ DEPLOYER_SA_NAME="${DEPLOYER_SA_NAME:-agrolog-github-deployer}"
 BUILD_SA_NAME="${BUILD_SA_NAME:-agrolog-builder}"
 COLLECTOR_SA_NAME="${COLLECTOR_SA_NAME:-agrolog-collector}"
 GATEWAY_SA_NAME="${GATEWAY_SA_NAME:-agrolog-gateway}"
+GATEWAY_SERVICE_NAME="${GATEWAY_SERVICE_NAME:-agrolog-gateway}"
 CONFIGURE_ANA="${CONFIGURE_ANA:-0}"
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
@@ -168,6 +169,16 @@ for sa in "$BUILD_SA_EMAIL" "$COLLECTOR_SA_EMAIL" "$GATEWAY_SA_EMAIL"; do
     --member="serviceAccount:${DEPLOYER_SA_EMAIL}" \
     --role=roles/iam.serviceAccountUser --quiet >/dev/null
 done
+
+# Privacidade do Gateway é configuração administrativa. Novos serviços são privados por padrão;
+# se já existir um Gateway legado, reforça a verificação IAM e remove eventual allUsers/invoker.
+if gcloud run services describe "$GATEWAY_SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  gcloud run services update "$GATEWAY_SERVICE_NAME" \
+    --region "$REGION" --project "$PROJECT_ID" --invoker-iam-check --quiet >/dev/null
+  gcloud run services remove-iam-policy-binding "$GATEWAY_SERVICE_NAME" \
+    --region "$REGION" --project "$PROJECT_ID" \
+    --member=allUsers --role=roles/run.invoker --quiet >/dev/null 2>&1 || true
+fi
 
 # WIF restrito ao repositório e à branch main.
 if ! gcloud iam workload-identity-pools describe "$POOL_ID" --location=global --project "$PROJECT_ID" >/dev/null 2>&1; then
