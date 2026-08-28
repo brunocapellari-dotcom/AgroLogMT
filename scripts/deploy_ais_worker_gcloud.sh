@@ -19,8 +19,9 @@ TIME_ZONE="${TIME_ZONE:-America/Cuiaba}"
 CAPTURE_SECONDS="${AIS_CAPTURE_SECONDS:-3000}"
 BATCH_SIZE="${AIS_BATCH_SIZE:-250}"
 SHIPPING_LOOKBACK_DAYS="${SHIPPING_LOOKBACK_DAYS:-30}"
-# Broad pilot subscription around Santos. This is not a berth/anchorage geofence.
-AIS_BOUNDING_BOXES_JSON="${AIS_BOUNDING_BOXES_JSON:-[[[-25.0,-47.0],[-23.0,-45.0]]]}"
+AIS_SUBSCRIPTION_CONFIG="${AIS_SUBSCRIPTION_CONFIG:-collector/config/maritime_ais_subscription.v1.json}"
+AIS_BOUNDING_BOXES_JSON="${AIS_BOUNDING_BOXES_JSON:-}"
+# Geofences operacionais permanecem vazias por padrao ate o gate GEOFENCE_VALIDATED.
 AIS_PORT_ZONES_JSON="${AIS_PORT_ZONES_JSON:-[]}"
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
@@ -28,7 +29,24 @@ if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
 fi
 command -v gcloud >/dev/null || { echo 'ERRO: gcloud ausente' >&2; exit 2; }
 command -v bq >/dev/null || { echo 'ERRO: bq ausente' >&2; exit 2; }
+command -v python3 >/dev/null || { echo 'ERRO: python3 ausente' >&2; exit 2; }
+
+if [[ -z "$AIS_BOUNDING_BOXES_JSON" ]]; then
+  [[ -f "$AIS_SUBSCRIPTION_CONFIG" ]] || { echo "ERRO: config AIS ausente: ${AIS_SUBSCRIPTION_CONFIG}" >&2; exit 2; }
+  AIS_BOUNDING_BOXES_JSON="$(python3 - "$AIS_SUBSCRIPTION_CONFIG" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+boxes = [area["bounding_box"] for area in payload["areas"]]
+print(json.dumps(boxes, separators=(",", ":")))
+PY
+)"
+fi
+
 gcloud config set project "$PROJECT_ID" >/dev/null
+
 
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com \
   bigquery.googleapis.com secretmanager.googleapis.com cloudscheduler.googleapis.com iam.googleapis.com \
@@ -52,7 +70,7 @@ gcloud secrets add-iam-policy-binding "$SECRET_NAME" --project "$PROJECT_ID" --m
 gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="serviceAccount:${SCHEDULER_SA}" --role="roles/run.invoker" --condition=None >/dev/null
 
 if bq show --project_id="$PROJECT_ID" "$PROJECT_ID:$DATASET" >/dev/null 2>&1; then
-  actual_location="$(bq show --project_id="$PROJECT_ID" --format=prettyjson "$PROJECT_ID:$DATASET" | python -c 'import json,sys; print(json.load(sys.stdin).get("location", ""))')"
+  actual_location="$(bq show --project_id="$PROJECT_ID" --format=prettyjson "$PROJECT_ID:$DATASET" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("location", ""))')"
   [[ -z "$actual_location" || "$actual_location" == "$BQ_LOCATION" ]] || { echo "ERRO: dataset ${DATASET} em ${actual_location}; esperado ${BQ_LOCATION}" >&2; exit 4; }
 else
   bq --location="$BQ_LOCATION" mk --dataset "$PROJECT_ID:$DATASET"
@@ -99,7 +117,8 @@ OK: M01-S AIS + reconciliation jobs implantados.
 AIS job: ${AIS_JOB_NAME} — minuto 05, captura ${CAPTURE_SECONDS}s.
 Reconciliation job: ${RECON_JOB_NAME} — minuto 58.
 Dataset: ${PROJECT_ID}.${DATASET}
-Piloto subscription box: ${AIS_BOUNDING_BOXES_JSON}
+Piloto subscription AOIs: ${AIS_BOUNDING_BOXES_JSON}
+Geofences operacionais: ${AIS_PORT_ZONES_JSON}
 
 Teste AIS:
 gcloud run jobs execute ${AIS_JOB_NAME} --region ${REGION} --project ${PROJECT_ID} --wait --update-env-vars AIS_MAX_RECORDS=10,AIS_CAPTURE_SECONDS=120
