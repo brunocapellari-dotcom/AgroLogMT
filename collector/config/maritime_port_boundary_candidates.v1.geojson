@@ -1,0 +1,53 @@
+{
+  "type": "FeatureCollection",
+  "name": "maritime_port_boundary_candidates.v1",
+  "reference_date": "2026-08-28",
+  "runtime_eligible": false,
+  "notice": "Administrative port boundaries only. They are not APPROACH, ANCHORAGE or BERTH runtime geofences.",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "boundary_id": "BARCARENA_VILA_DO_CONDE:PORT_ORGANIZED:2015",
+        "port_id": "BARCARENA_VILA_DO_CONDE",
+        "boundary_type": "PORT_ORGANIZED",
+        "status": "PENDING_VALIDATION",
+        "runtime_eligible": false,
+        "evidence_class": "INFORMADO",
+        "legal_act": "Decreto nº 8.394/2015",
+        "source_url": "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2015/decreto/d8394.htm",
+        "source_datum": "SIRGAS 2000",
+        "transformation": "DMS_TO_DECIMAL",
+        "preliminary_area_km2": 110.5786,
+        "preliminary_perimeter_km": 55.8426,
+        "qa_note": "Simple Polygon validity passed in preliminary QA. Must still pass official-map, hydrographic and AIS historical QA."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[ -48.737266666667, -1.430611111111 ],[ -48.710930555556, -1.452291666667 ],[ -48.748525, -1.502719444444 ],[ -48.728119444444, -1.519816666667 ],[ -48.7356, -1.530591666667 ],[ -48.734636111111, -1.533766666667 ],[ -48.733677777778, -1.534372222222 ],[ -48.740136111111, -1.5447 ],[ -48.736647222222, -1.546866666667 ],[ -48.738163888889, -1.5493 ],[ -48.738027777778, -1.549380555556 ],[ -48.74895, -1.567111111111 ],[ -48.758327777778, -1.561222222222 ],[ -48.782697222222, -1.559405555556 ],[ -48.815936111111, -1.605058333333 ],[ -48.851061111111, -1.576277777778 ],[ -48.737266666667, -1.430611111111 ]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "boundary_id": "ITAQUI:PORT_ORGANIZED:2005",
+        "port_id": "ITAQUI",
+        "boundary_type": "PORT_ORGANIZED",
+        "status": "PENDING_CURRENCY_REVIEW",
+        "runtime_eligible": false,
+        "evidence_class": "INFORMADO",
+        "legal_act": "Decreto de 25/07/2005",
+        "source_url": "https://www.planalto.gov.br/ccivil_03/_ato2004-2006/2005/dnn/dnn10590.htm",
+        "source_datum": "VERIFY_FROM_CANONICAL_METADATA",
+        "transformation": "DMS_TO_DECIMAL",
+        "preliminary_area_km2": 5.205,
+        "preliminary_perimeter_km": 15.6663,
+        "qa_note": "Simple Polygon validity passed and area is consistent with EMAP order of magnitude. Do not promote until superseding 2025/2026 polygon act is ruled out."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[ -44.368611111111, -2.582888888889 ],[ -44.369666666667, -2.576583333333 ],[ -44.379638888889, -2.57 ],[ -44.37475, -2.567833333333 ],[ -44.374111111111, -2.566583333333 ],[ -44.363055555556, -2.561611111111 ],[ -44.357361111111, -2.569472222222 ],[ -44.364083333333, -2.576777777778 ],[ -44.357111111111, -2.618388888889 ],[ -44.362527777778, -2.619305555556 ],[ -44.368611111111, -2.582888888889 ]]]
+      }
+    }
+  ]
+}
