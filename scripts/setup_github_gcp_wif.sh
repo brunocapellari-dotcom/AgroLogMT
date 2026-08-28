@@ -12,6 +12,7 @@ BQ_LOCATION="${BQ_LOCATION:-southamerica-east1}"
 POOL_ID="${POOL_ID:-github}"
 PROVIDER_ID="${PROVIDER_ID:-agrologmt}"
 AR_REPOSITORY="${AR_REPOSITORY:-agrolog}"
+BUILD_SOURCE_BUCKET="${BUILD_SOURCE_BUCKET:-${PROJECT_ID}-agrolog-build-source}"
 OPS_DATASET="${OPS_DATASET:-agrolog_ops}"
 LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
 TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
@@ -117,6 +118,14 @@ if ! gcloud artifacts repositories describe "$AR_REPOSITORY" --location "$REGION
   gcloud artifacts repositories create "$AR_REPOSITORY" \
     --repository-format=docker --location "$REGION" --project "$PROJECT_ID"
 fi
+if ! gcloud storage buckets describe "gs://${BUILD_SOURCE_BUCKET}" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  gcloud storage buckets create "gs://${BUILD_SOURCE_BUCKET}" \
+    --project "$PROJECT_ID" --location "$REGION" --uniform-bucket-level-access
+fi
+cat >/tmp/agrolog-build-lifecycle.json <<'JSON'
+{"rule":[{"action":{"type":"Delete"},"condition":{"age":7}}]}
+JSON
+gcloud storage buckets update "gs://${BUILD_SOURCE_BUCKET}" --lifecycle-file=/tmp/agrolog-build-lifecycle.json >/dev/null
 
 # Runtime collector: executa jobs BQ; escrita apenas nos datasets AgroLog.
 ensure_project_role "$COLLECTOR_SA_EMAIL" roles/bigquery.user
@@ -128,11 +137,13 @@ ensure_dataset_role "$TRADE_DATASET" "$COLLECTOR_SA_EMAIL" roles/bigquery.dataEd
 ensure_project_role "$GATEWAY_SA_EMAIL" roles/bigquery.jobUser
 ensure_dataset_role "$LOGISTICA_DATASET" "$GATEWAY_SA_EMAIL" roles/bigquery.dataViewer
 
-# Builder dedicado: só escreve imagens no repositório AgroLog e logs no Cloud Logging.
+# Builder dedicado: imagem no repositório AgroLog, logs no Cloud Logging e leitura do staging próprio.
 ensure_project_role "$BUILD_SA_EMAIL" roles/logging.logWriter
 gcloud artifacts repositories add-iam-policy-binding "$AR_REPOSITORY" \
   --location "$REGION" --project "$PROJECT_ID" \
   --member="serviceAccount:${BUILD_SA_EMAIL}" --role=roles/artifactregistry.writer --quiet >/dev/null
+gcloud storage buckets add-iam-policy-binding "gs://${BUILD_SOURCE_BUCKET}" \
+  --member="serviceAccount:${BUILD_SA_EMAIL}" --role=roles/storage.objectViewer --quiet >/dev/null
 
 # Cloud Build service agent pode gerar token curto para o builder dedicado.
 gcloud iam service-accounts add-iam-policy-binding "$BUILD_SA_EMAIL" \
@@ -146,10 +157,12 @@ for role in roles/serviceusage.serviceUsageConsumer roles/cloudbuild.builds.edit
   ensure_project_role "$DEPLOYER_SA_EMAIL" "$role"
 done
 
-# Artifact Registry Reader é exigido para deploy de imagem em Cloud Run.
+# Acesso do deployer fica restrito ao repositório de imagens e ao bucket de staging do AgroLog.
 gcloud artifacts repositories add-iam-policy-binding "$AR_REPOSITORY" \
   --location "$REGION" --project "$PROJECT_ID" \
   --member="serviceAccount:${DEPLOYER_SA_EMAIL}" --role=roles/artifactregistry.reader --quiet >/dev/null
+gcloud storage buckets add-iam-policy-binding "gs://${BUILD_SOURCE_BUCKET}" \
+  --member="serviceAccount:${DEPLOYER_SA_EMAIL}" --role=roles/storage.objectUser --quiet >/dev/null
 
 # actAs somente nas identidades efetivamente usadas por build/deploy.
 for sa in "$BUILD_SA_EMAIL" "$COLLECTOR_SA_EMAIL" "$GATEWAY_SA_EMAIL"; do
@@ -183,6 +196,7 @@ printf '%s' "$PROVIDER_RESOURCE" | gh secret set GCP_WORKLOAD_IDENTITY_PROVIDER 
 printf '%s' "$DEPLOYER_SA_EMAIL" | gh secret set GCP_SERVICE_ACCOUNT --repo "$REPO"
 printf '%s' "$DEPLOYER_SA_EMAIL" | gh secret set GCP_DEPLOYER_SERVICE_ACCOUNT --repo "$REPO"
 printf '%s' "$BUILD_SA_EMAIL" | gh secret set GCP_BUILD_SERVICE_ACCOUNT --repo "$REPO"
+printf '%s' "$BUILD_SOURCE_BUCKET" | gh secret set GCP_BUILD_SOURCE_BUCKET --repo "$REPO"
 printf '%s' "$PROJECT_ID" | gh secret set GCP_PROJECT_ID --repo "$REPO"
 
 if [[ "$CONFIGURE_ANA" == "1" ]]; then
@@ -206,5 +220,6 @@ printf 'Deployer federado: %s\n' "$DEPLOYER_SA_EMAIL"
 printf 'Builder dedicado:  %s\n' "$BUILD_SA_EMAIL"
 printf 'Collector runtime: %s\n' "$COLLECTOR_SA_EMAIL"
 printf 'Gateway runtime:   %s\n' "$GATEWAY_SA_EMAIL"
+printf 'Build staging:     gs://%s\n' "$BUILD_SOURCE_BUCKET"
 printf 'IMPORTANTE: compartilhe a pasta RAW do Drive como Editor somente com %s.\n' "$COLLECTOR_SA_EMAIL"
 printf 'Depois disso, o deploy/homologação recorrente não deve alterar IAM, APIs ou criar datasets.\n'
