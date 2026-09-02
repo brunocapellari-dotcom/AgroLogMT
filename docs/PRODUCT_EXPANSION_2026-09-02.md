@@ -1,6 +1,7 @@
 # Expansão de Produtos e Inteligência — AgroLog MT
 
 Data: 02/09/2026
+Status: consolidado após decisão do Owner
 
 ## Objetivo
 
@@ -9,6 +10,8 @@ Consolidar as rodadas de pesquisa em módulos que ampliam o AgroLog MT sem criar
 ## Regra
 
 Não reescrever coletor, contrato, Gateway ou modelo homologado apenas para padronizar ferramenta. Novos componentes entram somente quando resolvem caso real e passam por licença, segurança, testes e estratégia de saída.
+
+O **AgroLog Fleet OS Brasil foi descontinuado** como projeto/subprojeto comercial nesta data por ausência de público validado. Ideias técnicas de frota permanecem apenas como referência e não devem consumir desenvolvimento até nova decisão objetiva.
 
 ## 1. Official Sources Intelligence
 
@@ -42,7 +45,7 @@ Não adicionar ClickHouse/Redpanda/RisingWave/PostGIS apenas por antecipação. 
 
 ## 3. GeoRisk / Live Earth Core
 
-Módulo compartilhado do AgroLog, não empresa separada inicialmente.
+Módulo compartilhado do AgroLog, não empresa separada.
 
 Fontes/capacidades prioritárias:
 
@@ -55,57 +58,89 @@ Fontes/capacidades prioritárias:
 - Brazil Data Cube;
 - dados geoespaciais oficiais brasileiros.
 
-Produtos derivados:
+Produtos derivados internos:
 
 - Fire Risk;
 - Flood/Water Risk;
 - Drought Risk;
-- Route Weather Risk;
+- Route Weather Risk quando houver caso de uso;
 - property/farm risk;
 - vegetation/land/water change;
 - infrastructure monitoring.
 
 Código proprietário deve produzir `risk/event objects` com evidência, timestamp, geografia, confidence e natureza da inferência, em vez de apenas mostrar imagens.
 
-## 4. AgroLog Fleet OS Brasil
+## 4. Field Weather Station — observação meteorológica própria
 
-Novo subprojeto lógico a validar comercialmente, podendo permanecer no repositório AgroLog enquanto compartilha Gateway, Data/Geo/Security Core e governança.
+Módulo de observação de campo compartilhado com o projeto **Maintenance & Field Intelligence** da Holding.
 
-### 4.1 Núcleo
+Objetivo: construir estações meteorológicas modulares de baixo custo, baseadas em ESP32 e sensores adequados, para preencher lacunas locais e produzir dados próprios observados sem substituir as redes oficiais.
 
-- veículos/implementos;
-- motoristas;
-- viagens;
-- clientes/origens/destinos;
-- documentos;
-- custos;
-- manutenção;
-- ocorrências;
-- localização autorizada;
-- profitability.
+### 4.1 Configuração mínima
 
-### 4.2 Módulos consolidados
+- ESP32;
+- temperatura;
+- umidade relativa;
+- pressão atmosférica;
+- timestamp confiável;
+- health/status do dispositivo;
+- armazenamento temporário se perder conectividade.
 
-- Fleet Profitability: margem econômica real por viagem, rota, veículo, cliente e motorista;
-- Document Intelligence: CT-e/MDF-e/NF-e/POD e conciliação;
-- Tire Intelligence: custo/km, posição, recapagem, falha e vida útil;
-- Fuel Intelligence/Fraud: nota + GPS + CAN/telemetria + expected consumption;
-- Detention Intelligence: espera, carga/descarga e turnaround por cliente/local;
-- Route Risk: clima, fogo, restrição, histórico e road score;
-- Driver Copilot: PWA/offline/voz para eventos operacionais;
-- Maintenance/Asset Health;
-- Road Intelligence Network com sinais agregados de frota;
-- parts/services procurement futuro.
+### 4.2 Expansões
 
-### 4.3 Componentes/referências
+- pluviômetro de báscula;
+- anemômetro;
+- direção do vento;
+- radiação/iluminação quando sensor adequado existir;
+- umidade/temperatura do solo em nós específicos;
+- energia solar + bateria;
+- Wi-Fi no modelo simples;
+- LoRa/gateway ou conectividade celular quando a distância exigir.
 
-Fleetbase por arquitetura/módulos; Traccar; OpenDBC/SavvyCAN; NFePHP; Valhalla/FMM; OR-Tools/PyVRP; PyOD/Nixtla; Pipecat; MapLibre/deck.gl.
+### 4.3 Software e componentes de referência
 
-Nenhum componente externo define o modelo de domínio canônico; contratos AgroLog permanecem próprios.
+- ESPHome;
+- OpenMQTTGateway;
+- rtl_433 para integração de sensores RF compatíveis quando fizer sentido;
+- MQTT;
+- WeeWX como referência de software de estação;
+- componentes LoRa avaliados nas rodadas anteriores.
+
+Nenhum desses componentes define o contrato canônico. O AgroLog terá schema próprio para `field_weather_observation`, device registry, calibration metadata, source health e quality flags.
+
+### 4.4 Governança científica
+
+Toda observação própria deve registrar:
+
+- device_id;
+- localização e altitude quando autorizadas;
+- sensor/modelo;
+- firmware;
+- calibration_version;
+- timestamp de medição e ingestão;
+- unidade;
+- quality flags;
+- manutenção/calibração;
+- alimentação/conectividade.
+
+A estação própria não será chamada de estação oficial INMET. O QA deverá comparar, quando aplicável, com INMET, CPTEC/INPE, CEMADEN, ANA e outros dados canônicos próximos, sem forçar igualdade entre escalas espaciais diferentes.
+
+### 4.5 Segurança obrigatória
+
+- identidade única por dispositivo;
+- credenciais individuais e revogáveis;
+- secrets fora do GitHub;
+- TLS quando tecnicamente suportado;
+- MQTT ACL por dispositivo/tópico;
+- nenhuma porta administrativa exposta à internet;
+- atualização OTA controlada/assinada quando adotada;
+- segregação do dispositivo/gateway;
+- logs de firmware e atualização;
+- possibilidade de bloqueio remoto de um dispositivo comprometido.
 
 ## 5. Traceability & Export Compliance — AgroLog Trace
 
-Módulo inicial do AgroLog para rastreabilidade de cadeias e exigências de mercado/exportação.
+Permanece como módulo interno do AgroLog, não como novo negócio independente sem nova validação.
 
 Capacidades:
 
@@ -115,43 +150,19 @@ Capacidades:
 - evidências ambientais/geoespaciais;
 - documentos;
 - reconciliação de cadeia;
-- versionamento de regra regulatória;
-- Supply Chain Passport futuro.
+- versionamento de regra regulatória.
 
 `OpenEPCIS/EPCIS 2.0` é referência/componente possível, sujeito ao Intake Gate. Não afirmar conformidade apenas por rastreabilidade técnica; compliance exige regra vigente, evidência e auditoria.
 
 ## 6. Carbon & Environmental Intelligence
 
-Módulo do AgroLog Trace/GeoRisk, não projeto separado agora.
+Permanece apenas como capacidade analítica acoplada a GeoRisk/Trace quando dados sustentarem. Não abrir projeto/negócio independente.
 
-Calcular quando dados sustentarem:
+Registrar metodologia, fatores, escopo e incerteza; evitar green claims não auditáveis.
 
-- diesel/rota/carga;
-- energia/processamento;
-- t.km;
-- fatores versionados;
-- escopo e incerteza.
+## 7. Agro Quality / Lab
 
-Brightway/LCA é referência de cálculo. Resultados devem registrar metodologia, fatores e intervalo/incerteza; evitar green claims não auditáveis.
-
-## 7. Agro Quality / Lab Intelligence
-
-Vertical a validar dentro do AgroLog antes de qualquer spin-off.
-
-Objetivo: ligar qualidade física/laboratorial a origem, lote, armazenagem, transporte e resultado.
-
-Dados potenciais:
-
-- umidade;
-- impurezas;
-- avariados/ardidos;
-- peso;
-- temperatura;
-- classificação;
-- laudos;
-- sensores de armazenagem.
-
-SENAITE é referência de LIMS e exige revisão de licença/integração antes de uso comercial. O diferencial AgroLog deve ser a análise e reconciliação, não reconstrução de um LIMS genérico.
+Não abrir spin-off ou projeto comercial independente. Preservar somente conhecimento, schemas e possibilidades analíticas úteis ao AgroLog quando aparecer necessidade operacional real. SENAITE permanece REFERENCIA sujeita a licença.
 
 ## 8. Maritime Intelligence — ampliações aprovadas conceitualmente
 
@@ -184,27 +195,27 @@ Vídeo não vira verdade por si só. O conhecimento estrutural deve ser confront
 
 ## 10. Monetização transversal
 
-Possíveis camadas sem criar unidades separadas inicialmente:
+Sem abrir novos projetos nesta decisão, continuam possíveis dentro do AgroLog quando houver público:
 
 - APIs derivadas via AgroLog Gateway;
 - alertas premium;
-- Fleet OS por assinatura;
-- Trace/Compliance por empresa/propriedade/lote;
-- GeoRisk API;
+- Trace/Compliance se posteriormente validado;
+- GeoRisk API se posteriormente validado;
 - Maritime ETA/Pressure API;
-- Quality analytics;
 - relatórios e índices proprietários;
 - data products derivados quando licenciamento permitir.
+
+Fleet OS e Quality/Lab não entram na fila comercial atual.
 
 ## 11. Ordem recomendada sem desviar P0/P1
 
 1. concluir gates atuais CONAB/Gateway/Comex/clima;
 2. consolidar Official Sources Intelligence e Source Hunter como capacidade compartilhada;
 3. ativar GeoRisk usando fontes já prioritárias;
-4. validar comercialmente Fleet OS com escopo de profitability + documentos + detention antes de expandir;
-5. Trace/Export Compliance;
-6. Maritime pós-V1;
-7. Quality/Lab;
-8. Carbon somente com dados e metodologia auditáveis.
+4. especificar e montar o primeiro Field Weather Station Node de baixo custo, sem interferir no core;
+5. integrar e validar observações próprias contra fontes oficiais próximas;
+6. preservar Trace como módulo futuro condicionado a necessidade real;
+7. Maritime pós-V1;
+8. Carbon/Quality apenas quando houver caso operacional e dados suficientes.
 
 Toda expansão deve entrar no AI-Holding com milestone, acceptance criteria, owner, risco, dependências e decisão explícita de continuidade.
