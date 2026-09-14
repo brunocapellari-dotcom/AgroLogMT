@@ -23,6 +23,7 @@ class ShippingBigQueryStore:
         prefix = f"{self.project_id}.{self.dataset_id}"
         self.lineup = f"{prefix}.shipping_lineup_calls"
         self.ais = f"{prefix}.shipping_ais_positions"
+        self.ais_capture_events = f"{prefix}.shipping_ais_capture_events"
         self.operations = f"{prefix}.shipping_port_operations"
         self.reconciliation = f"{prefix}.shipping_reconciliation"
 
@@ -50,6 +51,14 @@ CREATE TABLE IF NOT EXISTS `{self.ais}` (
 ) PARTITION BY DATE(observed_at) CLUSTER BY mmsi, imo, port_id, zone
 """).result()
         self.client.query(f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS raw_message_json STRING").result()
+        self.client.query(f"""
+CREATE TABLE IF NOT EXISTS `{self.ais_capture_events}` (
+ event_id STRING NOT NULL, run_id STRING NOT NULL, event_type STRING NOT NULL,
+ event_at TIMESTAMP NOT NULL, source_id STRING NOT NULL,
+ records INT64, aoi_count INT64, capture_seconds_requested FLOAT64,
+ error_type STRING, details_json STRING
+) PARTITION BY DATE(event_at) CLUSTER BY event_type, source_id, run_id
+""").result()
         self.client.query(f"""
 CREATE TABLE IF NOT EXISTS `{self.operations}` (
  operation_id STRING NOT NULL, call_id STRING NOT NULL, port_id STRING NOT NULL,
@@ -100,6 +109,22 @@ CREATE TABLE IF NOT EXISTS `{self.reconciliation}` (
         data = list(rows)
         ids = [str(r["observation_id"]) for r in data]
         return self._insert(self.ais, data, row_ids=ids)
+
+    def load_ais_capture_event(self, row: dict[str, Any]) -> int:
+        self.ensure_objects()
+        event = {
+            "event_id": row["event_id"],
+            "run_id": row["run_id"],
+            "event_type": row["event_type"],
+            "event_at": row.get("event_at", self._now()),
+            "source_id": row.get("source_id", "aisstream"),
+            "records": row.get("records"),
+            "aoi_count": row.get("aoi_count"),
+            "capture_seconds_requested": row.get("capture_seconds_requested"),
+            "error_type": row.get("error_type"),
+            "details_json": json.dumps(row.get("details", {}), ensure_ascii=False, sort_keys=True),
+        }
+        return self._insert(self.ais_capture_events, [event], row_ids=[str(event["event_id"])])
 
     def load_operations(self, rows: Iterable[dict[str, Any]]) -> int:
         self.ensure_objects()
