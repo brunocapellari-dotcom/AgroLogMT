@@ -16,7 +16,9 @@ AIS_SCHEDULER_NAME="${AIS_SCHEDULER_NAME:-agrolog-ais-hourly}"
 RECON_JOB_NAME="${RECON_JOB_NAME:-agrolog-shipping-reconcile}"
 RECON_SCHEDULER_NAME="${RECON_SCHEDULER_NAME:-agrolog-shipping-reconcile-hourly}"
 TIME_ZONE="${TIME_ZONE:-America/Cuiaba}"
-CAPTURE_SECONDS="${AIS_CAPTURE_SECONDS:-3000}"
+# Near-continuous history capture: ~59 minutes per hourly execution.
+# The small restart gap is explicit and measurable; deduplication remains enabled downstream.
+CAPTURE_SECONDS="${AIS_CAPTURE_SECONDS:-3540}"
 BATCH_SIZE="${AIS_BATCH_SIZE:-250}"
 SHIPPING_LOOKBACK_DAYS="${SHIPPING_LOOKBACK_DAYS:-30}"
 AIS_SUBSCRIPTION_CONFIG="${AIS_SUBSCRIPTION_CONFIG:-collector/config/maritime_ais_subscription.v1.json}"
@@ -87,7 +89,7 @@ gcloud builds submit --tag "$IMAGE" --project "$PROJECT_ID" .
 AIS_ENV="^@^AGROLOG_GCP_PROJECT=${PROJECT_ID}@AGROLOG_BQ_LOCATION=${BQ_LOCATION}@AIS_BOUNDING_BOXES_JSON=${AIS_BOUNDING_BOXES_JSON}@AIS_PORT_ZONES_JSON=${AIS_PORT_ZONES_JSON}@AIS_CAPTURE_SECONDS=${CAPTURE_SECONDS}@AIS_BATCH_SIZE=${BATCH_SIZE}"
 gcloud run jobs deploy "$AIS_JOB_NAME" --image "$IMAGE" --region "$REGION" --project "$PROJECT_ID" \
   --service-account "$COLLECTOR_SA" --command python --args=-m,collector.ais_worker \
-  --set-env-vars "$AIS_ENV" --set-secrets "AISSTREAM_API_KEY=${SECRET_NAME}:latest" --max-retries 1 --task-timeout 55m
+  --set-env-vars "$AIS_ENV" --set-secrets "AISSTREAM_API_KEY=${SECRET_NAME}:latest" --max-retries 1 --task-timeout 65m
 
 RECON_ENV="AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_BQ_LOCATION=${BQ_LOCATION},SHIPPING_LOOKBACK_DAYS=${SHIPPING_LOOKBACK_DAYS}"
 gcloud run jobs deploy "$RECON_JOB_NAME" --image "$IMAGE" --region "$REGION" --project "$PROJECT_ID" \
@@ -108,14 +110,16 @@ schedule_job() {
   fi
 }
 
-# AIS runs from minute 05 for ~50 minutes. Reconciliation runs after the capture window.
+# AIS starts at minute 05 and captures for ~59 minutes. The next hourly execution
+# restarts the websocket near minute 05, keeping the unavoidable restart gap small.
+# Reconciliation runs after the expected capture window.
 schedule_job "$AIS_SCHEDULER_NAME" "5 * * * *" "$AIS_JOB_NAME"
-schedule_job "$RECON_SCHEDULER_NAME" "58 * * * *" "$RECON_JOB_NAME"
+schedule_job "$RECON_SCHEDULER_NAME" "4 * * * *" "$RECON_JOB_NAME"
 
 cat <<EOF
 OK: M01-S AIS + reconciliation jobs implantados.
-AIS job: ${AIS_JOB_NAME} — minuto 05, captura ${CAPTURE_SECONDS}s.
-Reconciliation job: ${RECON_JOB_NAME} — minuto 58.
+AIS job: ${AIS_JOB_NAME} — minuto 05, captura ${CAPTURE_SECONDS}s (~59 min por hora).
+Reconciliation job: ${RECON_JOB_NAME} — minuto 04 da hora seguinte.
 Dataset: ${PROJECT_ID}.${DATASET}
 Piloto subscription AOIs: ${AIS_BOUNDING_BOXES_JSON}
 Geofences operacionais: ${AIS_PORT_ZONES_JSON}

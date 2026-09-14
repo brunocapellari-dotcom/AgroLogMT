@@ -4,6 +4,7 @@ import atexit
 import hashlib
 import json
 import os
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -99,6 +100,31 @@ class AisBatchSink:
         return self.store.load_ais(rows)
 
 
+def _capture_event(
+    store: ShippingBigQueryStore,
+    *,
+    run_id: str,
+    event_type: str,
+    aoi_count: int,
+    capture_seconds: float,
+    records: int | None = None,
+    error_type: str | None = None,
+    details: dict[str, Any] | None = None,
+) -> None:
+    store.load_ais_capture_event({
+        "event_id": store.stable_id(run_id, event_type),
+        "run_id": run_id,
+        "event_type": event_type,
+        "event_at": datetime.now(timezone.utc).isoformat(),
+        "source_id": "aisstream",
+        "records": records,
+        "aoi_count": aoi_count,
+        "capture_seconds_requested": capture_seconds,
+        "error_type": error_type,
+        "details": details or {},
+    })
+
+
 def main() -> int:
     api_key = os.environ.get("AISSTREAM_API_KEY")
     if not api_key:
@@ -109,20 +135,60 @@ def main() -> int:
     batch_size = int(os.environ.get("AIS_BATCH_SIZE", "250"))
     max_records_raw = os.environ.get("AIS_MAX_RECORDS")
     max_records = int(max_records_raw) if max_records_raw else None
-    capture_seconds = float(os.environ.get("AIS_CAPTURE_SECONDS", "3000"))
+    capture_seconds = float(os.environ.get("AIS_CAPTURE_SECONDS", "3540"))
 
     store = ShippingBigQueryStore()
     sink = AisBatchSink(store=store, zones=zones, batch_size=batch_size)
-    delivered = run_forever(
-        api_key=api_key,
-        bounding_boxes=bounding_boxes,
-        mmsi_filter=mmsi_filter,
-        on_record=sink,
-        stop_after_records=max_records,
-        stop_after_seconds=capture_seconds,
+    run_id = str(uuid.uuid4())
+    aoi_count = len(bounding_boxes or [])
+    _capture_event(
+        store,
+        run_id=run_id,
+        event_type="START",
+        aoi_count=aoi_count,
+        capture_seconds=capture_seconds,
+        details={"zone_count": len(zones), "mmsi_filter_enabled": bool(mmsi_filter)},
     )
-    sink.flush()
-    print(json.dumps({"status": "ok", "records": delivered, "zones": len(zones), "capture_seconds": capture_seconds}, sort_keys=True))
+
+    try:
+        delivered = run_forever(
+            api_key=api_key,
+            bounding_boxes=bounding_boxes,
+            mmsi_filter=mmsi_filter,
+            on_record=sink,
+            stop_after_records=max_records,
+            stop_after_seconds=capture_seconds,
+        )
+        sink.flush()
+    except Exception as exc:
+        _capture_event(
+            store,
+            run_id=run_id,
+            event_type="ERROR",
+            aoi_count=aoi_count,
+            capture_seconds=capture_seconds,
+            error_type=type(exc).__name__,
+            details={"zone_count": len(zones)},
+        )
+        raise
+
+    _capture_event(
+        store,
+        run_id=run_id,
+        event_type="END",
+        aoi_count=aoi_count,
+        capture_seconds=capture_seconds,
+        records=delivered,
+        details={"zone_count": len(zones)},
+    )
+    print(json.dumps({
+        "status": "ok",
+        "run_id": run_id,
+        "records": delivered,
+        "zones": len(zones),
+        "aoi_count": aoi_count,
+        "capture_seconds": capture_seconds,
+    }, sort_keys=True))
     return 0
 
 
