@@ -15,6 +15,7 @@ BUILD_SOURCE_BUCKET="${BUILD_SOURCE_BUCKET:-${PROJECT_ID}-agrolog-build-source}"
 OPS_DATASET="${OPS_DATASET:-agrolog_ops}"
 LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
 TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
+AGRO_DATASET="${AGRO_DATASET:-agro}"
 MARITIME_DATASET="${MARITIME_DATASET:-agrolog_models}"
 MERCADO_DATASET="${MERCADO_DATASET:-mercado}"
 HIDRO_DATASET="${HIDRO_DATASET:-hidrologia}"
@@ -121,7 +122,7 @@ for role in \
   remove_legacy_project_role "$DEPLOYER_SA_EMAIL" "$role"
 done
 
-for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"; do
+for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"; do
   ensure_dataset "$dataset"
 done
 if ! gcloud artifacts repositories describe "$AR_REPOSITORY" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
@@ -138,7 +139,7 @@ JSON
 gcloud storage buckets update "gs://${BUILD_SOURCE_BUCKET}" --lifecycle-file=/tmp/agrolog-build-lifecycle.json >/dev/null
 
 ensure_project_role "$COLLECTOR_SA_EMAIL" roles/bigquery.user
-for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"; do
+for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"; do
   ensure_dataset_role "$dataset" "$COLLECTOR_SA_EMAIL" roles/bigquery.dataEditor
 done
 
@@ -244,6 +245,6 @@ printf 'Builder:            %s\n' "$BUILD_SA_EMAIL"
 printf 'Collector:          %s\n' "$COLLECTOR_SA_EMAIL"
 printf 'Gateway:            %s\n' "$GATEWAY_SA_EMAIL"
 printf 'Build staging:      gs://%s\n' "$BUILD_SOURCE_BUCKET"
-printf 'Datasets:           %s, %s, %s, %s, %s, %s\n' "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"
+printf 'Datasets:           %s, %s, %s, %s, %s, %s, %s\n' "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"
 printf 'IMPORTANTE: compartilhe a pasta RAW do Drive como Editor somente com %s.\n' "$COLLECTOR_SA_EMAIL"
 printf 'Deploy/homologação recorrente não deve alterar IAM, APIs ou criar datasets.\n'
