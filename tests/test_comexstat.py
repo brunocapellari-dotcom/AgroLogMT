@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from collector.comexstat import chunked, dataset_url, iter_rows, parse_text, validate_header_sample
-from collector.comexstat_bigquery import _count_ndjson_records, write_ndjson
+from collector.comexstat_bigquery import _count_ndjson_records, _count_unique_ndjson_record_ids, write_ndjson
 
 
 class ComexStatTests(unittest.TestCase):
@@ -54,7 +54,7 @@ class ComexStatTests(unittest.TestCase):
         batches = list(chunked(rows, size=2))
         self.assertEqual([len(b) for b in batches], [2, 2, 1])
 
-    def test_disk_backed_ndjson_dedupe_writes_only_first_exact_record(self) -> None:
+    def test_disk_backed_dedupe_preserves_all_audit_rows(self) -> None:
         header = "CO_ANO;CO_MES;CO_NCM;CO_UNID;CO_PAIS;SG_UF_NCM;CO_VIA;CO_URF;QT_ESTAT;KG_LIQUIDO;VL_FOB\n"
         row = "2026;7;12019000;10;160;MT;1;817600;100;250000;100000\n"
         with tempfile.TemporaryDirectory() as tmp:
@@ -77,9 +77,12 @@ class ComexStatTests(unittest.TestCase):
             self.assertEqual(stats["unique_record_ids"], 1)
             self.assertEqual(stats["exact_duplicate_rows"], 1)
             self.assertEqual(stats["dedupe_strategy"], "sqlite_disk_backed_exact")
-            self.assertEqual(len(lines), 1)
-            self.assertEqual(_count_ndjson_records(destination), 1)
+            self.assertTrue(stats["audit_rows_preserved"])
+            self.assertEqual(len(lines), 2)
+            self.assertEqual(_count_ndjson_records(destination), 2)
+            self.assertEqual(_count_unique_ndjson_record_ids(destination), 1)
             self.assertEqual(json.loads(lines[0])["co_ncm"], "12019000")
+            self.assertEqual(json.loads(lines[1])["record_id"], json.loads(lines[0])["record_id"])
             self.assertEqual(list(Path(tmp).glob(".comex_dedupe_*.sqlite3")), [])
 
     def test_official_url_templates(self) -> None:
