@@ -10,7 +10,7 @@ Antes de alterar qualquer arquivo, leia:
 - `docs/REPOSITORY_GOVERNANCE.md`
 - `docs/AI_TOOLING.md`
 - `docs/MULTI_AGENT_WORKFLOW.md`
-- `docs/OBSIDIAN_SECOND_BRAIN.md`
+- `docs/OBSIDIAN.md`
 - `docs/BACKLOG.md`
 
 ## Papel do Codex
