@@ -45,8 +45,7 @@ class _LinkParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         if tag.lower() == "a" and self._href:
-            text = " ".join(" ".join(self._parts).split())
-            self.links.append((text, self._href))
+            self.links.append((" ".join(" ".join(self._parts).split()), self._href))
             self._href = None
             self._parts = []
 
@@ -83,21 +82,17 @@ def extract_links(html: str, base_url: str) -> list[tuple[str, str]]:
     output: list[tuple[str, str]] = []
     for text, href in parser.links:
         absolute = urljoin(base_url, href)
-        try:
-            _validate_pdf_url(absolute)
-        except ValueError:
-            parsed = urlparse(absolute)
-            if parsed.scheme != "https" or parsed.hostname not in PDF_ALLOWED_HOSTS:
-                continue
-        output.append((text, absolute))
+        parsed = urlparse(absolute)
+        if parsed.scheme == "https" and parsed.hostname in PDF_ALLOWED_HOSTS and not parsed.username and not parsed.password:
+            output.append((text, absolute))
     return output
 
 
 def discover_pdf_link_from_landing(html: str, landing_url: str) -> str:
     candidates = [url for _, url in extract_links(html, landing_url) if urlparse(url).path.lower().endswith(".pdf")]
-    if not candidates:
-        raise ValueError("landing page oficial sem link PDF")
     unique = list(dict.fromkeys(candidates))
+    if not unique:
+        raise ValueError("landing page oficial sem link PDF")
     if len(unique) != 1:
         raise ValueError(f"landing page oficial com {len(unique)} PDFs; seleção ambígua")
     _validate_pdf_url(unique[0])
@@ -115,11 +110,6 @@ def _label_date(text: str) -> date | None:
 
 
 def discover_paranagua_landing_pages(html: str, index_url: str) -> dict[str, str]:
-    """Find latest relevant official Portos do Paraná line-up landing pages.
-
-    ATA DE ATRACAÇÃO is excluded deliberately because it belongs to an official-
-    operations adapter, not the programming feed.
-    """
     patterns = {
         "EXPORT_OESTE": re.compile(r"\bLINE[- ]?UP\s+CORREDOR\s+OESTE\b", re.I),
         "EXPORT_LESTE": re.compile(r"\bLINE[- ]?UP\s+CORREDOR\s+LESTE\b", re.I),
@@ -152,8 +142,7 @@ def extract_pdf_tables(payload: bytes) -> list[PdfTable]:
     tables: list[PdfTable] = []
     with pdfplumber.open(io.BytesIO(payload)) as pdf:
         for page_number, page in enumerate(pdf.pages, start=1):
-            extracted = page.extract_tables() or []
-            for table in extracted:
+            for table in page.extract_tables() or []:
                 rows = tuple(tuple(_cell(cell) for cell in row) for row in table if row)
                 if rows:
                     tables.append(PdfTable(page_number=page_number, rows=rows))
@@ -163,8 +152,7 @@ def extract_pdf_tables(payload: bytes) -> list[PdfTable]:
 
 
 def _find_header(rows: Iterable[tuple[str, ...]], required_groups: tuple[tuple[str, ...], ...]) -> tuple[int, list[str]] | None:
-    row_list = list(rows)
-    for idx, row in enumerate(row_list):
+    for idx, row in enumerate(rows):
         keys = [_key(cell) for cell in row]
         joined = " ".join(keys)
         if all(any(token in joined for token in group) for group in required_groups):
@@ -179,6 +167,17 @@ def _index_for(headers: list[str], *tokens: str, before: int | None = None, afte
         if after is not None and idx <= after:
             continue
         if any(token in header for token in tokens):
+            return idx
+    return None
+
+
+def _index_exact_or_contains(headers: list[str], preferred: tuple[str, ...], fallback: tuple[str, ...] = ()) -> int | None:
+    """Prefer semantically specific headers before broad substring fallbacks."""
+    for idx, header in enumerate(headers):
+        if any(token in header for token in preferred):
+            return idx
+    for idx, header in enumerate(headers):
+        if any(token in header for token in fallback):
             return idx
     return None
 
@@ -224,23 +223,19 @@ def _normalize_partial_eta(value: str, reference_date: date) -> str:
         "%d/%m %H:%M",
         "%d/%m",
     )
-    parsed: datetime | None = None
     for fmt in formats:
         try:
             candidate = datetime.strptime(text, fmt)
-            if "%Y" not in fmt and "%y" not in fmt:
-                candidate = candidate.replace(year=reference_date.year)
-                if candidate.date() - reference_date > timedelta(days=180):
-                    candidate = candidate.replace(year=reference_date.year - 1)
-                elif reference_date - candidate.date() > timedelta(days=180):
-                    candidate = candidate.replace(year=reference_date.year + 1)
-            parsed = candidate
-            break
         except ValueError:
             continue
-    if parsed is None:
-        raise ValueError(f"ETA PDF não reconhecido: {value!r}")
-    return parsed.strftime("%d/%m/%Y %H:%M")
+        if "%Y" not in fmt and "%y" not in fmt:
+            candidate = candidate.replace(year=reference_date.year)
+            if candidate.date() - reference_date > timedelta(days=180):
+                candidate = candidate.replace(year=reference_date.year - 1)
+            elif reference_date - candidate.date() > timedelta(days=180):
+                candidate = candidate.replace(year=reference_date.year + 1)
+        return candidate.strftime("%d/%m/%Y %H:%M")
+    raise ValueError(f"ETA PDF não reconhecido: {value!r}")
 
 
 def parse_itaqui_tables(tables: Iterable[PdfTable], *, reference_date: date) -> list[dict[str, str]]:
@@ -258,7 +253,17 @@ def parse_itaqui_tables(tables: Iterable[PdfTable], *, reference_date: date) -> 
         vessel_i = _index_for(headers, "navio", "vessel")
         product_i = _index_for(headers, "produto", "cargo")
         qty_i = _index_for(headers, "qtde", "quantidade")
-        eta_i = _index_for(headers, "prev_chegada", "eta_nor", "chegada_eta", "chegada")
+        eta_i = _index_exact_or_contains(
+            headers,
+            ("prev_chegada", "eta_nor", "chegada_eta", "estimated_arrival"),
+            ("chegada",),
+        )
+        # Do not let generic `chegada` resolve to `calado_de_chegada`.
+        if eta_i is not None and "calado" in headers[eta_i]:
+            eta_i = next(
+                (idx for idx, header in enumerate(headers) if "chegada" in header and "calado" not in header),
+                None,
+            )
         berth_i = _index_for(headers, "berco", "berth", before=status_i)
         if None in (status_i, vessel_i, product_i, qty_i, eta_i):
             continue
@@ -269,11 +274,9 @@ def parse_itaqui_tables(tables: Iterable[PdfTable], *, reference_date: date) -> 
             vessel = _value(row, vessel_i)
             if not vessel or status not in {"ATRACADO", "FUNDEADO", "ESPERADO"}:
                 continue
-            vessel_key = _key(vessel)
-            if vessel_key in {"berco_livre", "manutencao"}:
+            if _key(vessel) in {"berco_livre", "manutencao"}:
                 continue
-            berth_raw = _value(row, berth_i)
-            berth_match = re.search(r"\bBER[CÇ]O\s*(\d{1,3})\b", berth_raw, re.I)
+            berth_match = re.search(r"\bBER[CÇ]O\s*(\d{1,3})\b", _value(row, berth_i), re.I)
             if berth_match:
                 current_berth = f"BERCO_{berth_match.group(1)}"
             eta = _normalize_partial_eta(_value(row, eta_i), reference_date)
@@ -281,15 +284,13 @@ def parse_itaqui_tables(tables: Iterable[PdfTable], *, reference_date: date) -> 
             imo = re.sub(r"\D", "", imo_raw) if imo_raw else ""
             if imo and len(imo) != 7:
                 imo = ""
-            product = _value(row, product_i)
-            qty = _br_number(_value(row, qty_i))
             output.append({
                 "navio": vessel,
                 "imo": imo,
                 "eta": eta,
                 "terminal": current_berth,
-                "carga": product,
-                "quantidade_t": _format_number(qty),
+                "carga": _value(row, product_i),
+                "quantidade_t": _format_number(_br_number(_value(row, qty_i))),
                 "status": status,
                 "source_status": status,
             })
@@ -315,8 +316,7 @@ def _paranagua_volume_and_product(row: tuple[str, ...], headers: list[str], prod
                     candidates.append((label, value))
                 break
     if candidates:
-        product = named_product or "+".join(label for label, _ in candidates)
-        return product, sum(value for _, value in candidates)
+        return named_product or "+".join(label for label, _ in candidates), sum(value for _, value in candidates)
     return named_product, None
 
 
@@ -328,10 +328,7 @@ def parse_paranagua_tables(
 ) -> list[dict[str, str]]:
     output: list[dict[str, str]] = []
     for table in tables:
-        found = _find_header(
-            table.rows,
-            (("navio",), ("n_prog", "prog"), ("chegada",), ("berco",)),
-        )
+        found = _find_header(table.rows, (("navio",), ("n_prog", "prog"), ("chegada",), ("berco",)))
         if found is None:
             continue
         header_idx, headers = found
@@ -363,17 +360,16 @@ def parse_paranagua_tables(
             except ValueError:
                 continue
             product, volume = _paranagua_volume_and_product(row, headers, product_i)
-            program = _value(row, prog_i)
-            berth = _value(row, berth_i)
             parsed = {
                 "navio": vessel,
                 "eta": eta,
-                "terminal": " ".join(berth.split()),
+                "terminal": " ".join(_value(row, berth_i).split()),
                 "carga": product,
                 "quantidade_t": _format_number(volume),
                 "status": "PROGRAMMED",
                 "source_series": series,
             }
+            program = _value(row, prog_i)
             if program:
                 parsed["call_id"] = f"{series}:{program}"
             output.append(parsed)
