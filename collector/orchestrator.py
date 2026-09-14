@@ -54,20 +54,25 @@ class CollectorEngine:
             result = adapter.fetch(spec)
             if capture_payload:
                 payload = result.payload
-            digest = sha256_bytes(result.payload)
+
+            # Some official sources expose a machine-native artifact (CSV/XLSX/etc.)
+            # plus a normalized parse payload. Provenance, hashing and deduplication
+            # must follow the exact source bytes, not the derived parse envelope.
+            raw_payload = result.raw_payload if result.raw_payload is not None else result.payload
+            digest = sha256_bytes(raw_payload)
             state = self.store.load_state(spec.source_id)
             changed = state.get("last_sha256") != digest
 
             manifest.observed_url = result.observed_url
             manifest.sha256 = digest
-            manifest.bytes_read = len(result.payload)
+            manifest.bytes_read = len(raw_payload)
             manifest.content_type = result.content_type
             manifest.etag = result.etag
             manifest.last_modified = result.last_modified
             manifest.changed = changed
 
             if changed:
-                artifact = self.store.store_raw(spec, result.payload, digest)
+                artifact = self.store.store_raw(spec, raw_payload, digest)
                 manifest.raw_artifact_ref = artifact.path
                 state["last_sha256"] = digest
                 state["last_changed_at"] = utc_now_iso()
