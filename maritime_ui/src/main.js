@@ -1,4 +1,4 @@
-import * as maplibregl from 'maplibre-gl';
+import maplibregl from 'maplibre-gl';
 import {MapboxOverlay} from '@deck.gl/mapbox';
 import {ScatterplotLayer, TextLayer} from '@deck.gl/layers';
 import {TripsLayer} from '@deck.gl/geo-layers';
@@ -79,314 +79,457 @@ function escapeHtml(value) {
 function fmtNumber(value, decimals = 0) {
   const number = Number(value);
   if (!Number.isFinite(number)) return '—';
-  return number.toLocaleString('pt-BR', {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
+  return new Intl.NumberFormat('pt-BR', {
+    maximumFractionDigits: decimals,
+    minimumFractionDigits: decimals,
+  }).format(number);
 }
 
-function fmtTs(value) {
+function fmtHours(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${fmtNumber(number, 1)} h` : '—';
+}
+
+function fmtDate(value) {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return new Intl.DateTimeFormat('pt-BR', {
-    timeZone: 'America/Cuiaba',
-    dateStyle: 'short',
-    timeStyle: 'short',
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   }).format(date);
 }
 
-function freshnessClass(value) {
-  const minutes = Number(value);
-  if (!Number.isFinite(minutes)) return 'freshness-unknown';
-  if (minutes <= 15) return 'freshness-good';
-  if (minutes <= 60) return 'freshness-warn';
-  return 'freshness-bad';
+function fmtAge(minutes) {
+  const value = Number(minutes);
+  if (!Number.isFinite(value)) return 'sem dado';
+  if (value < 60) return `${Math.round(value)} min`;
+  if (value < 1440) return `${(value / 60).toFixed(1)} h`;
+  return `${(value / 1440).toFixed(1)} d`;
 }
 
-function apiUrl(path) {
-  return `${API_BASE}${path}`;
-}
-
-async function requestJson(path) {
-  const response = await fetch(apiUrl(path), {headers: {'Accept': 'application/json'}});
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`${response.status} ${body || response.statusText}`);
+function zoneColor(zone) {
+  switch (String(zone || '').toUpperCase()) {
+    case 'APPROACH': return [247, 186, 85, 235];
+    case 'ANCHORAGE': return [240, 115, 101, 235];
+    case 'BERTH': return [80, 201, 154, 235];
+    default: return [107, 167, 219, 220];
   }
-  return response.json();
+}
+
+async function getJson(path) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {signal: controller.signal});
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`${response.status} ${detail}`);
+    }
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function setStatus(kind, text) {
-  els.status.dataset.state = kind;
+  els.status.className = `status status-${kind}`;
   els.status.textContent = text;
 }
 
-function vesselLabel(vessel) {
-  return vessel.name || vessel.vessel_name || vessel.mmsi || 'Sem identificação';
+function selectedPortQuery() {
+  const value = els.port.value;
+  return value ? `port_id=${encodeURIComponent(value)}&` : '';
 }
 
-function vesselPoint(vessel) {
-  const lon = Number(vessel.lon ?? vessel.longitude);
-  const lat = Number(vessel.lat ?? vessel.latitude);
-  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
-  return [lon, lat];
-}
-
-function renderMetrics(summary = {}) {
-  const metrics = els.metrics;
-  metrics.live.textContent = fmtNumber(summary.vessels_live ?? state.vessels.length);
-  metrics.approach.textContent = fmtNumber(summary.approaching ?? 0);
-  metrics.waiting.textContent = fmtNumber(summary.waiting ?? 0);
-  metrics.berthed.textContent = fmtNumber(summary.berthed ?? 0);
-  metrics.lineup.textContent = fmtNumber(summary.lineup_total ?? state.lineup.length);
-  metrics.match.textContent = `${fmtNumber((summary.match_rate ?? 0) * 100, 0)}%`;
-  metrics.p50.textContent = summary.wait_p50_hours == null ? '—' : `${fmtNumber(summary.wait_p50_hours, 1)} h`;
-  metrics.p90.textContent = summary.wait_p90_hours == null ? '—' : `${fmtNumber(summary.wait_p90_hours, 1)} h`;
-  metrics.eta.textContent = summary.eta_next ? fmtTs(summary.eta_next) : '—';
-  metrics.berth.textContent = summary.berth_next ? fmtTs(summary.berth_next) : '—';
-}
-
-function renderVessels() {
-  const positions = [];
-  const labels = [];
-  for (const vessel of state.vessels) {
-    const point = vesselPoint(vessel);
-    if (!point) continue;
-    const selected = state.selected && (state.selected.mmsi === vessel.mmsi || state.selected.imo === vessel.imo);
-    positions.push({position: point, vessel, selected});
-    labels.push({position: point, label: vesselLabel(vessel), vessel});
+function fitToVessels(vessels) {
+  if (!vessels.length) return;
+  const bounds = new maplibregl.LngLatBounds();
+  let count = 0;
+  for (const vessel of vessels) {
+    const lon = Number(vessel.longitude);
+    const lat = Number(vessel.latitude);
+    if (Number.isFinite(lon) && Number.isFinite(lat)) {
+      bounds.extend([lon, lat]);
+      count += 1;
+    }
   }
+  if (!count || bounds.isEmpty()) return;
+  if (count === 1) {
+    map.easeTo({center: bounds.getCenter(), zoom: 10, duration: 650});
+    return;
+  }
+  map.fitBounds(bounds, {padding: 70, maxZoom: 11, duration: 650});
+}
 
+function vesselLayers() {
+  const selectedMmsi = state.selected?.mmsi;
   const layers = [
     new ScatterplotLayer({
-      id: 'vessels',
-      data: positions,
-      getPosition: (d) => d.position,
-      getRadius: (d) => d.selected ? 1100 : 700,
-      radiusMinPixels: (d) => d.selected ? 8 : 5,
+      id: 'vessel-hit-area',
+      data: state.vessels,
+      getPosition: d => [Number(d.longitude), Number(d.latitude)],
+      getRadius: 950,
+      radiusMinPixels: 8,
       radiusMaxPixels: 18,
-      getFillColor: [70, 160, 255, 220],
+      getFillColor: d => zoneColor(d.zone).slice(0, 3).concat(45),
+      getLineColor: d => zoneColor(d.zone),
+      lineWidthMinPixels: 1,
+      stroked: true,
       pickable: true,
-      autoHighlight: true,
-      onClick: ({object}) => {
-        if (!object) return;
-        state.selected = object.vessel;
-        renderDetail(object.vessel);
-        renderVessels();
-      },
+      onClick: info => info.object && selectVessel(info.object),
     }),
     new TextLayer({
-      id: 'vessel-labels',
-      data: labels,
-      getPosition: (d) => d.position,
-      getText: (d) => d.label,
-      getSize: 12,
-      getPixelOffset: [0, 14],
-      getColor: [230, 238, 247, 220],
+      id: 'vessel-symbols',
+      data: state.vessels,
+      getPosition: d => [Number(d.longitude), Number(d.latitude)],
+      getText: () => '▲',
+      getSize: d => d.mmsi === selectedMmsi ? 24 : 18,
+      getColor: d => zoneColor(d.zone),
+      getAngle: d => {
+        const cog = Number(d.cog_deg);
+        return Number.isFinite(cog) ? -cog : 0;
+      },
       getTextAnchor: 'middle',
-      getAlignmentBaseline: 'top',
-      billboard: true,
+      getAlignmentBaseline: 'center',
+      billboard: false,
+      pickable: true,
+      onClick: info => info.object && selectVessel(info.object),
     }),
   ];
 
-  if (state.replay && Array.isArray(state.replay.trips)) {
-    layers.push(new TripsLayer({
-      id: 'replay-trips',
-      data: state.replay.trips,
-      getPath: (d) => d.path,
-      getTimestamps: (d) => d.timestamps,
-      getColor: [255, 176, 64],
-      opacity: 0.7,
-      widthMinPixels: 2,
-      trailLength: 3600,
-      currentTime: state.replayCurrent,
+  if (state.selected) {
+    layers.push(new ScatterplotLayer({
+      id: 'selected-vessel',
+      data: [state.selected],
+      getPosition: d => [Number(d.longitude), Number(d.latitude)],
+      getRadius: 1300,
+      radiusMinPixels: 15,
+      radiusMaxPixels: 26,
+      getFillColor: [255, 255, 255, 15],
+      getLineColor: [255, 255, 255, 235],
+      lineWidthMinPixels: 2,
+      stroked: true,
+      pickable: false,
     }));
   }
 
-  overlay.setProps({layers});
-  els.mapEmpty.hidden = positions.length > 0;
+  if (state.replay) {
+    layers.push(new TripsLayer({
+      id: 'selected-vessel-replay',
+      data: [state.replay],
+      getPath: d => d.path,
+      getTimestamps: d => d.timestamps,
+      getColor: [110, 207, 255],
+      currentTime: state.replayCurrent,
+      trailLength: Math.max(1800, Math.min(state.replay.maxTime, 6 * 3600)),
+      widthMinPixels: 4,
+      capRounded: true,
+      jointRounded: true,
+      fadeTrail: true,
+      pickable: false,
+    }));
+  }
+  return layers;
 }
 
-function renderDetail(vessel) {
-  if (!vessel) {
-    els.detail.innerHTML = '<p>Selecione um navio no mapa.</p>';
+function renderMapLayers() {
+  overlay.setProps({layers: vesselLayers()});
+}
+
+function renderVesselDetail() {
+  const d = state.selected;
+  if (!d) {
+    els.detail.className = 'vessel-detail muted';
+    els.detail.textContent = 'Clique em um navio no mapa.';
+    els.replayButton.disabled = true;
     return;
   }
-  const match = classifyMatch(vessel);
-  els.detail.innerHTML = `
-    <div class="detail-head">
-      <strong>${escapeHtml(vesselLabel(vessel))}</strong>
-      <span class="badge ${escapeHtml(match.className)}">${escapeHtml(match.label)}</span>
-    </div>
-    <dl>
-      <div><dt>MMSI</dt><dd>${escapeHtml(vessel.mmsi || '—')}</dd></div>
-      <div><dt>IMO</dt><dd>${escapeHtml(vessel.imo || '—')}</dd></div>
-      <div><dt>Status</dt><dd>${escapeHtml(vessel.status || vessel.lifecycle || '—')}</dd></div>
-      <div><dt>Destino AIS</dt><dd>${escapeHtml(vessel.destination || '—')}</dd></div>
-      <div><dt>ETA</dt><dd>${escapeHtml(fmtTs(vessel.eta))}</dd></div>
-      <div><dt>Última posição</dt><dd>${escapeHtml(fmtTs(vessel.timestamp || vessel.position_timestamp))}</dd></div>
-    </dl>
-  `;
+  els.detail.className = 'vessel-detail';
+  const fields = [
+    ['Navio', d.vessel_name || '—'],
+    ['MMSI', d.mmsi || '—'],
+    ['IMO', d.imo || '—'],
+    ['Zona', d.zone || 'SEA'],
+    ['Porto', d.port_id || '—'],
+    ['Terminal', d.terminal_id || '—'],
+    ['Velocidade', d.sog_kn == null ? '—' : `${fmtNumber(d.sog_kn, 1)} kn`],
+    ['Rumo', d.cog_deg == null ? '—' : `${fmtNumber(d.cog_deg, 0)}°`],
+    ['Destino AIS', d.destination || '—'],
+    ['Observado em', fmtDate(d.observed_at)],
+  ];
+  els.detail.innerHTML = fields.map(([label, value]) => (
+    `<div class="field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`
+  )).join('');
+  els.replayButton.disabled = !d.mmsi;
+}
+
+function selectVessel(vessel) {
+  state.selected = vessel;
+  stopReplay();
+  renderVesselDetail();
+  renderMapLayers();
+}
+
+function stateClass(value) {
+  const stateValue = String(value || 'PROGRAMMED').toUpperCase();
+  if (stateValue.includes('COMPLETED')) return 'completed';
+  if (stateValue.includes('WAITING') || stateValue.includes('APPROACH')) return 'waiting';
+  if (stateValue.includes('BERTH')) return 'berth';
+  return 'programmed';
+}
+
+function matchClass(value) {
+  switch (value) {
+    case 'CONFIRMADO': return 'match-confirmed';
+    case 'PROVAVEL': return 'match-probable';
+    case 'CONFLITO': return 'match-conflict';
+    default: return 'match-unmatched';
+  }
 }
 
 function renderLineup() {
-  els.lineupCount.textContent = fmtNumber(state.lineup.length);
-  els.lineupBody.innerHTML = state.lineup.map((item) => {
-    const programmed = item.programmed_tonnes ?? item.tonnes ?? item.quantity;
-    const realized = item.realized_tonnes;
-    return `
-      <tr>
-        <td>${escapeHtml(item.vessel_name || item.name || item.imo || '—')}</td>
-        <td>${escapeHtml(item.product || item.cargo || '—')}</td>
-        <td>${escapeHtml(item.terminal || item.berth || '—')}</td>
-        <td>${escapeHtml(item.status || 'programado')}</td>
-        <td class="num">${programmed == null ? '—' : escapeHtml(fmtNumber(programmed))}</td>
-        <td class="num">${realized == null ? '—' : escapeHtml(fmtNumber(realized))}</td>
-        <td>${escapeHtml(fmtTs(item.eta || item.arrival || item.expected_at))}</td>
-      </tr>`;
-  }).join('') || '<tr><td colspan="7" class="empty-cell">Sem line-up disponível.</td></tr>';
+  els.lineupCount.textContent = String(state.lineup.length);
+  if (!state.lineup.length) {
+    els.lineupBody.innerHTML = '<tr><td colspan="7" class="muted">Sem line-up no horizonte selecionado.</td></tr>';
+    return;
+  }
+  els.lineupBody.innerHTML = state.lineup.map(row => {
+    const match = row.match_confidence == null
+      ? '—'
+      : `${fmtNumber(Number(row.match_confidence) * 100, 0)}% ${row.match_method || ''}`.trim();
+    const matchState = classifyMatch(row);
+    const volume = row.planned_volume_t == null ? '—' : `${fmtNumber(row.planned_volume_t, 0)} t`;
+    const reconciled = row.reconciled_state || 'PROGRAMMED';
+    return `<tr>
+      <td><strong>${escapeHtml(row.vessel_name || '—')}</strong><br><span class="muted">${escapeHtml(row.imo || row.mmsi || '')}</span></td>
+      <td>${escapeHtml(fmtDate(row.eta))}</td>
+      <td>${escapeHtml(row.product || '—')}</td>
+      <td>${escapeHtml(volume)}</td>
+      <td><span class="state ${stateClass(reconciled)}">${escapeHtml(reconciled)}</span><br><span class="muted">${escapeHtml(row.evidence_class || '')}</span></td>
+      <td><span class="match-state ${matchClass(matchState.key)}">${escapeHtml(matchState.label)}</span></td>
+      <td>${escapeHtml(match)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderSummary(summary = {}) {
+  els.metrics.live.textContent = fmtNumber(summary.vessels_live);
+  els.metrics.approach.textContent = fmtNumber(summary.vessels_approaching);
+  els.metrics.waiting.textContent = fmtNumber(summary.vessels_waiting);
+  els.metrics.berthed.textContent = fmtNumber(summary.vessels_berthed);
+  els.metrics.lineup.textContent = fmtNumber(summary.lineup_calls);
+  const calls = Number(summary.lineup_calls);
+  const matched = Number(summary.lineup_matched);
+  els.metrics.match.textContent = Number.isFinite(calls) && calls > 0 && Number.isFinite(matched)
+    ? `${fmtNumber((matched / calls) * 100, 0)}%`
+    : '—';
+  els.metrics.p50.textContent = fmtHours(summary.waiting_p50_hours);
+  els.metrics.p90.textContent = fmtHours(summary.waiting_p90_hours);
+  els.metrics.eta.textContent = fmtHours(summary.eta_mae_hours);
+  els.metrics.berth.textContent = fmtHours(summary.berth_avg_hours);
 }
 
 function renderSourceHealth() {
-  const rows = buildSourceHealth(state.sourceHealth);
-  els.sourceHealthList.innerHTML = rows.map((item) => `
-    <li>
-      <span class="source-name">${escapeHtml(item.name)}</span>
-      <span class="source-age ${freshnessClass(item.ageMinutes)}">${escapeHtml(item.ageLabel)}</span>
-      <span class="source-state">${escapeHtml(item.stateLabel)}</span>
-    </li>
-  `).join('') || '<li class="empty-cell">Sem telemetria de fontes.</li>';
-}
-
-function renderBrief() {
-  const matchSummary = summarizeMatches(state.vessels, state.lineup);
-  const brief = buildOperationalBrief({
-    port: els.port.value,
-    vessels: state.vessels,
-    lineup: state.lineup,
-    summary: state.summary,
-    sourceHealth: state.sourceHealth,
-    matchSummary,
-  });
-  els.briefGenerated.textContent = fmtTs(brief.generatedAt);
-  els.briefBody.innerHTML = brief.sections.map((section) => `
-    <section>
-      <h3>${escapeHtml(section.title)}</h3>
-      <p>${escapeHtml(section.body)}</p>
-    </section>
-  `).join('');
-}
-
-function normalizeReplay(payload) {
-  if (!payload) return null;
-  if (Array.isArray(payload.trips)) return payload;
-  if (!Array.isArray(payload.points)) return null;
-  const byVessel = new Map();
-  for (const row of payload.points) {
-    const key = row.mmsi || row.imo || row.vessel_name;
-    const point = vesselPoint(row);
-    const timestamp = new Date(row.timestamp || row.position_timestamp).getTime() / 1000;
-    if (!key || !point || !Number.isFinite(timestamp)) continue;
-    if (!byVessel.has(key)) byVessel.set(key, []);
-    byVessel.get(key).push({point, timestamp});
-  }
-  const trips = [...byVessel.entries()].map(([id, rows]) => {
-    rows.sort((a, b) => a.timestamp - b.timestamp);
-    return {id, path: rows.map((row) => row.point), timestamps: rows.map((row) => row.timestamp)};
-  });
-  return {trips};
-}
-
-async function loadReplay() {
-  const port = encodeURIComponent(els.port.value);
-  try {
-    const payload = await requestJson(`/v1/maritime/replay?port=${port}&hours=24`);
-    state.replay = normalizeReplay(payload);
-    const timestamps = state.replay?.trips?.flatMap((trip) => trip.timestamps) || [];
-    if (!timestamps.length) throw new Error('Sem posições de replay');
-    const min = Math.min(...timestamps);
-    const max = Math.max(...timestamps);
-    els.replaySlider.min = String(min);
-    els.replaySlider.max = String(max);
-    els.replaySlider.value = String(min);
-    els.replayControls.hidden = false;
-    updateReplay(min);
-  } catch (error) {
-    state.replay = null;
-    els.replayControls.hidden = true;
-    setStatus('warn', `Replay indisponível: ${error.message}`);
-  }
-}
-
-function updateReplay(value) {
-  state.replayCurrent = Number(value);
-  els.replaySlider.value = String(state.replayCurrent);
-  els.replayTime.textContent = fmtTs(new Date(state.replayCurrent * 1000).toISOString());
-  renderVessels();
-}
-
-function tickReplay(timestamp) {
-  if (!state.replayPlaying) return;
-  if (state.replayLastFrame == null) state.replayLastFrame = timestamp;
-  const delta = (timestamp - state.replayLastFrame) / 1000;
-  state.replayLastFrame = timestamp;
-  const speed = 120;
-  const max = Number(els.replaySlider.max);
-  const next = state.replayCurrent + delta * speed;
-  if (next >= max) {
-    updateReplay(max);
-    state.replayPlaying = false;
-    els.replayToggle.textContent = '▶';
+  if (!state.sourceHealth.length) {
+    els.sourceHealthList.innerHTML = '<div class="source-row"><span>Sem metadados de freshness</span><strong>indisponível</strong></div>';
     return;
   }
-  updateReplay(next);
-  state.replayFrame = requestAnimationFrame(tickReplay);
+  els.sourceHealthList.innerHTML = state.sourceHealth.map(source => {
+    const statusLabel = source.status === 'FRESH'
+      ? 'recente'
+      : source.status === 'DELAYED'
+        ? 'atrasado'
+        : source.status === 'STALE'
+          ? 'stale'
+          : 'sem dado';
+    const threshold = source.monitoringThresholdMinutes == null
+      ? ''
+      : ` · limiar UI ${fmtAge(source.monitoringThresholdMinutes)}`;
+    return `<div class="source-row">
+      <div>
+        <strong>${escapeHtml(source.label)}</strong>
+        <span>${source.latestAt ? `último ${escapeHtml(fmtDate(source.latestAt))}` : 'nenhum timestamp disponível'}${escapeHtml(threshold)}</span>
+      </div>
+      <span class="freshness freshness-${source.status.toLowerCase()}">${escapeHtml(statusLabel)} · ${escapeHtml(fmtAge(source.ageMinutes))}</span>
+    </div>`;
+  }).join('');
 }
 
-function toggleReplay() {
-  state.replayPlaying = !state.replayPlaying;
-  els.replayToggle.textContent = state.replayPlaying ? '❚❚' : '▶';
-  state.replayLastFrame = null;
-  if (state.replayPlaying) state.replayFrame = requestAnimationFrame(tickReplay);
-  else if (state.replayFrame) cancelAnimationFrame(state.replayFrame);
+function renderOperationalBrief() {
+  const report = buildOperationalBrief(state.summary, state.lineup);
+  els.briefGenerated.textContent = new Intl.DateTimeFormat('pt-BR', {hour: '2-digit', minute: '2-digit'}).format(new Date());
+  const divergenceRows = [...report.conflicts, ...report.unmatched].slice(0, 5);
+  const divergenceHtml = divergenceRows.length
+    ? `<div class="brief-divergences"><h3>Divergências prioritárias</h3>${divergenceRows.map(row => {
+        const match = classifyMatch(row);
+        return `<div class="brief-divergence"><span class="match-state ${matchClass(match.key)}">${escapeHtml(match.label)}</span><strong>${escapeHtml(row.vessel_name || '—')}</strong><span>${escapeHtml(row.port_id || '')} · ETA ${escapeHtml(fmtDate(row.eta))}</span></div>`;
+      }).join('')}</div>`
+    : '<div class="brief-ok">Sem conflitos ou escalas sem match no horizonte atual.</div>';
+
+  els.briefBody.innerHTML = report.sections.map(section => (
+    `<article class="brief-section">
+      <div><h3>${escapeHtml(section.title)}</h3><span class="evidence-tag">${escapeHtml(section.evidence)}</span></div>
+      <p>${escapeHtml(section.text)}</p>
+    </article>`
+  )).join('') + divergenceHtml;
 }
 
-async function refresh() {
-  const port = encodeURIComponent(els.port.value);
-  setStatus('loading', 'Atualizando');
+async function refreshAll({fit = false} = {}) {
+  setStatus('idle', 'atualizando');
   els.refresh.disabled = true;
   try {
-    const [live, lineup, summary, health] = await Promise.all([
-      requestJson(`/v1/maritime/live?port=${port}&limit=500`),
-      requestJson(`/v1/maritime/lineup?port=${port}&limit=500`),
-      requestJson(`/v1/maritime/summary?port=${port}`),
-      requestJson(`/v1/maritime/source-health?port=${port}`),
+    const port = selectedPortQuery();
+    const [vesselsResponse, lineupResponse, summaryResponse] = await Promise.all([
+      getJson(`/v1/maritime/vessels?${port}hours=6&limit=5000`),
+      getJson(`/v1/maritime/lineup?${port}past_hours=24&future_hours=336&limit=1000`),
+      getJson(`/v1/maritime/summary?${port}hours=24&future_hours=336`),
     ]);
-    state.vessels = live.items || live.vessels || [];
-    state.lineup = lineup.items || lineup.lineup || [];
-    state.summary = summary || {};
-    state.sourceHealth = health.items || health.sources || [];
-    renderMetrics(state.summary);
-    renderVessels();
+    state.vessels = vesselsResponse.data || [];
+    state.lineup = lineupResponse.data || [];
+    state.summary = summaryResponse.data || {};
+    state.sourceHealth = buildSourceHealth(state.vessels, state.lineup, new Date());
+
+    if (state.selected?.mmsi) {
+      const refreshed = state.vessels.find(v => v.mmsi === state.selected.mmsi);
+      if (refreshed) state.selected = refreshed;
+    }
+
+    renderMapLayers();
+    renderVesselDetail();
     renderLineup();
+    renderSummary(state.summary);
     renderSourceHealth();
-    renderBrief();
-    els.lastUpdate.textContent = fmtTs(new Date().toISOString());
-    setStatus('ok', 'Conectado');
+    renderOperationalBrief();
+    els.mapEmpty.classList.toggle('hidden', state.vessels.length > 0);
+    if (fit) fitToVessels(state.vessels);
+    els.lastUpdate.textContent = `Gateway consultado ${new Intl.DateTimeFormat('pt-BR', {hour: '2-digit', minute: '2-digit', second: '2-digit'}).format(new Date())}`;
+    setStatus('ok', 'gateway ok');
   } catch (error) {
-    setStatus('error', `Gateway indisponível: ${error.message}`);
+    console.error(error);
+    setStatus('error', 'erro de dados');
   } finally {
     els.refresh.disabled = false;
   }
 }
 
-els.port.addEventListener('change', async () => {
-  state.selected = null;
-  state.replay = null;
-  els.replayControls.hidden = true;
-  await refresh();
-});
-els.refresh.addEventListener('click', refresh);
-els.replayButton.addEventListener('click', loadReplay);
-els.replayToggle.addEventListener('click', toggleReplay);
-els.replaySlider.addEventListener('input', (event) => updateReplay(event.target.value));
+async function loadConfig() {
+  const response = await getJson('/v1/maritime/config');
+  for (const port of response.pilot_ports || []) {
+    const option = document.createElement('option');
+    option.value = port.port_id;
+    option.textContent = port.name;
+    els.port.appendChild(option);
+  }
+}
 
-map.on('load', refresh);
+function updateReplayTime() {
+  if (!state.replay) {
+    els.replayTime.textContent = '—';
+    return;
+  }
+  const timestamp = new Date(state.replay.startMs + state.replayCurrent * 1000);
+  els.replayTime.textContent = fmtDate(timestamp.toISOString());
+  els.replaySlider.value = String(Math.round(state.replayCurrent));
+}
+
+function replayFrame(now) {
+  if (!state.replay || !state.replayPlaying) return;
+  if (state.replayLastFrame == null) state.replayLastFrame = now;
+  const elapsed = Math.max(0, (now - state.replayLastFrame) / 1000);
+  state.replayLastFrame = now;
+  const speed = Math.max(60, state.replay.maxTime / 120);
+  state.replayCurrent += elapsed * speed;
+  if (state.replayCurrent >= state.replay.maxTime) state.replayCurrent = 0;
+  updateReplayTime();
+  renderMapLayers();
+  state.replayFrame = requestAnimationFrame(replayFrame);
+}
+
+function startReplayAnimation() {
+  state.replayPlaying = true;
+  state.replayLastFrame = null;
+  els.replayToggle.textContent = 'Pausar';
+  if (state.replayFrame) cancelAnimationFrame(state.replayFrame);
+  state.replayFrame = requestAnimationFrame(replayFrame);
+}
+
+function pauseReplay() {
+  state.replayPlaying = false;
+  els.replayToggle.textContent = 'Continuar';
+  if (state.replayFrame) cancelAnimationFrame(state.replayFrame);
+  state.replayFrame = null;
+  state.replayLastFrame = null;
+}
+
+function stopReplay() {
+  pauseReplay();
+  state.replay = null;
+  state.replayCurrent = 0;
+  els.replayControls.classList.add('hidden');
+}
+
+async function loadReplay() {
+  const vessel = state.selected;
+  if (!vessel?.mmsi) return;
+  els.replayButton.disabled = true;
+  try {
+    const response = await getJson(`/v1/maritime/vessels/${encodeURIComponent(vessel.mmsi)}/replay?hours=24&limit=20000`);
+    const rows = (response.data || []).filter(row => Number.isFinite(Number(row.longitude)) && Number.isFinite(Number(row.latitude)));
+    if (rows.length < 2) throw new Error('Histórico AIS insuficiente para replay');
+    const startMs = new Date(rows[0].observed_at).getTime();
+    const timestamps = rows.map(row => Math.max(0, (new Date(row.observed_at).getTime() - startMs) / 1000));
+    state.replay = {
+      path: rows.map(row => [Number(row.longitude), Number(row.latitude)]),
+      timestamps,
+      startMs,
+      maxTime: Math.max(...timestamps),
+    };
+    state.replayCurrent = 0;
+    els.replaySlider.max = String(Math.max(1, Math.round(state.replay.maxTime)));
+    els.replaySlider.value = '0';
+    els.replayControls.classList.remove('hidden');
+    updateReplayTime();
+    renderMapLayers();
+    startReplayAnimation();
+    fitToVessels(rows);
+  } catch (error) {
+    console.error(error);
+    setStatus('error', 'replay indisponível');
+  } finally {
+    els.replayButton.disabled = !state.selected?.mmsi;
+  }
+}
+
+els.refresh.addEventListener('click', () => refreshAll({fit: false}));
+els.port.addEventListener('change', () => {
+  stopReplay();
+  state.selected = null;
+  renderVesselDetail();
+  refreshAll({fit: true});
+});
+els.replayButton.addEventListener('click', loadReplay);
+els.replayToggle.addEventListener('click', () => {
+  if (!state.replay) return;
+  if (state.replayPlaying) pauseReplay();
+  else startReplayAnimation();
+});
+els.replaySlider.addEventListener('input', event => {
+  if (!state.replay) return;
+  state.replayCurrent = Number(event.target.value) || 0;
+  updateReplayTime();
+  renderMapLayers();
+});
+
+map.on('load', async () => {
+  try {
+    await loadConfig();
+    await refreshAll({fit: true});
+  } catch (error) {
+    console.error(error);
+    setStatus('error', 'gateway indisponível');
+  }
+});
+
+setInterval(() => {
+  if (!document.hidden) refreshAll({fit: false});
+}, 30000);
