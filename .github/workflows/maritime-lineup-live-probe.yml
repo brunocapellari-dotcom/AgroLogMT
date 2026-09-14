@@ -1,0 +1,58 @@
+name: maritime-lineup-live-probe
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+  push:
+    branches: [main]
+    paths:
+      - "collector/official_lineup_html.py"
+      - "collector/official_lineup_pdf.py"
+      - "collector/config/maritime_lineup_sources.v1.json"
+      - "scripts/probe_maritime_lineup_live.py"
+      - ".github/workflows/maritime-lineup-live-probe.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: maritime-lineup-live-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install probe dependencies
+        run: python -m pip install "requests>=2.32,<3" "pdfplumber>=0.11,<0.12"
+      - name: Probe official Maritime line-up sources
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          mkdir -p outputs/maritime
+          python scripts/probe_maritime_lineup_live.py | tee outputs/maritime/lineup-live-probe.json
+      - name: Publish summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## AgroLog Maritime — Official Line-up Live Probe'
+            echo
+            echo 'Santos, Vila do Conde e Santarém: HTML oficial.'
+            echo 'Paranaguá: descoberta live do PDF oficial por série.'
+            echo 'Itaqui: smoke estrutural em PDF oficial conhecido, sem alegação de freshness atual.'
+            echo
+            if [ -f outputs/maritime/lineup-live-probe.json ]; then
+              echo '```json'
+              cat outputs/maritime/lineup-live-probe.json
+              echo '```'
+            else
+              echo 'Probe terminou antes de gerar relatório JSON.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
