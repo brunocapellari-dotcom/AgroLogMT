@@ -44,9 +44,17 @@
       "port_id": "PARANAGUA",
       "port_system": "PARANAGUA",
       "url": "https://www.portosdoparana.pr.gov.br/Operacional/Pagina/Atas-do-Corredor-de-Exportacao",
+      "additional_index_urls": [
+        "https://www.portosdoparana.pr.gov.br/Operacional/Pagina/Graneis-de-Importacao-e-Carga-Geral"
+      ],
+      "target_series": [
+        "EXPORT_OESTE",
+        "EXPORT_LESTE",
+        "IMPORT_SOLIDOS"
+      ],
       "parser_mode": "PDF_INDEX_PARANAGUA",
       "enabled": false,
-      "data_gate": "PDF_PARSER_PENDING",
+      "data_gate": "PDF_LIVE_SMOKE_PENDING",
       "freshness_hours": 48,
       "evidence_class": "INFORMADO"
     },
@@ -57,7 +65,7 @@
       "url": "https://www.portodoitaqui.com/",
       "parser_mode": "PDF_INDEX_ITAQUI",
       "enabled": false,
-      "data_gate": "PDF_INDEX_DISCOVERY_PENDING",
+      "data_gate": "PDF_PARSER_READY_INDEX_DISCOVERY_PENDING",
       "freshness_hours": 48,
       "evidence_class": "INFORMADO"
     }
