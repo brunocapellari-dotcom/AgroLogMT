@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -15,14 +17,61 @@ class P0AcquisitionError(RuntimeError):
     pass
 
 
-class BcbPtaxDailyAdapter:
-    """Coleta PTAX USD da API oficial Olinda/BCB sem inferir dia útil.
+def _decode_bcb_csv(payload: bytes) -> str:
+    for encoding in ("utf-8-sig", "cp1252", "latin-1"):
+        try:
+            return payload.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise P0AcquisitionError("BCB PTAX CSV sem encoding suportado")
 
-    Consulta uma janela curta e escolhe a observação oficial mais recente retornada.
-    O payload persistido contém apenas dados primários BCB e metadados da rota.
+
+def _ptax_number(value: str) -> float:
+    text = value.strip().strip('"').replace("\xa0", "")
+    if not text:
+        raise ValueError("valor PTAX vazio")
+    if "," in text:
+        text = text.replace(".", "").replace(",", ".")
+    return float(text)
+
+
+def _extract_usd_from_closing_csv(payload: bytes) -> tuple[float, float]:
+    """Extrai compra/venda USD do CSV oficial de fechamento sem alterar o RAW.
+
+    O arquivo do BCB usa separador ``;`` e decimal brasileiro. A busca pela sigla
+    USD e pelo código 220 tolera colunas prefixadas pela data sem depender de um
+    header específico do arquivo histórico.
+    """
+    text = _decode_bcb_csv(payload)
+    for row in csv.reader(io.StringIO(text), delimiter=";"):
+        cells = [cell.strip().strip('"') for cell in row]
+        upper = [cell.upper() for cell in cells]
+        if "USD" not in upper:
+            continue
+        idx = upper.index("USD")
+        codes_before = {cell.lstrip("0") or "0" for cell in cells[:idx] if cell.isdigit()}
+        if "220" not in codes_before:
+            continue
+        if idx + 2 >= len(cells):
+            raise P0AcquisitionError("BCB PTAX CSV: linha USD sem compra/venda")
+        try:
+            return _ptax_number(cells[idx + 1]), _ptax_number(cells[idx + 2])
+        except ValueError as exc:
+            raise P0AcquisitionError(f"BCB PTAX CSV: valores USD inválidos: {exc}") from exc
+    raise P0AcquisitionError("BCB PTAX CSV: moeda USD/código 220 não encontrada")
+
+
+class BcbPtaxDailyAdapter:
+    """Coleta PTAX USD com RAW machine-native oficial e validação cruzada BCB.
+
+    A API Olinda descobre a observação oficial mais recente sem inferir dia útil.
+    Para a data retornada, o adapter baixa o CSV de fechamento publicado pelo BCB,
+    preserva esses bytes como RAW e confere compra/venda USD contra a API. Divergência
+    entre as duas rotas oficiais bloqueia a promoção do registro.
     """
 
     BASE = "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata"
+    CLOSING_CSV_BASE = "https://www4.bcb.gov.br/Download/fechamento"
 
     def fetch(self, spec: SourceSpec):
         from .adapters import AcquisitionResult
@@ -40,8 +89,8 @@ class BcbPtaxDailyAdapter:
                 "$format": "json",
             }
         )
-        url = f"{self.BASE}/{function}?{query}"
-        response = requests.get(url, timeout=timeout, headers={"User-Agent": "AgroLogMT/0.1"})
+        discovery_url = f"{self.BASE}/{function}?{query}"
+        response = requests.get(discovery_url, timeout=timeout, headers={"User-Agent": "AgroLogMT/0.1"})
         response.raise_for_status()
         body = response.json()
         values = body.get("value") or []
@@ -52,22 +101,58 @@ class BcbPtaxDailyAdapter:
         missing = sorted(required - latest.keys())
         if missing:
             raise P0AcquisitionError(f"BCB PTAX schema incompleto: {missing}")
+
+        quote_timestamp = str(latest["dataHoraCotacao"])
+        date_text = quote_timestamp[:10]
+        try:
+            closing_date = datetime.strptime(date_text, "%Y-%m-%d").date()
+        except ValueError as exc:
+            raise P0AcquisitionError(f"BCB PTAX dataHoraCotacao inesperada: {quote_timestamp}") from exc
+
+        raw_csv_url = f"{self.CLOSING_CSV_BASE}/{closing_date.strftime('%Y%m%d')}.csv"
+        raw_response = requests.get(
+            raw_csv_url,
+            timeout=timeout,
+            headers={"User-Agent": "AgroLogMT/0.1", "Accept": "text/csv,application/octet-stream,*/*"},
+        )
+        raw_response.raise_for_status()
+        raw_csv = raw_response.content
+        if not raw_csv:
+            raise P0AcquisitionError("BCB PTAX CSV de fechamento vazio")
+
+        raw_buy, raw_sell = _extract_usd_from_closing_csv(raw_csv)
+        api_buy = float(latest["cotacaoCompra"])
+        api_sell = float(latest["cotacaoVenda"])
+        tolerance = 1e-9
+        if abs(raw_buy - api_buy) > tolerance or abs(raw_sell - api_sell) > tolerance:
+            raise P0AcquisitionError(
+                "BCB PTAX divergência entre Olinda e CSV de fechamento: "
+                f"api=({api_buy},{api_sell}) csv=({raw_buy},{raw_sell})"
+            )
+
+        normalized_latest = dict(latest)
+        normalized_latest["cotacaoCompra"] = raw_buy
+        normalized_latest["cotacaoVenda"] = raw_sell
         payload = json.dumps(
             {
-                "source": "BCB_DEPIN_PTAX_OLINDA",
+                "source": "BCB_DEPIN_PTAX",
                 "retrieved_at": now.isoformat(),
                 "query_window": {"start": start, "end": end},
-                "latest": latest,
+                "discovery_url": discovery_url,
+                "raw_csv_url": raw_csv_url,
+                "raw_crosscheck": "matched",
+                "latest": normalized_latest,
             },
             ensure_ascii=False,
             sort_keys=True,
         ).encode("utf-8")
         return AcquisitionResult(
             payload=payload,
-            observed_url=url,
-            content_type="application/json",
-            etag=response.headers.get("ETag"),
-            last_modified=response.headers.get("Last-Modified"),
+            raw_payload=raw_csv,
+            observed_url=raw_csv_url,
+            content_type=raw_response.headers.get("Content-Type") or "application/octet-stream",
+            etag=raw_response.headers.get("ETag"),
+            last_modified=raw_response.headers.get("Last-Modified"),
         )
 
 
