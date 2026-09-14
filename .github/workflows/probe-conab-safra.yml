@@ -27,11 +27,24 @@ jobs:
         env:
           PYTHONPATH: .
         run: python scripts/probe_conab_safra_live.py --out conab_safra_probe.json
+      - name: Publish probe summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f conab_safra_probe.json ]]; then
+            {
+              echo '### CONAB Safra live probe'
+              echo '```json'
+              cat conab_safra_probe.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Upload probe report
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: conab-safra-probe
           path: conab_safra_probe.json
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 7
