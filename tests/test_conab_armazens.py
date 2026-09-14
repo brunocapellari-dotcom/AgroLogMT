@@ -67,6 +67,55 @@ class ConabArmazensParserTests(unittest.TestCase):
         )
         self.assertIn("Campo Novo", parsed.rows[0]["source_payload_json"])
 
+    def test_invalid_values_are_flagged_without_becoming_valid_data(self) -> None:
+        payload = (
+            "CDA;Municipio;UF;Capacidade;Latitude;Longitude\n"
+            "9;Sinop;MTO;-5;-95;200\n"
+        ).encode("utf-8")
+        parsed = parse_conab_armazens(
+            payload, snapshot_id="quality", data_coleta="2026-08-24T15:00:00+00:00",
+            raw_artifact_ref=None, observed_url=None,
+        )
+        row = parsed.rows[0]
+        self.assertIn("invalid_uf", row["quality_flags"])
+        self.assertIn("negative_capacidade", row["quality_flags"])
+        self.assertIn("invalid_latitude", row["quality_flags"])
+        self.assertIn("invalid_longitude", row["quality_flags"])
+        self.assertIsNone(row["latitude"])
+        self.assertIsNone(row["longitude"])
+        self.assertLess(row["quality_score"], 1.0)
+
+    def test_reference_date_uses_publication_date_when_valid(self) -> None:
+        payload = "CDA;Municipio;UF;Capacidade\n9;Sinop;MT;2500\n".encode("utf-8")
+        parsed = parse_conab_armazens(
+            payload, snapshot_id="published", data_coleta="2026-08-24T15:00:00+00:00",
+            data_publicacao="2026-08-20T12:30:00+00:00",
+            raw_artifact_ref=None, observed_url=None,
+        )
+        self.assertEqual(parsed.rows[0]["data_referencia"], "2026-08-20")
+        self.assertEqual(parsed.rows[0]["competencia"], "2026-08-20")
+
+    def test_invalid_publication_date_falls_back_to_collection_date(self) -> None:
+        payload = "CDA;Municipio;UF;Capacidade\n9;Sinop;MT;2500\n".encode("utf-8")
+        parsed = parse_conab_armazens(
+            payload, snapshot_id="fallback-date", data_coleta="2026-08-24T15:00:00+00:00",
+            data_publicacao="not-a-date",
+            raw_artifact_ref=None, observed_url=None,
+        )
+        self.assertEqual(parsed.rows[0]["data_referencia"], "2026-08-24")
+        self.assertEqual(parsed.rows[0]["competencia"], "2026-08-24")
+
+    def test_missing_required_semantic_columns_raise_blocking_warnings(self) -> None:
+        payload = "CDA;Campo A;Campo B\n9;X;Y\n".encode("utf-8")
+        parsed = parse_conab_armazens(
+            payload, snapshot_id="missing-columns", data_coleta="2026-08-24T15:00:00+00:00",
+            raw_artifact_ref=None, observed_url=None,
+        )
+        self.assertGreaterEqual(len(parsed.warnings), 3)
+        self.assertTrue(any("capacidade" in warning for warning in parsed.warnings))
+        self.assertTrue(any("municipio" in warning for warning in parsed.warnings))
+        self.assertTrue(any("UF" in warning for warning in parsed.warnings))
+
 
 if __name__ == "__main__":
     unittest.main()

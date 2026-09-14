@@ -207,8 +207,10 @@ def parse_conab_armazens(
         codigo_ibge = _pick(normalized, "codigo_ibge")
         tipo_armazenagem = _pick(normalized, "tipo_armazenagem")
         capacidade = _number(_pick(normalized, "capacidade_estatica_t"), brazilian_thousands=True)
-        latitude = _coord(_pick(normalized, "latitude"), -90.0, 90.0)
-        longitude = _coord(_pick(normalized, "longitude"), -180.0, 180.0)
+        latitude_raw = _pick(normalized, "latitude")
+        longitude_raw = _pick(normalized, "longitude")
+        latitude = _coord(latitude_raw, -90.0, 90.0)
+        longitude = _coord(longitude_raw, -180.0, 180.0)
 
         warehouse_id = f"cda:{cda}" if cda else "fallback:" + _stable_hash(
             [cnpj, razao_social, nome_armazem, endereco, municipio, uf]
@@ -237,6 +239,10 @@ def parse_conab_armazens(
             flags.append("missing_capacidade")
         elif capacidade < 0:
             flags.append("negative_capacidade")
+        if latitude_raw is not None and latitude is None:
+            flags.append("invalid_latitude")
+        if longitude_raw is not None and longitude is None:
+            flags.append("invalid_longitude")
         if not cda and not any([cnpj, nome_armazem, razao_social]):
             flags.append("weak_entity_key")
         quality_score = max(0.0, 1.0 - 0.15 * len(flags))
