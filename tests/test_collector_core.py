@@ -9,15 +9,21 @@ from collector.adapters import AcquisitionResult
 from collector.gaps import detect_gaps
 from collector.models import SourceSpec
 from collector.orchestrator import CollectorEngine
-from collector.storage import LocalStore
+from collector.storage import LocalStore, sha256_bytes
 
 
 class FakeAdapter:
-    def __init__(self, payload: bytes) -> None:
+    def __init__(self, payload: bytes, raw_payload: bytes | None = None) -> None:
         self.payload = payload
+        self.raw_payload = raw_payload
 
     def fetch(self, spec: SourceSpec) -> AcquisitionResult:
-        return AcquisitionResult(payload=self.payload, observed_url=spec.url or "memory://fixture", content_type="text/csv")
+        return AcquisitionResult(
+            payload=self.payload,
+            raw_payload=self.raw_payload,
+            observed_url=spec.url or "memory://fixture",
+            content_type="text/csv",
+        )
 
 
 class CollectorCoreTests(unittest.TestCase):
@@ -33,6 +39,21 @@ class CollectorCoreTests(unittest.TestCase):
             self.assertFalse(second.changed)
             raw_files = list((Path(tmp) / "raw").rglob("*.csv"))
             self.assertEqual(len(raw_files), 1)
+
+    def test_machine_native_raw_controls_hash_storage_but_parse_payload_is_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            parse_payload = b'{"latest":{"value":1}}'
+            source_raw = b"220;A;USD;5,0912;5,0918;1,0000;1,0000\n"
+            spec = SourceSpec(source_id="raw-fixture", name="RAW Fixture", group="dados", method="fake", file_extension="csv")
+            engine = CollectorEngine(LocalStore(tmp), adapter_resolver=lambda _: FakeAdapter(parse_payload, raw_payload=source_raw))
+            outcome = engine.run_source_capture(spec)
+
+            self.assertEqual(outcome.payload, parse_payload)
+            self.assertEqual(outcome.manifest.sha256, sha256_bytes(source_raw))
+            self.assertEqual(outcome.manifest.bytes_read, len(source_raw))
+            raw_files = list((Path(tmp) / "raw").rglob("*.csv"))
+            self.assertEqual(len(raw_files), 1)
+            self.assertEqual(raw_files[0].read_bytes(), source_raw)
 
     def test_business_daily_gap(self) -> None:
         missing = detect_gaps(
