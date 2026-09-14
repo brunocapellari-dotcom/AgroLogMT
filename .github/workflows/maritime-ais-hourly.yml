@@ -70,12 +70,12 @@ jobs:
             --format=json > /tmp/latest-ais-execution.json
 
           if python3 - <<'PY'
-import json
-import sys
-rows = json.load(open('/tmp/latest-ais-execution.json', encoding='utf-8'))
-active = bool(rows and rows[0].get('status', {}).get('startTime') and not rows[0].get('status', {}).get('completionTime'))
-sys.exit(10 if active else 0)
-PY
+          import json
+          import sys
+          rows = json.load(open('/tmp/latest-ais-execution.json', encoding='utf-8'))
+          active = bool(rows and rows[0].get('status', {}).get('startTime') and not rows[0].get('status', {}).get('completionTime'))
+          sys.exit(10 if active else 0)
+          PY
           then
             gcloud run jobs execute "$AIS_JOB_NAME" --region "$REGION" --project "$PROJECT_ID" --async
             echo 'AIS execution triggered.'
