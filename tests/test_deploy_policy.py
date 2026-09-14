@@ -23,7 +23,15 @@ class DeployPolicyTests(unittest.TestCase):
         self.assertIn('roles/bigquery.dataEditor', text)
         self.assertIn('ensure_dataset_role', text)
         self.assertIn('MARITIME_DATASET', text)
+        self.assertIn('AGRO_DATASET', text)
         self.assertIn('remove_legacy_project_role "$DEPLOYER_SA_EMAIL" "$role"', text)
+
+    def test_agro_dataset_is_required_before_recurring_collector_deploy(self) -> None:
+        deploy = Path("scripts/deploy_collectors_gcloud.sh").read_text(encoding="utf-8")
+        preflight = Path("scripts/preflight_n6_gcp.sh").read_text(encoding="utf-8")
+        self.assertIn('AGRO_DATASET="${AGRO_DATASET:-agro}"', deploy)
+        self.assertIn('AGROLOG_AGRO_DATASET=${AGRO_DATASET}', deploy)
+        self.assertIn('AGRO_DATASET="${AGRO_DATASET:-agro}"', preflight)
 
 
 if __name__ == "__main__":
