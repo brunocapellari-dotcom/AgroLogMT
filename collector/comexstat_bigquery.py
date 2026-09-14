@@ -110,43 +110,44 @@ def iter_canonical_file(
         )
 
 
+def _dedupe_db(parent: Path) -> tuple[Path, sqlite3.Connection, sqlite3.Cursor]:
+    with tempfile.NamedTemporaryFile(
+        prefix=".comex_dedupe_",
+        suffix=".sqlite3",
+        dir=parent,
+        delete=False,
+    ) as tmp:
+        path = Path(tmp.name)
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA journal_mode=OFF")
+    connection.execute("PRAGMA synchronous=OFF")
+    connection.execute("PRAGMA temp_store=FILE")
+    connection.execute("CREATE TABLE record_ids (record_id TEXT PRIMARY KEY) WITHOUT ROWID")
+    return path, connection, connection.cursor()
+
+
 def write_ndjson(
     source_path: str | Path,
     destination: str | Path,
     dataset: str,
     **metadata: Any,
 ) -> dict[str, Any]:
-    """Normaliza CSV grande para NDJSON com deduplicação exata limitada por disco.
+    """Normaliza CSV grande preservando evidência e contando duplicatas com estado em disco.
 
-    O arquivo anual pode ter milhões de linhas. Manter todos os ``record_id`` em um
-    ``set`` Python faria o uso de RAM crescer com o tamanho do arquivo. Um índice
-    SQLite temporário preserva a detecção exata de duplicatas sem materializar o
-    conjunto inteiro em memória. Apenas a primeira ocorrência de cada registro é
-    escrita no NDJSON que seguirá para o load job do BigQuery.
+    O NDJSON mantém todas as linhas normalizadas, inclusive duplicatas exatas, para
+    preservar a trilha auditável já estabelecida. A unicidade canônica é medida por
+    ``record_id`` em um índice SQLite temporário, evitando o crescimento linear de RAM
+    que ocorria com um ``set`` Python. A carga BigQuery continua deduplicando por
+    ``snapshot_id, record_id``.
     """
     dest = Path(destination)
     dest.parent.mkdir(parents=True, exist_ok=True)
     rows = 0
     unique_rows = 0
     duplicates = 0
+    dedupe_path, connection, cursor = _dedupe_db(dest.parent)
 
-    with tempfile.NamedTemporaryFile(
-        prefix=".comex_dedupe_",
-        suffix=".sqlite3",
-        dir=dest.parent,
-        delete=False,
-    ) as tmp:
-        dedupe_path = Path(tmp.name)
-
-    connection: sqlite3.Connection | None = None
     try:
-        connection = sqlite3.connect(dedupe_path)
-        connection.execute("PRAGMA journal_mode=OFF")
-        connection.execute("PRAGMA synchronous=OFF")
-        connection.execute("PRAGMA temp_store=FILE")
-        connection.execute("CREATE TABLE record_ids (record_id TEXT PRIMARY KEY) WITHOUT ROWID")
-        cursor = connection.cursor()
-
         with dest.open("w", encoding="utf-8", newline="") as out:
             for row in iter_canonical_file(source_path, dataset, **metadata):
                 rows += 1
@@ -154,15 +155,14 @@ def write_ndjson(
                 cursor.execute("INSERT OR IGNORE INTO record_ids(record_id) VALUES (?)", (rid,))
                 if cursor.rowcount == 0:
                     duplicates += 1
-                    continue
-                unique_rows += 1
+                else:
+                    unique_rows += 1
                 out.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
-                if unique_rows % 50_000 == 0:
+                if rows % 50_000 == 0:
                     connection.commit()
         connection.commit()
     finally:
-        if connection is not None:
-            connection.close()
+        connection.close()
         dedupe_path.unlink(missing_ok=True)
 
     return {
@@ -171,6 +171,7 @@ def write_ndjson(
         "exact_duplicate_rows": duplicates,
         "ndjson_path": str(dest),
         "dedupe_strategy": "sqlite_disk_backed_exact",
+        "audit_rows_preserved": True,
     }
 
 
@@ -181,6 +182,33 @@ def _count_ndjson_records(path: str | Path) -> int:
             if line.strip():
                 records += 1
     return records
+
+
+def _count_unique_ndjson_record_ids(path: str | Path) -> int:
+    source = Path(path)
+    dedupe_path, connection, cursor = _dedupe_db(source.parent)
+    unique = 0
+    rows = 0
+    try:
+        with source.open("r", encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                rows += 1
+                payload = json.loads(line)
+                record_id = payload.get("record_id")
+                if not isinstance(record_id, str) or not record_id:
+                    raise ValueError(f"NDJSON ComexStat sem record_id válido na linha {line_number}")
+                cursor.execute("INSERT OR IGNORE INTO record_ids(record_id) VALUES (?)", (record_id,))
+                if cursor.rowcount:
+                    unique += 1
+                if rows % 50_000 == 0:
+                    connection.commit()
+        connection.commit()
+    finally:
+        connection.close()
+        dedupe_path.unlink(missing_ok=True)
+    return unique
 
 
 class ComexStatBigQueryLoader:
@@ -291,12 +319,29 @@ CLUSTER BY {cluster}
                 f"snapshot={snapshot_id} esperado={expected} persistido={actual}"
             )
 
-    def load_ndjson(self, variant: str, ndjson_path: str | Path, *, snapshot_id: str) -> dict[str, Any]:
+    def load_ndjson(
+        self,
+        variant: str,
+        ndjson_path: str | Path,
+        *,
+        snapshot_id: str,
+        expected_unique_record_ids: int | None = None,
+    ) -> dict[str, Any]:
         """Carrega NDJSON por load job e prova contagem/idempotência do snapshot."""
         self.ensure_target(variant)
-        expected = _count_ndjson_records(ndjson_path)
-        if expected < 1:
+        source_records = _count_ndjson_records(ndjson_path)
+        if source_records < 1:
             raise ValueError("ComexStat loader recusou NDJSON vazio")
+        expected = (
+            expected_unique_record_ids
+            if expected_unique_record_ids is not None
+            else _count_unique_ndjson_record_ids(ndjson_path)
+        )
+        if not isinstance(expected, int) or expected < 1 or expected > source_records:
+            raise ValueError(
+                "Contagem única esperada inválida para ComexStat: "
+                f"unique={expected!r} source_records={source_records}"
+            )
 
         existing = self._snapshot_count(variant, snapshot_id)
         if existing:
@@ -307,6 +352,7 @@ CLUSTER BY {cluster}
                 "records_inserted": 0,
                 "records_existing": existing,
                 "records_expected": expected,
+                "source_records": source_records,
             }
 
         started = datetime.now(timezone.utc)
@@ -355,4 +401,5 @@ WHEN NOT MATCHED THEN INSERT ROW
             "records_inserted": inserted,
             "records_existing": 0,
             "records_expected": expected,
+            "source_records": source_records,
         }
