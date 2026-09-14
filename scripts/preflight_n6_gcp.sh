@@ -7,6 +7,7 @@ BQ_LOCATION="${BQ_LOCATION:-southamerica-east1}"
 OPS_DATASET="${OPS_DATASET:-agrolog_ops}"
 LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
 TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
+AGRO_DATASET="${AGRO_DATASET:-agro}"
 MARITIME_DATASET="${MARITIME_DATASET:-agrolog_models}"
 COLLECTOR_SA_NAME="${COLLECTOR_SA_NAME:-agrolog-collector}"
 GATEWAY_SA_NAME="${GATEWAY_SA_NAME:-agrolog-gateway}"
@@ -45,7 +46,7 @@ for api in \
   fi
 done
 
-for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$MARITIME_DATASET"; do
+for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$MARITIME_DATASET"; do
   tmp="/tmp/agrolog-dataset-${dataset}.json"
   if bq show --project_id="$PROJECT_ID" --format=prettyjson "${PROJECT_ID}:${dataset}" >"$tmp" 2>/dev/null; then
     actual_location="$(python - "$tmp" <<'PY'
