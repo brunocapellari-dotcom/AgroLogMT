@@ -7,13 +7,13 @@
       "method": "bcb_ptax_daily",
       "enabled": true,
       "expected_frequency": "daily",
-      "file_extension": "json",
+      "file_extension": "csv",
       "evidence_class": "observado",
       "options": {
         "days_back": 7,
         "timeout_seconds": 60
       },
-      "notes": "P0. API oficial Olinda/PTAX; consulta janela curta e materializa somente cotação retornada pela fonte primária."
+      "notes": "P0. API oficial Olinda descobre a última observação; o CSV oficial de fechamento é preservado byte a byte como RAW, com SHA-256 e conferência cruzada compra/venda antes da carga."
     },
     {
       "source_id": "ana_hidroweb_m04_stations",

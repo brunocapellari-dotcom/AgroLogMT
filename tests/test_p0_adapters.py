@@ -10,10 +10,16 @@ from collector.p0_adapters import AnaHidroAdoptedAdapter, BcbPtaxDailyAdapter, P
 
 
 class FakeResponse:
-    def __init__(self, body, status=200, headers=None):
+    def __init__(self, body=None, status=200, headers=None, content=None):
         self._body = body
         self.status_code = status
         self.headers = headers or {}
+        if content is not None:
+            self.content = content
+        elif body is None:
+            self.content = b""
+        else:
+            self.content = json.dumps(body).encode("utf-8")
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -24,19 +30,41 @@ class FakeResponse:
 
 
 class TestBcbPtaxDailyAdapter(unittest.TestCase):
-    def test_selects_latest_official_observation(self):
+    def test_selects_latest_official_observation_and_preserves_closing_csv(self):
         spec = SourceSpec(source_id="bcb_ptax_usd_daily", name="PTAX", group="dados", method="bcb_ptax_daily")
-        payload = {
+        discovery = {
             "value": [
                 {"cotacaoCompra": 5.2, "cotacaoVenda": 5.21, "dataHoraCotacao": "2026-08-21 13:10:00.000"},
                 {"cotacaoCompra": 5.15, "cotacaoVenda": 5.16, "dataHoraCotacao": "2026-08-24 13:08:00.000"},
             ]
         }
-        with patch("collector.p0_adapters.requests.get", return_value=FakeResponse(payload)):
+        raw = b"220;A;USD;5,1500;5,1600;1,0000;1,0000\r\n"
+        calls = [
+            FakeResponse(discovery, headers={"Content-Type": "application/json"}),
+            FakeResponse(content=raw, headers={"Content-Type": "application/octet-stream"}),
+        ]
+        with patch("collector.p0_adapters.requests.get", side_effect=calls):
             result = BcbPtaxDailyAdapter().fetch(spec)
         body = json.loads(result.payload)
         self.assertEqual(body["latest"]["dataHoraCotacao"][:10], "2026-08-24")
-        self.assertEqual(body["source"], "BCB_DEPIN_PTAX_OLINDA")
+        self.assertEqual(body["source"], "BCB_DEPIN_PTAX")
+        self.assertEqual(body["raw_crosscheck"], "matched")
+        self.assertEqual(result.raw_payload, raw)
+        self.assertTrue(result.observed_url.endswith("/20260824.csv"))
+        self.assertEqual(result.content_type, "application/octet-stream")
+
+    def test_fails_closed_when_csv_diverges_from_olinda(self):
+        spec = SourceSpec(source_id="bcb_ptax_usd_daily", name="PTAX", group="dados", method="bcb_ptax_daily")
+        discovery = {
+            "value": [
+                {"cotacaoCompra": 5.15, "cotacaoVenda": 5.16, "dataHoraCotacao": "2026-08-24 13:08:00.000"},
+            ]
+        }
+        raw = b"220;A;USD;5,1400;5,1600;1,0000;1,0000\n"
+        calls = [FakeResponse(discovery), FakeResponse(content=raw)]
+        with patch("collector.p0_adapters.requests.get", side_effect=calls):
+            with self.assertRaises(P0AcquisitionError):
+                BcbPtaxDailyAdapter().fetch(spec)
 
     def test_fails_closed_without_quote(self):
         spec = SourceSpec(source_id="bcb_ptax_usd_daily", name="PTAX", group="dados", method="bcb_ptax_daily")

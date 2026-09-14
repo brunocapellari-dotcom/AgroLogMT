@@ -20,6 +20,10 @@ class AcquisitionResult:
     content_type: str | None = None
     etag: str | None = None
     last_modified: str | None = None
+    # Optional exact machine-native artifact. ``payload`` remains the parse payload
+    # consumed by the pipeline; when raw_payload is present the collector hashes and
+    # persists these exact source bytes instead.
+    raw_payload: bytes | None = None
 
 
 class Adapter(Protocol):

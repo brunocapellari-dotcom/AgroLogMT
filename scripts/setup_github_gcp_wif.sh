@@ -16,12 +16,16 @@ OPS_DATASET="${OPS_DATASET:-agrolog_ops}"
 LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
 TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
 MARITIME_DATASET="${MARITIME_DATASET:-agrolog_models}"
+MERCADO_DATASET="${MERCADO_DATASET:-mercado}"
+HIDRO_DATASET="${HIDRO_DATASET:-hidrologia}"
 DEPLOYER_SA_NAME="${DEPLOYER_SA_NAME:-agrolog-github-deployer}"
 BUILD_SA_NAME="${BUILD_SA_NAME:-agrolog-builder}"
 COLLECTOR_SA_NAME="${COLLECTOR_SA_NAME:-agrolog-collector}"
 GATEWAY_SA_NAME="${GATEWAY_SA_NAME:-agrolog-gateway}"
 GATEWAY_SERVICE_NAME="${GATEWAY_SERVICE_NAME:-agrolog-gateway}"
 CONFIGURE_ANA="${CONFIGURE_ANA:-0}"
+ANA_IDENTIFICADOR_SECRET="${ANA_IDENTIFICADOR_SECRET:-agrolog-ana-identificador}"
+ANA_SENHA_SECRET="${ANA_SENHA_SECRET:-agrolog-ana-senha}"
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "ERRO: configure o projeto: gcloud config set project <PROJECT_ID>" >&2
@@ -42,7 +46,7 @@ gcloud services enable \
   iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com \
   bigquery.googleapis.com run.googleapis.com cloudbuild.googleapis.com \
   artifactregistry.googleapis.com serviceusage.googleapis.com drive.googleapis.com \
-  logging.googleapis.com storage.googleapis.com \
+  logging.googleapis.com storage.googleapis.com secretmanager.googleapis.com \
   --project "$PROJECT_ID"
 
 ensure_sa() {
@@ -85,6 +89,14 @@ remove_legacy_project_role() {
     --member="serviceAccount:${principal}" --role="$role" --condition=None --quiet >/dev/null 2>&1 || true
 }
 
+ensure_secret() {
+  local name="$1" value="$2"
+  if ! gcloud secrets describe "$name" --project "$PROJECT_ID" >/dev/null 2>&1; then
+    gcloud secrets create "$name" --project "$PROJECT_ID" --replication-policy=automatic >/dev/null
+  fi
+  printf '%s' "$value" | gcloud secrets versions add "$name" --project "$PROJECT_ID" --data-file=- >/dev/null
+}
+
 ensure_sa "$DEPLOYER_SA_NAME" "AgroLog GitHub deployer"
 ensure_sa "$BUILD_SA_NAME" "AgroLog Cloud Build"
 ensure_sa "$COLLECTOR_SA_NAME" "AgroLog collector runtime"
@@ -109,7 +121,7 @@ for role in \
   remove_legacy_project_role "$DEPLOYER_SA_EMAIL" "$role"
 done
 
-for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$MARITIME_DATASET"; do
+for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"; do
   ensure_dataset "$dataset"
 done
 if ! gcloud artifacts repositories describe "$AR_REPOSITORY" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
@@ -126,7 +138,7 @@ JSON
 gcloud storage buckets update "gs://${BUILD_SOURCE_BUCKET}" --lifecycle-file=/tmp/agrolog-build-lifecycle.json >/dev/null
 
 ensure_project_role "$COLLECTOR_SA_EMAIL" roles/bigquery.user
-for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$MARITIME_DATASET"; do
+for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"; do
   ensure_dataset_role "$dataset" "$COLLECTOR_SA_EMAIL" roles/bigquery.dataEditor
 done
 
@@ -209,8 +221,19 @@ if [[ "$CONFIGURE_ANA" == "1" ]]; then
     echo 'ERRO: credenciais ANA não preenchidas.' >&2
     exit 2
   fi
-  printf '%s' "$ANA_ID" | gh secret set ANA_HIDRO_IDENTIFICADOR --repo "$REPO"
-  printf '%s' "$ANA_PASSWORD" | gh secret set ANA_HIDRO_SENHA --repo "$REPO"
+
+  # Nomes canônicos consumidos pelo CI e pelo runtime.
+  printf '%s' "$ANA_ID" | gh secret set ANA_IDENTIFICADOR --repo "$REPO"
+  printf '%s' "$ANA_PASSWORD" | gh secret set ANA_SENHA --repo "$REPO"
+
+  # Secret Manager é a origem dos segredos do Cloud Run; GitHub recebe somente
+  # os aliases necessários ao probe opcional de CI.
+  ensure_secret "$ANA_IDENTIFICADOR_SECRET" "$ANA_ID"
+  ensure_secret "$ANA_SENHA_SECRET" "$ANA_PASSWORD"
+  for secret in "$ANA_IDENTIFICADOR_SECRET" "$ANA_SENHA_SECRET"; do
+    gcloud secrets add-iam-policy-binding "$secret" --project "$PROJECT_ID" \
+      --member="serviceAccount:${COLLECTOR_SA_EMAIL}" --role=roles/secretmanager.secretAccessor --quiet >/dev/null
+  done
   unset ANA_PASSWORD ANA_ID
 fi
 
@@ -221,6 +244,6 @@ printf 'Builder:            %s\n' "$BUILD_SA_EMAIL"
 printf 'Collector:          %s\n' "$COLLECTOR_SA_EMAIL"
 printf 'Gateway:            %s\n' "$GATEWAY_SA_EMAIL"
 printf 'Build staging:      gs://%s\n' "$BUILD_SOURCE_BUCKET"
-printf 'Datasets:           %s, %s, %s, %s\n' "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$MARITIME_DATASET"
+printf 'Datasets:           %s, %s, %s, %s, %s, %s\n' "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"
 printf 'IMPORTANTE: compartilhe a pasta RAW do Drive como Editor somente com %s.\n' "$COLLECTOR_SA_EMAIL"
 printf 'Deploy/homologação recorrente não deve alterar IAM, APIs ou criar datasets.\n'
