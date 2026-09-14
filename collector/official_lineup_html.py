@@ -164,14 +164,14 @@ def _table_records(table: HtmlTable, required: set[str]) -> list[dict[str, str]]
 
 def _cdp_terminal(context: str) -> str | None:
     normalized = unicodedata.normalize("NFKD", context).encode("ascii", "ignore").decode("ascii").upper()
-    matches = re.findall(r"\bBERCO\s+(\d{2,4})\b", normalized)
-    if matches:
-        return f"BERCO_{matches[-1]}"
-    if "NO FUNDEIO" in normalized or "AT ANCHORAGE" in normalized:
-        return "FUNDEIO"
-    if "RAMPA RODOFLUVIAL" in normalized:
-        return "RAMPA_RODOFLUVIAL"
-    return None
+    candidates: list[tuple[int, str]] = []
+    for match in re.finditer(r"\bBERCO\s+(\d{2,4})\b", normalized):
+        candidates.append((match.start(), f"BERCO_{match.group(1)}"))
+    for match in re.finditer(r"\b(?:NO FUNDEIO|AT ANCHORAGE)\b", normalized):
+        candidates.append((match.start(), "FUNDEIO"))
+    for match in re.finditer(r"\bRAMPA RODOFLUVIAL\b", normalized):
+        candidates.append((match.start(), "RAMPA_RODOFLUVIAL"))
+    return max(candidates, key=lambda item: item[0])[1] if candidates else None
 
 
 def parse_santos_schedule(html: str) -> list[dict[str, str]]:
