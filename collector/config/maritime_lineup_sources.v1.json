@@ -1,0 +1,65 @@
+{
+  "version": "1.0",
+  "purpose": "official_maritime_lineup_ingestion",
+  "evidence_class": "INFORMADO",
+  "rules": {
+    "programming_is_not_realized": true,
+    "preserve_raw_snapshot": true,
+    "future_eta_is_not_source_freshness": true,
+    "source_timestamp_must_be_explicit": true
+  },
+  "sources": [
+    {
+      "source_id": "aps_santos_atracacoes_programadas",
+      "port_id": "SANTOS",
+      "port_system": "SANTOS",
+      "url": "https://www.portodesantos.com.br/informacoes-operacionais/operacoes-portuarias/navegacao-e-movimento-de-navios/atracacoes-programadas/",
+      "parser_mode": "HTML_SANTOS_SCHEDULE",
+      "enabled": true,
+      "freshness_hours": 24,
+      "evidence_class": "INFORMADO"
+    },
+    {
+      "source_id": "cdp_vila_do_conde_programacao_navios",
+      "port_id": "BARCARENA_VILA_DO_CONDE",
+      "port_system": "BARCARENA_VILA_DO_CONDE",
+      "url": "https://www.cdp.com.br/programacao-de-navio-do-porto-de-vila-do-conde/",
+      "parser_mode": "HTML_CDP_BERTH_TABLE",
+      "enabled": true,
+      "freshness_hours": 72,
+      "evidence_class": "INFORMADO"
+    },
+    {
+      "source_id": "cdp_santarem_programacao_navios",
+      "port_id": "SANTAREM",
+      "port_system": "SANTAREM",
+      "url": "https://www.cdp.com.br/programacao-de-navios-do-porto-de-santarem/",
+      "parser_mode": "HTML_CDP_BERTH_TABLE",
+      "enabled": true,
+      "freshness_hours": 72,
+      "evidence_class": "INFORMADO"
+    },
+    {
+      "source_id": "portos_parana_lineup_corredor_exportacao",
+      "port_id": "PARANAGUA",
+      "port_system": "PARANAGUA",
+      "url": "https://www.portosdoparana.pr.gov.br/Operacional/Pagina/Atas-do-Corredor-de-Exportacao",
+      "parser_mode": "PDF_INDEX_PARANAGUA",
+      "enabled": false,
+      "data_gate": "PDF_PARSER_PENDING",
+      "freshness_hours": 48,
+      "evidence_class": "INFORMADO"
+    },
+    {
+      "source_id": "emap_itaqui_lineup",
+      "port_id": "ITAQUI",
+      "port_system": "ITAQUI",
+      "url": "https://www.portodoitaqui.com/",
+      "parser_mode": "PDF_INDEX_ITAQUI",
+      "enabled": false,
+      "data_gate": "PDF_INDEX_DISCOVERY_PENDING",
+      "freshness_hours": 48,
+      "evidence_class": "INFORMADO"
+    }
+  ]
+}
