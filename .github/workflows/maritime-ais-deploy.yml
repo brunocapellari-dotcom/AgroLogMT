@@ -1,0 +1,126 @@
+name: maritime-ais-deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "collector/ais_stream.py"
+      - "collector/ais_stream_client.py"
+      - "collector/ais_worker.py"
+      - "collector/shipping_bigquery.py"
+      - "collector/shipping_reconcile_worker.py"
+      - "collector/config/maritime_ais_subscription.v1.json"
+      - "scripts/deploy_ais_worker_gcloud.sh"
+      - ".github/workflows/maritime-ais-deploy.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: maritime-ais-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      WIF_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      BUILD_SERVICE_ACCOUNT: ${{ secrets.GCP_BUILD_SERVICE_ACCOUNT }}
+      BUILD_SOURCE_BUCKET: ${{ secrets.GCP_BUILD_SOURCE_BUCKET }}
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      REGION: southamerica-east1
+      BQ_LOCATION: southamerica-east1
+      DATASET: agrolog_models
+      AIS_JOB_NAME: agrolog-ais
+      RECON_JOB_NAME: agrolog-shipping-reconcile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail closed if WIF bootstrap is incomplete
+        shell: bash
+        run: |
+          missing=0
+          for key in WIF_PROVIDER GCP_SERVICE_ACCOUNT BUILD_SERVICE_ACCOUNT BUILD_SOURCE_BUCKET PROJECT_ID; do
+            if [ -z "${!key}" ]; then
+              echo "MISSING ${key}"
+              missing=1
+            else
+              echo "READY ${key}"
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Execute scripts/setup_github_gcp_wif.sh com identidade administradora." >&2
+            exit 2
+          fi
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm federated identity
+        shell: bash
+        run: |
+          active="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -n1)"
+          echo "Active identity: ${active}"
+          test "$active" = "$GCP_SERVICE_ACCOUNT"
+          gcloud config set project "$PROJECT_ID"
+
+      - name: Deploy AIS and reconciliation jobs
+        run: bash scripts/deploy_ais_worker_gcloud.sh
+
+      - name: Smoke capture real AIS
+        shell: bash
+        run: |
+          gcloud run jobs execute "$AIS_JOB_NAME" \
+            --region "$REGION" \
+            --project "$PROJECT_ID" \
+            --wait \
+            --update-env-vars AIS_MAX_RECORDS=10,AIS_CAPTURE_SECONDS=120
+
+      - name: Validate fresh AIS persisted in BigQuery
+        shell: bash
+        run: |
+          rows="$(bq query --project_id="$PROJECT_ID" --location="$BQ_LOCATION" --use_legacy_sql=false --format=csv --quiet \
+            "SELECT COUNT(*) AS n FROM \`${PROJECT_ID}.${DATASET}.shipping_ais_positions\` WHERE observed_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 20 MINUTE)" | tail -n1)"
+          echo "Fresh AIS rows: ${rows}"
+          test "${rows:-0}" -gt 0
+
+          events="$(bq query --project_id="$PROJECT_ID" --location="$BQ_LOCATION" --use_legacy_sql=false --format=csv --quiet \
+            "SELECT COUNT(*) AS n FROM \`${PROJECT_ID}.${DATASET}.shipping_ais_capture_events\` WHERE event_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 20 MINUTE) AND event_type='END'" | tail -n1)"
+          echo "Completed capture events: ${events}"
+          test "${events:-0}" -gt 0
+
+      - name: Smoke reconciliation
+        shell: bash
+        run: |
+          gcloud run jobs execute "$RECON_JOB_NAME" \
+            --region "$REGION" \
+            --project "$PROJECT_ID" \
+            --wait
+
+      - name: Publish deployment summary
+        shell: bash
+        run: |
+          {
+            echo '## AgroLog Maritime — AIS runtime'
+            echo
+            echo '- Deploy: PASS'
+            echo '- AIS real smoke: PASS'
+            echo '- BigQuery persistence: PASS'
+            echo '- Capture audit events: PASS'
+            echo '- Reconciliation smoke: PASS'
+            echo '- Pilot AOIs: 5'
+            echo
+            echo 'O histórico AIS passa a ser acumulado a partir das execuções reais; nenhuma retroatividade é inferida.'
+          } >> "$GITHUB_STEP_SUMMARY"
