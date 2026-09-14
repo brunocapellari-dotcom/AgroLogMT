@@ -1,0 +1,97 @@
+name: maritime-ais-hourly
+
+on:
+  schedule:
+    - cron: "5 * * * *"
+    - cron: "4 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: maritime-ais-hourly-${{ github.event.schedule || 'manual' }}
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      WIF_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      REGION: southamerica-east1
+      AIS_JOB_NAME: agrolog-ais
+      RECON_JOB_NAME: agrolog-shipping-reconcile
+    steps:
+      - name: Fail closed if GCP bootstrap is incomplete
+        shell: bash
+        run: |
+          missing=0
+          for key in WIF_PROVIDER GCP_SERVICE_ACCOUNT PROJECT_ID; do
+            if [ -z "${!key}" ]; then
+              echo "MISSING ${key}"
+              missing=1
+            fi
+          done
+          test "$missing" -eq 0
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Select scheduled action
+        id: action
+        shell: bash
+        run: |
+          schedule='${{ github.event.schedule }}'
+          if [ "$schedule" = '4 * * * *' ]; then
+            echo 'kind=reconcile' >> "$GITHUB_OUTPUT"
+          else
+            echo 'kind=ais' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trigger near-continuous AIS capture
+        if: steps.action.outputs.kind == 'ais'
+        shell: bash
+        run: |
+          gcloud run jobs describe "$AIS_JOB_NAME" --region "$REGION" --project "$PROJECT_ID" >/dev/null
+          gcloud run jobs executions list \
+            --job "$AIS_JOB_NAME" \
+            --region "$REGION" \
+            --project "$PROJECT_ID" \
+            --sort-by='~metadata.creationTimestamp' \
+            --limit=1 \
+            --format=json > /tmp/latest-ais-execution.json
+
+          if python3 - <<'PY'
+import json
+import sys
+rows = json.load(open('/tmp/latest-ais-execution.json', encoding='utf-8'))
+active = bool(rows and rows[0].get('status', {}).get('startTime') and not rows[0].get('status', {}).get('completionTime'))
+sys.exit(10 if active else 0)
+PY
+          then
+            gcloud run jobs execute "$AIS_JOB_NAME" --region "$REGION" --project "$PROJECT_ID" --async
+            echo 'AIS execution triggered.'
+          else
+            code=$?
+            if [ "$code" -eq 10 ]; then
+              echo 'AIS execution already active; duplicate trigger skipped.'
+            else
+              exit "$code"
+            fi
+          fi
+
+      - name: Trigger reconciliation
+        if: steps.action.outputs.kind == 'reconcile'
+        shell: bash
+        run: |
+          gcloud run jobs describe "$RECON_JOB_NAME" --region "$REGION" --project "$PROJECT_ID" >/dev/null
+          gcloud run jobs execute "$RECON_JOB_NAME" --region "$REGION" --project "$PROJECT_ID" --async
+          echo 'Reconciliation execution triggered.'
