@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from collector.conab_safra import ConabSafraRecord
+from collector.conab_safra_bigquery import ConabSafraBigQueryLoader, _expected_snapshot_records
 from collector.conab_safra_pipeline import build_canonical_rows
 
 
@@ -67,6 +68,31 @@ class ConabSafraPipelineTests(unittest.TestCase):
         first, _ = build_canonical_rows(**kwargs)
         second, _ = build_canonical_rows(**kwargs)
         self.assertEqual(first[0]["record_id"], second[0]["record_id"])
+
+    def test_expected_snapshot_records_counts_exact_duplicate_ids(self) -> None:
+        rows = [
+            {"snapshot_id": "snap", "record_id": "a"},
+            {"snapshot_id": "snap", "record_id": "a"},
+            {"snapshot_id": "snap", "record_id": "b"},
+        ]
+        expected, duplicates = _expected_snapshot_records(rows, "snap")
+        self.assertEqual(expected, 2)
+        self.assertEqual(duplicates, 1)
+
+    def test_expected_snapshot_records_rejects_mixed_snapshot(self) -> None:
+        with self.assertRaises(ValueError):
+            _expected_snapshot_records(
+                [
+                    {"snapshot_id": "snap", "record_id": "a"},
+                    {"snapshot_id": "other", "record_id": "b"},
+                ],
+                "snap",
+            )
+
+    def test_snapshot_tie_out_fails_closed(self) -> None:
+        ConabSafraBigQueryLoader._assert_snapshot_count(2, 2, snapshot_id="snap")
+        with self.assertRaises(RuntimeError):
+            ConabSafraBigQueryLoader._assert_snapshot_count(2, 1, snapshot_id="snap")
 
 
 if __name__ == "__main__":

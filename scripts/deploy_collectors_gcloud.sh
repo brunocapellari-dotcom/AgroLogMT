@@ -7,6 +7,7 @@ DRIVE_FOLDER_ID="${DRIVE_FOLDER_ID:-17AX2iCrQ17Jm86Pp9ijqn3hyEHVaQPqd}"
 OPS_DATASET="${OPS_DATASET:-agrolog_ops}"
 LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
 TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
+AGRO_DATASET="${AGRO_DATASET:-agro}"
 BQ_LOCATION="${BQ_LOCATION:-southamerica-east1}"
 AR_REPOSITORY="${AR_REPOSITORY:-agrolog}"
 BUILD_SOURCE_BUCKET="${BUILD_SOURCE_BUCKET:-${PROJECT_ID}-agrolog-build-source}"
@@ -70,7 +71,7 @@ for sa in "$COLLECTOR_SERVICE_ACCOUNT" "$BUILD_SERVICE_ACCOUNT"; do
     exit 3
   }
 done
-for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET"; do
+for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET"; do
   require_dataset "$dataset"
 done
 gcloud artifacts repositories describe "$AR_REPOSITORY" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1 || {
@@ -90,7 +91,7 @@ gcloud builds submit . \
   --config collector/cloudbuild.yaml \
   --substitutions "_IMAGE=${IMAGE}"
 
-common_env="AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_OPS_DATASET=${OPS_DATASET},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_TRADE_DATASET=${TRADE_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION},AGROLOG_DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID},AGROLOG_CONFIG=/app/collector/config/sources.pilot.json"
+common_env="AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_OPS_DATASET=${OPS_DATASET},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_TRADE_DATASET=${TRADE_DATASET},AGROLOG_AGRO_DATASET=${AGRO_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION},AGROLOG_DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID},AGROLOG_CONFIG=/app/collector/config/sources.pilot.json"
 
 for group in radar dados conhecimento; do
   job="agrolog-${group}"
@@ -112,7 +113,7 @@ Imagem: ${IMAGE}
 Builder: ${BUILD_SERVICE_ACCOUNT}
 Build staging: gs://${BUILD_SOURCE_BUCKET}
 Collector: ${COLLECTOR_SERVICE_ACCOUNT}
-Datasets: ${OPS_DATASET}, ${LOGISTICA_DATASET}, ${TRADE_DATASET}
+Datasets: ${OPS_DATASET}, ${LOGISTICA_DATASET}, ${TRADE_DATASET}, ${AGRO_DATASET}
 Pasta RAW/Drive: ${DRIVE_FOLDER_ID}
 
 Gate externo do Drive:

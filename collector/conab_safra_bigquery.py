@@ -15,6 +15,20 @@ def _safe_identifier(value: str, label: str) -> str:
     return value
 
 
+def _expected_snapshot_records(rows: list[dict[str, Any]], snapshot_id: str) -> tuple[int, int]:
+    if not rows:
+        raise ValueError("CONAB Safra loader recusou lote vazio")
+    record_ids: set[str] = set()
+    for index, row in enumerate(rows, start=1):
+        if row.get("snapshot_id") != snapshot_id:
+            raise ValueError(f"CONAB Safra snapshot_id divergente na linha {index}")
+        record_id = row.get("record_id")
+        if not isinstance(record_id, str) or not record_id:
+            raise ValueError(f"CONAB Safra record_id inválido na linha {index}")
+        record_ids.add(record_id)
+    return len(record_ids), len(rows) - len(record_ids)
+
+
 @dataclass(frozen=True)
 class SafraLoadResult:
     status: str
@@ -189,6 +203,14 @@ WHERE snapshot_id=(SELECT snapshot_id FROM latest)
         ).result())
         return int(rows[0]["n"]) if rows else 0
 
+    @staticmethod
+    def _assert_snapshot_count(expected: int, actual: int, *, snapshot_id: str) -> None:
+        if actual != expected:
+            raise RuntimeError(
+                "Tie-out CONAB Safra falhou: "
+                f"snapshot={snapshot_id} esperado={expected} persistido={actual}"
+            )
+
     def _write_audit(self, row: dict[str, Any]) -> None:
         errors = self.client.insert_rows_json(self.audit_table, [row])
         if errors:
@@ -196,10 +218,12 @@ WHERE snapshot_id=(SELECT snapshot_id FROM latest)
 
     def load(self, rows: list[dict[str, Any]], *, snapshot_id: str, parse_stats: dict[str, Any]) -> SafraLoadResult:
         started = datetime.now(timezone.utc)
+        expected, duplicates_removed = _expected_snapshot_records(rows, snapshot_id)
         self.ensure_objects()
         existing = self._snapshot_count(snapshot_id)
         run_id = f"conab_safra:{snapshot_id}:{started.isoformat()}"
         if existing:
+            self._assert_snapshot_count(expected, existing, snapshot_id=snapshot_id)
             finished = datetime.now(timezone.utc)
             result = SafraLoadResult(
                 status="already_loaded", snapshot_id=snapshot_id, records_input=len(rows), records_inserted=0,
@@ -210,7 +234,7 @@ WHERE snapshot_id=(SELECT snapshot_id FROM latest)
                 "run_id": run_id, "source_id": "conab_safra_graos_xlsx", "domain": "agro.safra",
                 "target_table": self.target_table, "snapshot_id": snapshot_id, "status": result.status,
                 "records_read": parse_stats.get("records_read"), "records_accepted": parse_stats.get("records_accepted"),
-                "records_rejected": parse_stats.get("records_rejected", 0), "duplicates_removed": 0,
+                "records_rejected": parse_stats.get("records_rejected", 0), "duplicates_removed": duplicates_removed,
                 "records_inserted": 0, "started_at": started.isoformat(), "finished_at": finished.isoformat(),
                 "details_json": json.dumps(parse_stats, ensure_ascii=False, sort_keys=True),
             })
@@ -225,7 +249,12 @@ WHERE snapshot_id=(SELECT snapshot_id FROM latest)
             self.client.load_table_from_json(rows, stage_ref, job_config=job_config).result()
             self.client.query(f"""
 MERGE `{self.target_table}` T
-USING `{stage_ref}` S
+USING (
+  SELECT * EXCEPT(_rn) FROM (
+    SELECT S.*, ROW_NUMBER() OVER(PARTITION BY snapshot_id, record_id ORDER BY record_id) AS _rn
+    FROM `{stage_ref}` S
+  ) WHERE _rn=1
+) S
 ON T.snapshot_id=S.snapshot_id AND T.record_id=S.record_id
 WHEN NOT MATCHED THEN INSERT ROW
 """).result()
@@ -233,6 +262,7 @@ WHEN NOT MATCHED THEN INSERT ROW
             self.client.delete_table(stage_ref, not_found_ok=True)
 
         inserted = self._snapshot_count(snapshot_id)
+        self._assert_snapshot_count(expected, inserted, snapshot_id=snapshot_id)
         finished = datetime.now(timezone.utc)
         result = SafraLoadResult(
             status="loaded", snapshot_id=snapshot_id, records_input=len(rows), records_inserted=inserted,
@@ -243,7 +273,7 @@ WHEN NOT MATCHED THEN INSERT ROW
             "run_id": run_id, "source_id": "conab_safra_graos_xlsx", "domain": "agro.safra",
             "target_table": self.target_table, "snapshot_id": snapshot_id, "status": result.status,
             "records_read": parse_stats.get("records_read"), "records_accepted": parse_stats.get("records_accepted"),
-            "records_rejected": parse_stats.get("records_rejected", 0), "duplicates_removed": 0,
+            "records_rejected": parse_stats.get("records_rejected", 0), "duplicates_removed": duplicates_removed,
             "records_inserted": inserted, "started_at": started.isoformat(), "finished_at": finished.isoformat(),
             "details_json": json.dumps(parse_stats, ensure_ascii=False, sort_keys=True),
         })
