@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import io
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from collector.comexstat import chunked, dataset_url, iter_rows, parse_text, validate_header_sample
+from collector.comexstat_bigquery import _count_ndjson_records, _count_unique_ndjson_record_ids, write_ndjson
 
 
 class ComexStatTests(unittest.TestCase):
@@ -50,9 +54,46 @@ class ComexStatTests(unittest.TestCase):
         batches = list(chunked(rows, size=2))
         self.assertEqual([len(b) for b in batches], [2, 2, 1])
 
+    def test_disk_backed_dedupe_preserves_all_audit_rows(self) -> None:
+        header = "CO_ANO;CO_MES;CO_NCM;CO_UNID;CO_PAIS;SG_UF_NCM;CO_VIA;CO_URF;QT_ESTAT;KG_LIQUIDO;VL_FOB\n"
+        row = "2026;7;12019000;10;160;MT;1;817600;100;250000;100000\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "EXP_2026.csv"
+            destination = Path(tmp) / "EXP_2026.ndjson"
+            source.write_text(header + row + row, encoding="utf-8")
+            stats = write_ndjson(
+                source,
+                destination,
+                "ncm_export",
+                snapshot_id="snapshot-1",
+                data_coleta="2026-09-14T12:00:00+00:00",
+                data_publicacao="2026-09-14T11:00:00+00:00",
+                source_url="https://balanca.mdic.gov.br/example.csv",
+                source_hash="snapshot-1",
+                raw_artifact_ref="drive://raw/example.csv",
+            )
+            lines = [line for line in destination.read_text(encoding="utf-8").splitlines() if line]
+            self.assertEqual(stats["rows"], 2)
+            self.assertEqual(stats["unique_record_ids"], 1)
+            self.assertEqual(stats["exact_duplicate_rows"], 1)
+            self.assertEqual(stats["dedupe_strategy"], "sqlite_disk_backed_exact")
+            self.assertTrue(stats["audit_rows_preserved"])
+            self.assertEqual(len(lines), 2)
+            self.assertEqual(_count_ndjson_records(destination), 2)
+            self.assertEqual(_count_unique_ndjson_record_ids(destination), 1)
+            self.assertEqual(json.loads(lines[0])["co_ncm"], "12019000")
+            self.assertEqual(json.loads(lines[1])["record_id"], json.loads(lines[0])["record_id"])
+            self.assertEqual(list(Path(tmp).glob(".comex_dedupe_*.sqlite3")), [])
+
     def test_official_url_templates(self) -> None:
-        self.assertEqual(dataset_url("ncm_export", 2026), "https://balanca.mdic.gov.br/balanca/bd/comexstat-bd/ncm/EXP_2026.csv")
-        self.assertEqual(dataset_url("municipio_sh4_export", 2026), "https://balanca.mdic.gov.br/balanca/bd/comexstat-bd/mun/EXP_2026_MUN.csv")
+        self.assertEqual(
+            dataset_url("ncm_export", 2026),
+            "https://balanca.mdic.gov.br/balanca/bd/comexstat-bd/ncm/EXP_2026.csv",
+        )
+        self.assertEqual(
+            dataset_url("municipio_sh4_export", 2026),
+            "https://balanca.mdic.gov.br/balanca/bd/comexstat-bd/mun/EXP_2026_MUN.csv",
+        )
 
 
 if __name__ == "__main__":

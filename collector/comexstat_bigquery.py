@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import sqlite3
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
@@ -97,10 +99,31 @@ def iter_canonical_file(
 ) -> Iterator[dict[str, Any]]:
     for row in iter_file(path, dataset):
         yield canonical_row(
-            dataset, row, snapshot_id=snapshot_id, data_coleta=data_coleta,
-            data_publicacao=data_publicacao, source_url=source_url,
-            source_hash=source_hash, raw_artifact_ref=raw_artifact_ref,
+            dataset,
+            row,
+            snapshot_id=snapshot_id,
+            data_coleta=data_coleta,
+            data_publicacao=data_publicacao,
+            source_url=source_url,
+            source_hash=source_hash,
+            raw_artifact_ref=raw_artifact_ref,
         )
+
+
+def _dedupe_db(parent: Path) -> tuple[Path, sqlite3.Connection, sqlite3.Cursor]:
+    with tempfile.NamedTemporaryFile(
+        prefix=".comex_dedupe_",
+        suffix=".sqlite3",
+        dir=parent,
+        delete=False,
+    ) as tmp:
+        path = Path(tmp.name)
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA journal_mode=OFF")
+    connection.execute("PRAGMA synchronous=OFF")
+    connection.execute("PRAGMA temp_store=FILE")
+    connection.execute("CREATE TABLE record_ids (record_id TEXT PRIMARY KEY) WITHOUT ROWID")
+    return path, connection, connection.cursor()
 
 
 def write_ndjson(
@@ -109,27 +132,83 @@ def write_ndjson(
     dataset: str,
     **metadata: Any,
 ) -> dict[str, Any]:
-    """Normaliza CSV grande para NDJSON sem materializar o conjunto inteiro em RAM."""
+    """Normaliza CSV grande preservando evidência e contando duplicatas com estado em disco.
+
+    O NDJSON mantém todas as linhas normalizadas, inclusive duplicatas exatas, para
+    preservar a trilha auditável já estabelecida. A unicidade canônica é medida por
+    ``record_id`` em um índice SQLite temporário, evitando o crescimento linear de RAM
+    que ocorria com um ``set`` Python. A carga BigQuery continua deduplicando por
+    ``snapshot_id, record_id``.
+    """
     dest = Path(destination)
     dest.parent.mkdir(parents=True, exist_ok=True)
     rows = 0
-    unique_ids: set[str] = set()
+    unique_rows = 0
     duplicates = 0
-    with dest.open("w", encoding="utf-8", newline="") as out:
-        for row in iter_canonical_file(source_path, dataset, **metadata):
-            rows += 1
-            rid = row["record_id"]
-            if rid in unique_ids:
-                duplicates += 1
-            else:
-                unique_ids.add(rid)
-            out.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+    dedupe_path, connection, cursor = _dedupe_db(dest.parent)
+
+    try:
+        with dest.open("w", encoding="utf-8", newline="") as out:
+            for row in iter_canonical_file(source_path, dataset, **metadata):
+                rows += 1
+                rid = row["record_id"]
+                cursor.execute("INSERT OR IGNORE INTO record_ids(record_id) VALUES (?)", (rid,))
+                if cursor.rowcount == 0:
+                    duplicates += 1
+                else:
+                    unique_rows += 1
+                out.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+                if rows % 50_000 == 0:
+                    connection.commit()
+        connection.commit()
+    finally:
+        connection.close()
+        dedupe_path.unlink(missing_ok=True)
+
     return {
         "rows": rows,
-        "unique_record_ids": len(unique_ids),
+        "unique_record_ids": unique_rows,
         "exact_duplicate_rows": duplicates,
         "ndjson_path": str(dest),
+        "dedupe_strategy": "sqlite_disk_backed_exact",
+        "audit_rows_preserved": True,
     }
+
+
+def _count_ndjson_records(path: str | Path) -> int:
+    records = 0
+    with Path(path).open("rb") as handle:
+        for line in handle:
+            if line.strip():
+                records += 1
+    return records
+
+
+def _count_unique_ndjson_record_ids(path: str | Path) -> int:
+    source = Path(path)
+    dedupe_path, connection, cursor = _dedupe_db(source.parent)
+    unique = 0
+    rows = 0
+    try:
+        with source.open("r", encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                rows += 1
+                payload = json.loads(line)
+                record_id = payload.get("record_id")
+                if not isinstance(record_id, str) or not record_id:
+                    raise ValueError(f"NDJSON ComexStat sem record_id válido na linha {line_number}")
+                cursor.execute("INSERT OR IGNORE INTO record_ids(record_id) VALUES (?)", (record_id,))
+                if cursor.rowcount:
+                    unique += 1
+                if rows % 50_000 == 0:
+                    connection.commit()
+        connection.commit()
+    finally:
+        connection.close()
+        dedupe_path.unlink(missing_ok=True)
+    return unique
 
 
 class ComexStatBigQueryLoader:
@@ -157,18 +236,36 @@ class ComexStatBigQueryLoader:
     def _schema(self) -> list[Any]:
         field = self._bigquery.SchemaField
         return [
-            field("snapshot_id", "STRING", mode="REQUIRED"), field("record_id", "STRING", mode="REQUIRED"),
-            field("dataset_variant", "STRING", mode="REQUIRED"), field("fluxo", "STRING", mode="REQUIRED"),
-            field("competencia", "DATE", mode="REQUIRED"), field("co_ano", "INT64", mode="REQUIRED"),
-            field("co_mes", "INT64", mode="REQUIRED"), field("co_ncm", "STRING"), field("sh4", "STRING"),
-            field("co_unid", "INT64"), field("co_pais", "INT64"), field("sg_uf_ncm", "STRING"),
-            field("sg_uf_mun", "STRING"), field("co_mun", "INT64"), field("co_via", "INT64"),
-            field("co_urf", "INT64"), field("qt_estat", "FLOAT"), field("kg_liquido", "FLOAT"),
-            field("vl_fob", "FLOAT"), field("vl_frete", "FLOAT"), field("vl_seguro", "FLOAT"),
-            field("toneladas", "FLOAT"), field("usd_por_t", "FLOAT"), field("geo_semantics", "STRING", mode="REQUIRED"),
-            field("urf_semantics", "STRING"), field("evidence_class", "STRING", mode="REQUIRED"),
-            field("data_publicacao", "TIMESTAMP"), field("data_coleta", "TIMESTAMP", mode="REQUIRED"),
-            field("source_url", "STRING"), field("source_hash", "STRING", mode="REQUIRED"),
+            field("snapshot_id", "STRING", mode="REQUIRED"),
+            field("record_id", "STRING", mode="REQUIRED"),
+            field("dataset_variant", "STRING", mode="REQUIRED"),
+            field("fluxo", "STRING", mode="REQUIRED"),
+            field("competencia", "DATE", mode="REQUIRED"),
+            field("co_ano", "INT64", mode="REQUIRED"),
+            field("co_mes", "INT64", mode="REQUIRED"),
+            field("co_ncm", "STRING"),
+            field("sh4", "STRING"),
+            field("co_unid", "INT64"),
+            field("co_pais", "INT64"),
+            field("sg_uf_ncm", "STRING"),
+            field("sg_uf_mun", "STRING"),
+            field("co_mun", "INT64"),
+            field("co_via", "INT64"),
+            field("co_urf", "INT64"),
+            field("qt_estat", "FLOAT"),
+            field("kg_liquido", "FLOAT"),
+            field("vl_fob", "FLOAT"),
+            field("vl_frete", "FLOAT"),
+            field("vl_seguro", "FLOAT"),
+            field("toneladas", "FLOAT"),
+            field("usd_por_t", "FLOAT"),
+            field("geo_semantics", "STRING", mode="REQUIRED"),
+            field("urf_semantics", "STRING"),
+            field("evidence_class", "STRING", mode="REQUIRED"),
+            field("data_publicacao", "TIMESTAMP"),
+            field("data_coleta", "TIMESTAMP", mode="REQUIRED"),
+            field("source_url", "STRING"),
+            field("source_hash", "STRING", mode="REQUIRED"),
             field("raw_artifact_ref", "STRING"),
         ]
 
@@ -183,7 +280,8 @@ class ComexStatBigQueryLoader:
             if variant.startswith("ncm_")
             else "sg_uf_mun, co_mun, sh4, snapshot_id"
         )
-        self.client.query(f"""
+        self.client.query(
+            f"""
 CREATE TABLE IF NOT EXISTS `{target}` (
   snapshot_id STRING NOT NULL, record_id STRING NOT NULL,
   dataset_variant STRING NOT NULL, fluxo STRING NOT NULL,
@@ -198,38 +296,89 @@ CREATE TABLE IF NOT EXISTS `{target}` (
 )
 PARTITION BY competencia
 CLUSTER BY {cluster}
-""").result()
+"""
+        ).result()
 
     def _snapshot_count(self, variant: str, snapshot_id: str) -> int:
-        cfg = self._bigquery.QueryJobConfig(query_parameters=[
-            self._bigquery.ScalarQueryParameter("snapshot_id", "STRING", snapshot_id)
-        ])
-        rows = list(self.client.query(
-            f"SELECT COUNT(*) n FROM `{self.target(variant)}` WHERE snapshot_id=@snapshot_id", job_config=cfg
-        ).result())
+        cfg = self._bigquery.QueryJobConfig(
+            query_parameters=[self._bigquery.ScalarQueryParameter("snapshot_id", "STRING", snapshot_id)]
+        )
+        rows = list(
+            self.client.query(
+                f"SELECT COUNT(*) n FROM `{self.target(variant)}` WHERE snapshot_id=@snapshot_id",
+                job_config=cfg,
+            ).result()
+        )
         return int(rows[0]["n"]) if rows else 0
 
-    def load_ndjson(self, variant: str, ndjson_path: str | Path, *, snapshot_id: str) -> dict[str, Any]:
-        """Carrega NDJSON normalizado via um load job; não envia lotes gigantes por insert_rows_json."""
+    @staticmethod
+    def _assert_record_count(expected: int, actual: int, *, snapshot_id: str) -> None:
+        if actual != expected:
+            raise RuntimeError(
+                "Tie-out ComexStat anual falhou: "
+                f"snapshot={snapshot_id} esperado={expected} persistido={actual}"
+            )
+
+    def load_ndjson(
+        self,
+        variant: str,
+        ndjson_path: str | Path,
+        *,
+        snapshot_id: str,
+        expected_unique_record_ids: int | None = None,
+    ) -> dict[str, Any]:
+        """Carrega NDJSON por load job e prova contagem/idempotência do snapshot."""
         self.ensure_target(variant)
+        source_records = _count_ndjson_records(ndjson_path)
+        if source_records < 1:
+            raise ValueError("ComexStat loader recusou NDJSON vazio")
+        expected = (
+            expected_unique_record_ids
+            if expected_unique_record_ids is not None
+            else _count_unique_ndjson_record_ids(ndjson_path)
+        )
+        if not isinstance(expected, int) or expected < 1 or expected > source_records:
+            raise ValueError(
+                "Contagem única esperada inválida para ComexStat: "
+                f"unique={expected!r} source_records={source_records}"
+            )
+
         existing = self._snapshot_count(variant, snapshot_id)
         if existing:
-            return {"status": "already_loaded", "snapshot_id": snapshot_id, "records_inserted": 0, "records_existing": existing}
+            self._assert_record_count(expected, existing, snapshot_id=snapshot_id)
+            return {
+                "status": "already_loaded",
+                "snapshot_id": snapshot_id,
+                "records_inserted": 0,
+                "records_existing": existing,
+                "records_expected": expected,
+                "source_records": source_records,
+            }
 
         started = datetime.now(timezone.utc)
-        stage_ref = f"{self.project_id}.{self.dataset_id}._stg_{TARGETS[variant]}_{snapshot_id[:10]}_{int(started.timestamp())}"
+        stage_ref = (
+            f"{self.project_id}.{self.dataset_id}._stg_{TARGETS[variant]}_"
+            f"{snapshot_id[:10]}_{int(started.timestamp())}"
+        )
         stage = self._bigquery.Table(stage_ref, schema=self._schema())
         stage.expires = started + timedelta(hours=4)
         self.client.create_table(stage)
         try:
             cfg = self._bigquery.LoadJobConfig(
-                schema=self._schema(), source_format=self._bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+                schema=self._schema(),
+                source_format=self._bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
                 write_disposition="WRITE_TRUNCATE",
             )
             with Path(ndjson_path).open("rb") as handle:
-                self.client.load_table_from_file(handle, stage_ref, job_config=cfg, location=self.location).result()
+                self.client.load_table_from_file(
+                    handle,
+                    stage_ref,
+                    job_config=cfg,
+                    location=self.location,
+                ).result()
             target = self.target(variant)
-            self.client.query(f"""
+            self.client.query(
+                f"""
 MERGE `{target}` T
 USING (
   SELECT * EXCEPT(_rn) FROM (
@@ -239,8 +388,18 @@ USING (
 ) S
 ON T.snapshot_id=S.snapshot_id AND T.record_id=S.record_id
 WHEN NOT MATCHED THEN INSERT ROW
-""").result()
+"""
+            ).result()
         finally:
             self.client.delete_table(stage_ref, not_found_ok=True)
+
         inserted = self._snapshot_count(variant, snapshot_id)
-        return {"status": "loaded", "snapshot_id": snapshot_id, "records_inserted": inserted, "records_existing": 0}
+        self._assert_record_count(expected, inserted, snapshot_id=snapshot_id)
+        return {
+            "status": "loaded",
+            "snapshot_id": snapshot_id,
+            "records_inserted": inserted,
+            "records_existing": 0,
+            "records_expected": expected,
+            "source_records": source_records,
+        }

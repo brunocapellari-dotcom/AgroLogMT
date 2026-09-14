@@ -78,7 +78,12 @@ def execute_item(item: dict[str, object], store: DriveBigQueryStore) -> dict[str
             location=store.bq_location,
             client=store.bq,
         )
-        loaded = loader.load_ndjson(variant, ndjson_path, snapshot_id=download.sha256)
+        loaded = loader.load_ndjson(
+            variant,
+            ndjson_path,
+            snapshot_id=download.sha256,
+            expected_unique_record_ids=int(normalized["unique_record_ids"]),
+        )
 
     finished = datetime.now(timezone.utc)
     manifest = RunManifest(
