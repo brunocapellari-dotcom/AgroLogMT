@@ -44,7 +44,14 @@ class AisHistoryCaptureTests(unittest.TestCase):
         script = Path("scripts/deploy_ais_worker_gcloud.sh").read_text(encoding="utf-8")
         self.assertIn('AIS_CAPTURE_SECONDS:-3540', script)
         self.assertIn('--task-timeout 65m', script)
-        self.assertIn('"5 * * * *"', script)
+        self.assertNotIn('gcloud scheduler jobs', script)
+
+    def test_hourly_workflow_owns_temporary_schedule(self) -> None:
+        workflow = Path(".github/workflows/maritime-ais-hourly.yml").read_text(encoding="utf-8")
+        self.assertIn('cron: "5 * * * *"', workflow)
+        self.assertIn('cron: "4 * * * *"', workflow)
+        self.assertIn('duplicate trigger skipped', workflow)
+        self.assertIn('gcloud run jobs execute "$AIS_JOB_NAME"', workflow)
 
 
 if __name__ == "__main__":
