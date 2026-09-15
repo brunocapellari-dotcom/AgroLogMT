@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import os
 import py_compile
@@ -9,7 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
-import unittest
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from shutil import which
@@ -82,28 +81,18 @@ def _test_paths(repo: Path, *, live: bool) -> list[Path]:
     return [path for path in candidates if bool(LIVE_TEST_RE.search(path.name)) == live]
 
 
-def load_test_suite(paths: list[Path], repo: Path) -> tuple[unittest.TestSuite, list[str]]:
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    import_failures: list[str] = []
-    repo_text = str(repo)
-    if repo_text not in sys.path:
-        sys.path.insert(0, repo_text)
-
-    for index, path in enumerate(paths):
-        module_name = f"_agrolog_full_gate_test_{index}_{path.stem}"
-        try:
-            spec = importlib.util.spec_from_file_location(module_name, path)
-            if spec is None or spec.loader is None:
-                raise RuntimeError("unable to create import spec")
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = module
-            spec.loader.exec_module(module)
-            suite.addTests(loader.loadTestsFromModule(module))
-        except Exception as exc:
-            sys.modules.pop(module_name, None)
-            import_failures.append(f"{path.relative_to(repo)}: {exc}")
-    return suite, import_failures
+def _junit_counts(report: Path) -> dict[str, int]:
+    counts = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
+    if not report.is_file():
+        return counts
+    root = ET.parse(report).getroot()
+    suites = [root] if root.tag == "testsuite" else list(root.findall("testsuite"))
+    if not suites and root.tag == "testsuites":
+        suites = list(root.iter("testsuite"))
+    for suite in suites:
+        for key in counts:
+            counts[key] += int(suite.attrib.get(key, "0") or 0)
+    return counts
 
 
 def run_tests(repo: Path, *, live: bool) -> dict[str, Any]:
@@ -111,33 +100,41 @@ def run_tests(repo: Path, *, live: bool) -> dict[str, Any]:
     name = "tests_live_all" if live else "tests_deterministic_all"
     if not selected:
         return stage(name, "BLOCKED" if live else "FAIL", [], blocker="no matching test files")
+    if not which("pytest"):
+        return stage(name, "BLOCKED", [], blocker="pytest unavailable")
 
-    suite, import_failures = load_test_suite(selected, repo)
-    with tempfile.TemporaryFile(mode="w+") as stream:
-        result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
-        stream.seek(0)
-        output = stream.read()[-20000:]
+    with tempfile.TemporaryDirectory(prefix="agrolog-pytest-") as temp:
+        junit = Path(temp) / "junit.xml"
+        argv = [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            f"--junitxml={junit}",
+            *[str(path.relative_to(repo)) for path in selected],
+        ]
+        code, output = command(argv, cwd=repo)
+        counts = _junit_counts(junit)
 
-    skipped_count = len(result.skipped)
-    failure_count = (
-        len(result.failures)
-        + len(result.errors)
-        + len(result.unexpectedSuccesses)
-        + len(import_failures)
-        + skipped_count
-    )
+    failure_count = counts["failures"] + counts["errors"] + counts["skipped"]
+    if code != 0 and failure_count == 0:
+        failure_count = 1
     status = "FAIL" if failure_count else "PASS"
     return stage(
         name,
         status,
-        [] if failure_count else [f"test_files:{len(selected)}", f"tests_run:{result.testsRun}", "skipped:0"],
+        [] if failure_count else [
+            f"test_files:{len(selected)}",
+            f"tests_run:{counts['tests']}",
+            "skipped:0",
+            "runner:pytest",
+        ],
         test_files=len(selected),
-        tests_run=result.testsRun,
-        skipped=skipped_count,
-        import_failures=import_failures,
-        failures=len(result.failures),
-        errors=len(result.errors),
-        unexpected_successes=len(result.unexpectedSuccesses),
+        tests_run=counts["tests"],
+        skipped=counts["skipped"],
+        failures=counts["failures"],
+        errors=counts["errors"],
+        pytest_exit_code=code,
         output=output,
     )
 
