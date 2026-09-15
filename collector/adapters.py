@@ -5,9 +5,13 @@ import os
 import re
 from dataclasses import dataclass
 from html import unescape
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Protocol
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
+
+from ckan_connector.client import CkanClient
 
 from .comexstat_api import ComexStatApiClient
 from .models import SourceSpec
@@ -151,41 +155,59 @@ class EnvQueryHttpAdapter:
 
 
 class CkanResourceAdapter:
-    """Resolve um recurso CKAN e baixa o arquivo publicado pela fonte."""
+    """Resolve e baixa um recurso via o conector CKAN canônico do AgroLog.
+
+    Reutiliza retries, limite de tamanho, download atômico e as guardas de URL/
+    redirect do ``ckan_connector``. Não mantém uma segunda implementação de CKAN
+    dentro do collector.
+    """
 
     def fetch(self, spec: SourceSpec) -> AcquisitionResult:
         base_url = str(spec.options.get("base_url", "")).rstrip("/")
-        dataset_id = spec.options.get("dataset_id")
-        resource_id = spec.options.get("resource_id")
-        resource_name = spec.options.get("resource_name")
+        dataset_id = str(spec.options.get("dataset_id", "")).strip()
+        resource_id = str(spec.options.get("resource_id", "")).strip()
+        resource_name = str(spec.options.get("resource_name", "")).strip()
         if not base_url or not dataset_id:
             raise ValueError("CKAN exige options.base_url e options.dataset_id")
+        if not resource_id and not resource_name:
+            raise ValueError("CKAN exige options.resource_id ou options.resource_name")
+        if spec.options.get("headers"):
+            raise ValueError("CKAN canônico não aceita headers arbitrários; use um adapter autenticado explícito")
 
-        api_url = f"{base_url}/api/3/action/package_show?{urlencode({'id': dataset_id})}"
-        timeout = int(spec.options.get("timeout_seconds", 60))
-        response = _http_get(api_url, headers={"User-Agent": "AgroLogMT/0.1"}, timeout=timeout)
-        body = json.loads(response.payload.decode("utf-8"))
-        if not body.get("success"):
-            raise RuntimeError(f"CKAN package_show falhou para {dataset_id}")
-
-        resources = body["result"].get("resources", [])
+        timeout = float(spec.options.get("timeout_seconds", 60))
+        max_bytes = int(spec.options.get("max_download_bytes", 500 * 1024 * 1024))
+        client = CkanClient(
+            base_url=base_url,
+            timeout=timeout,
+            max_retries=int(spec.options.get("max_retries", 3)),
+            max_download_bytes=max_bytes,
+        )
+        resources = client.list_resources(dataset_id)
         selected = None
         for resource in resources:
-            if resource_id and resource.get("id") == resource_id:
+            if resource_id and resource.resource_id == resource_id:
                 selected = resource
                 break
-            if resource_name and str(resource.get("name", "")).strip().lower() == str(resource_name).strip().lower():
+            if resource_name and resource.name.strip().casefold() == resource_name.casefold():
                 selected = resource
                 break
         if selected is None:
             raise RuntimeError(f"Recurso CKAN nao encontrado: {resource_id or resource_name}")
 
-        resource_url = selected.get("url")
-        if not resource_url:
-            raise RuntimeError("Recurso CKAN sem URL")
-        result = _http_get(resource_url, headers=spec.options.get("headers", {}), timeout=timeout)
-        result.content_type = result.content_type or selected.get("mimetype") or selected.get("format")
-        return result
+        with TemporaryDirectory(prefix="agrolog-ckan-") as temp_dir:
+            record = client.download_resource(selected, Path(temp_dir))
+            payload = record.dest_path.read_bytes()
+        if len(payload) != record.size_bytes:
+            raise RuntimeError(
+                f"CKAN tamanho inconsistente após download: esperado={record.size_bytes} lido={len(payload)}"
+            )
+        return AcquisitionResult(
+            payload=payload,
+            raw_payload=payload,
+            observed_url=record.url,
+            content_type=record.content_type or selected.format or None,
+            last_modified=selected.last_modified,
+        )
 
 
 class GovBrLatestAttachmentAdapter:
