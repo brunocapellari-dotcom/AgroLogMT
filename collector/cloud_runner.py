@@ -132,6 +132,9 @@ def _run_registry_mode(store: DriveBigQueryStore, engine: CollectorEngine) -> in
         for value in os.environ.get("AGROLOG_WAKE_SOURCE_IDS", "").split(",")
         if value.strip()
     }
+    gated_canary = os.environ.get("AGROLOG_GATED_CANARY", "0").strip() == "1"
+    if gated_canary and not registry_source_id:
+        raise SystemExit("AGROLOG_GATED_CANARY=1 exige AGROLOG_SOURCE_ID explícito")
 
     registry = DataSourceRegistry.load(registry_path)
     scheduler = RegistryScheduler(registry, store, repo_root=Path("/app"))
@@ -139,6 +142,7 @@ def _run_registry_mode(store: DriveBigQueryStore, engine: CollectorEngine) -> in
         source_id=registry_source_id,
         domain=domain,
         wake_sources=wake_sources,
+        allow_gated_canary=gated_canary,
     )
     if not plan:
         raise SystemExit(f"Registry scheduler sem fontes para source_id={registry_source_id!r} domain={domain!r}")
@@ -197,6 +201,7 @@ def _run_registry_mode(store: DriveBigQueryStore, engine: CollectorEngine) -> in
             "failed": failed,
             "source_id": registry_source_id,
             "domain": domain,
+            "gated_canary": gated_canary,
             "source_health_alert_count": len(alert_sources),
             "source_health_alert_sources": sorted(alert_sources),
         }
