@@ -55,6 +55,36 @@ class CollectorCoreTests(unittest.TestCase):
             self.assertEqual(len(raw_files), 1)
             self.assertEqual(raw_files[0].read_bytes(), source_raw)
 
+    def test_payload_gate_blocks_raw_before_persistence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            spec = SourceSpec(
+                source_id="oversized",
+                name="Oversized",
+                group="dados",
+                method="fake",
+                file_extension="csv",
+                options={"max_payload_bytes": 4},
+            )
+            engine = CollectorEngine(LocalStore(tmp), adapter_resolver=lambda _: FakeAdapter(b"12345"))
+            manifest = engine.run_source(spec)
+            self.assertEqual(manifest.status, "error")
+            self.assertIn("payload exceeds configured limit", manifest.error or "")
+            self.assertEqual(list((Path(tmp) / "raw").rglob("*.*")), [])
+
+    def test_collector_error_redacts_secret_like_values(self) -> None:
+        class BrokenAdapter:
+            def fetch(self, spec: SourceSpec) -> AcquisitionResult:
+                raise RuntimeError("token=very-secret Authorization: Bearer abc.def")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            spec = SourceSpec(source_id="secret-error", name="Secret Error", group="dados", method="broken")
+            engine = CollectorEngine(LocalStore(tmp), adapter_resolver=lambda _: BrokenAdapter())
+            manifest = engine.run_source(spec)
+            self.assertEqual(manifest.status, "error")
+            self.assertNotIn("very-secret", manifest.error or "")
+            self.assertNotIn("abc.def", manifest.error or "")
+            self.assertIn("[REDACTED]", manifest.error or "")
+
     def test_business_daily_gap(self) -> None:
         missing = detect_gaps(
             observed=["2026-08-17", "2026-08-19", "2026-08-20", "2026-08-21"],
