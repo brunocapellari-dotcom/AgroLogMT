@@ -1,0 +1,358 @@
+name: full-project-final-gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      final_release:
+        description: "Run complete live/GCP final release gate"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-project-final-gate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  whole-project-ci:
+    name: Whole project deterministic + supply-chain gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # pinned
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # pinned
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # pinned
+        with:
+          node-version: "22"
+
+      - name: Install all Python runtime/test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check PyYAML
+          while IFS= read -r file; do
+            echo "Installing ${file}"
+            python -m pip install --disable-pip-version-check -r "$file"
+          done < <(find . -name 'requirements*.txt' -type f -not -path './.git/*' | sort)
+
+      - name: Prepare release evidence directory
+        run: mkdir -p outputs/full-project-gate
+
+      - name: Install verified Gitleaks CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz'
+          expected='551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'
+          curl --proto '=https' --tlsv1.2 -fsSLo /tmp/gitleaks.tar.gz "$url"
+          echo "${expected}  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks version
+
+      - name: Secret scan — full repository/history
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/gitleaks git --redact --no-banner --exit-code 1 .
+          printf 'GITLEAKS PASS\nversion=8.30.1\n' > outputs/full-project-gate/gitleaks.txt
+
+      - name: Trivy filesystem, dependency and IaC scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 pinned
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+          format: table
+          output: outputs/full-project-gate/trivy-fs.txt
+
+      - name: Generate source SBOM
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2 pinned
+        with:
+          path: .
+          format: spdx-json
+          output-file: outputs/full-project-gate/source.spdx.json
+          upload-artifact: false
+          dependency-snapshot: false
+
+      - name: Build all production containers
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull --tag agrolog-collector:gate .
+          docker build --pull --file gateway/Dockerfile --tag agrolog-gateway:gate .
+          printf 'CONTAINERS PASS\nagrolog-collector:gate\nagrolog-gateway:gate\n' > outputs/full-project-gate/containers.txt
+
+      - name: Trivy collector image scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 pinned
+        with:
+          scan-type: image
+          image-ref: agrolog-collector:gate
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+          format: table
+          output: outputs/full-project-gate/trivy-collector.txt
+
+      - name: Trivy gateway image scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 pinned
+        with:
+          scan-type: image
+          image-ref: agrolog-gateway:gate
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+          format: table
+          output: outputs/full-project-gate/trivy-gateway.txt
+
+      - name: Generate collector image SBOM
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2 pinned
+        with:
+          image: agrolog-collector:gate
+          format: spdx-json
+          output-file: outputs/full-project-gate/collector.spdx.json
+          upload-artifact: false
+          dependency-snapshot: false
+
+      - name: Generate gateway image SBOM
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2 pinned
+        with:
+          image: agrolog-gateway:gate
+          format: spdx-json
+          output-file: outputs/full-project-gate/gateway.spdx.json
+          upload-artifact: false
+          dependency-snapshot: false
+
+      - name: Run whole-project CI gate
+        env:
+          AGROLOG_EVIDENCE_CONTAINERS: outputs/full-project-gate/containers.txt
+          AGROLOG_EVIDENCE_GITLEAKS: outputs/full-project-gate/gitleaks.txt
+          AGROLOG_EVIDENCE_TRIVY: outputs/full-project-gate/trivy-fs.txt
+          AGROLOG_EVIDENCE_SBOM: outputs/full-project-gate/source.spdx.json
+        run: python scripts/validate_full_project.py --mode ci --report outputs/full-project-gate/ci-report.json
+
+  final-live-release:
+    name: Whole project LIVE + GCP final release
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.final_release == true }}
+    needs: whole-project-ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      WIF_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      BUILD_SERVICE_ACCOUNT: ${{ secrets.GCP_BUILD_SERVICE_ACCOUNT }}
+      BUILD_SOURCE_BUCKET: ${{ secrets.GCP_BUILD_SOURCE_BUCKET }}
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      REGION: southamerica-east1
+      BQ_LOCATION: southamerica-east1
+      MANAGE_SCHEDULER: "0"
+      EVIDENCE_DIR: outputs/n6-core
+      AGROLOG_RELEASE_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # pinned
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # pinned
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # pinned
+        with:
+          node-version: "22"
+
+      - name: Install all Python runtime/test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check PyYAML
+          while IFS= read -r file; do
+            python -m pip install --disable-pip-version-check -r "$file"
+          done < <(find . -name 'requirements*.txt' -type f -not -path './.git/*' | sort)
+
+      - name: Fail closed if final GCP bootstrap values are missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in WIF_PROVIDER GCP_SERVICE_ACCOUNT BUILD_SERVICE_ACCOUNT BUILD_SOURCE_BUCKET PROJECT_ID; do
+            test -n "${!key}" || { echo "MISSING ${key}" >&2; exit 2; }
+          done
+          mkdir -p outputs/full-project-gate
+
+      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # pinned
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # pinned
+
+      - name: Confirm federated identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          active="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -n1)"
+          test "$active" = "$GCP_SERVICE_ACCOUNT"
+          gcloud config set project "$PROJECT_ID"
+          test "$(gcloud config get-value project)" = "$PROJECT_ID"
+
+      - name: Install verified Gitleaks CLI and scan full history
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz'
+          expected='551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'
+          curl --proto '=https' --tlsv1.2 -fsSLo /tmp/gitleaks.tar.gz "$url"
+          echo "${expected}  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks git --redact --no-banner --exit-code 1 .
+          printf 'GITLEAKS PASS\nversion=8.30.1\n' > outputs/full-project-gate/gitleaks.txt
+
+      - name: Trivy full filesystem scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 pinned
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+          format: table
+          output: outputs/full-project-gate/trivy-fs.txt
+
+      - name: Generate source SBOM
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2 pinned
+        with:
+          path: .
+          format: spdx-json
+          output-file: outputs/full-project-gate/source.spdx.json
+          upload-artifact: false
+          dependency-snapshot: false
+
+      - name: Build production containers
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull --tag agrolog-collector:gate .
+          docker build --pull --file gateway/Dockerfile --tag agrolog-gateway:gate .
+          printf 'CONTAINERS PASS\nagrolog-collector:gate\nagrolog-gateway:gate\n' > outputs/full-project-gate/containers.txt
+
+      - name: Scan collector image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 pinned
+        with:
+          scan-type: image
+          image-ref: agrolog-collector:gate
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+          format: table
+          output: outputs/full-project-gate/trivy-collector.txt
+
+      - name: Scan gateway image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 pinned
+        with:
+          scan-type: image
+          image-ref: agrolog-gateway:gate
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+          format: table
+          output: outputs/full-project-gate/trivy-gateway.txt
+
+      - name: Preflight all GCP production controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/preflight_n6_gcp.sh | tee outputs/full-project-gate/gcp-preflight.txt
+          cp outputs/full-project-gate/gcp-preflight.txt outputs/full-project-gate/runtime-security.txt
+
+      - name: Execute non-destructive BigQuery restore drill
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/run_bigquery_restore_drill.py \
+            --project "$PROJECT_ID" \
+            --location "$BQ_LOCATION" \
+            --output outputs/full-project-gate/restore-drill.json
+
+      - name: Execute full N6 core homologation
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/homologate_n6_core.sh
+          result="$(find "$EVIDENCE_DIR" -name RESULT.txt -type f -print | sort | tail -n 1)"
+          test -n "$result"
+          grep -Fxq 'N6 CORE HOMOLOGATION: PASS' "$result"
+          echo "N6_RESULT=${result}" >> "$GITHUB_ENV"
+
+      - name: Generate final pre-audit whole-project report
+        shell: bash
+        env:
+          AGROLOG_EVIDENCE_CONTAINERS: outputs/full-project-gate/containers.txt
+          AGROLOG_EVIDENCE_GITLEAKS: outputs/full-project-gate/gitleaks.txt
+          AGROLOG_EVIDENCE_TRIVY: outputs/full-project-gate/trivy-fs.txt
+          AGROLOG_EVIDENCE_SBOM: outputs/full-project-gate/source.spdx.json
+          AGROLOG_EVIDENCE_RUNTIME_SECURITY: outputs/full-project-gate/runtime-security.txt
+          AGROLOG_EVIDENCE_DATA_QUALITY: ${{ env.N6_RESULT }}
+          AGROLOG_EVIDENCE_RESTORE: outputs/full-project-gate/restore-drill.json
+          AGROLOG_EVIDENCE_GCP_PREFLIGHT: outputs/full-project-gate/gcp-preflight.txt
+          AGROLOG_EVIDENCE_N6_CORE: ${{ env.N6_RESULT }}
+        run: |
+          set +e
+          python scripts/validate_full_project.py --mode final --report outputs/full-project-gate/pre-audit.json
+          code=$?
+          set -e
+          test "$code" -eq 2
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('outputs/full-project-gate/pre-audit.json').read_text())
+          for name in ('tests_deterministic_all', 'tests_live_all'):
+              item = next(x for x in report['stages'] if x['name'] == name)
+              if item['details'].get('skipped', 0):
+                  raise SystemExit(f"{name} has skipped tests; final release requires 100% execution")
+          blocked = [x['name'] for x in report['stages'] if x['status'] != 'PASS' and x['name'] != 'final_auditor']
+          if blocked:
+              raise SystemExit(f"non-auditor stages not PASS: {blocked}")
+          PY
+
+      - name: Independent final auditor
+        run: python scripts/final_release_auditor.py outputs/full-project-gate/pre-audit.json --output outputs/full-project-gate/final-auditor.json
+
+      - name: Require FINAL RELEASE PASS
+        env:
+          AGROLOG_EVIDENCE_CONTAINERS: outputs/full-project-gate/containers.txt
+          AGROLOG_EVIDENCE_GITLEAKS: outputs/full-project-gate/gitleaks.txt
+          AGROLOG_EVIDENCE_TRIVY: outputs/full-project-gate/trivy-fs.txt
+          AGROLOG_EVIDENCE_SBOM: outputs/full-project-gate/source.spdx.json
+          AGROLOG_EVIDENCE_RUNTIME_SECURITY: outputs/full-project-gate/runtime-security.txt
+          AGROLOG_EVIDENCE_DATA_QUALITY: ${{ env.N6_RESULT }}
+          AGROLOG_EVIDENCE_RESTORE: outputs/full-project-gate/restore-drill.json
+          AGROLOG_EVIDENCE_GCP_PREFLIGHT: outputs/full-project-gate/gcp-preflight.txt
+          AGROLOG_EVIDENCE_N6_CORE: ${{ env.N6_RESULT }}
+          AGROLOG_EVIDENCE_FINAL_AUDITOR: outputs/full-project-gate/final-auditor.json
+        run: |
+          set -euo pipefail
+          python scripts/validate_full_project.py --mode final --report outputs/full-project-gate/FINAL.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path('outputs/full-project-gate/FINAL.json').read_text())
+          if result['status'] != 'PASS':
+              raise SystemExit(f"FINAL RELEASE BLOCKED: {result['status']}")
+          print('AGROLOG MT FINAL RELEASE: PASS')
+          PY
