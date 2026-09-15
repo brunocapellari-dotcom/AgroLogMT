@@ -1,15 +1,7 @@
-name: conab-soy-yield-hurdle
+name: conab-soy-yield-hurdle-diagnostic
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "scripts/build_conab_soy_yield_hurdle.py"
-      - "tests/test_conab_soy_yield_hurdle.py"
-      - "collector/conab_safra.py"
-      - "collector/conab_safra_history.py"
-      - "models/first_backtests.py"
-      - ".github/workflows/conab-soy-yield-hurdle.yml"
 
 permissions:
   contents: read
@@ -26,11 +18,7 @@ jobs:
       - name: Build live CONAB Soja MT annual yield hurdle
         env:
           PYTHONPATH: ${{ github.workspace }}
-        run: |
-          python scripts/build_conab_soy_yield_hurdle.py \
-            --start-year 2021 \
-            --end-year 2025 \
-            --out conab_soy_yield_hurdle.json
+        run: python scripts/build_conab_soy_yield_hurdle.py --start-year 2021 --end-year 2025 --out conab_soy_yield_hurdle.json
       - name: Upload hurdle artifact
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
