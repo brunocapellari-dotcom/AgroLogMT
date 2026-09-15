@@ -18,6 +18,16 @@ if [[ -z "${PROJECT_ID}" || "${PROJECT_ID}" == "(unset)" ]]; then
   exit 2
 fi
 
+restore_group_mode() {
+  gcloud run jobs update "${JOB}" \
+    --region "${REGION}" \
+    --project "${PROJECT_ID}" \
+    --remove-env-vars "AGROLOG_SOURCE_ID" \
+    --update-env-vars "AGROLOG_CONFIG=${CONFIG},AGROLOG_GROUP=pecuaria,AGROLOG_PECUARIA_DATASET=${PECUARIA_DATASET},AGROLOG_TRADE_DATASET=${TRADE_DATASET}" \
+    --quiet >/dev/null || true
+}
+trap restore_group_mode EXIT
+
 run_source() {
   local source_id="$1"
   gcloud run jobs execute "${JOB}" \
@@ -72,5 +82,8 @@ echo "[7/8] Comex bovino segunda execução"
 run_source "${BEEF_SOURCE_ID}"
 echo "[8/8] Comex bovino gate de idempotência"
 validate_beef --require-idempotency
+
+restore_group_mode
+trap - EXIT
 
 echo "PECUARIA_HOMOLOGATION_PASS project=${PROJECT_ID} ppm_dataset=${PECUARIA_DATASET} trade_dataset=${TRADE_DATASET}"
