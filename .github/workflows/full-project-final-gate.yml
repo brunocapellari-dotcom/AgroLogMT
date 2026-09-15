@@ -87,7 +87,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          /tmp/actionlint -color never
+          /tmp/actionlint
 
       - name: Install verified Gitleaks CLI
         shell: bash
