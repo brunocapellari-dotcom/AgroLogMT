@@ -76,6 +76,23 @@ class RegistrySchedulerTests(unittest.TestCase):
         self.assertFalse(candidates[0].due)
         self.assertEqual(candidates[0].reason, "status:gated")
 
+    def test_operational_view_uses_execution_state_for_registry_alias(self) -> None:
+        item = self.scheduler.plan_source("mdic_comexstat", now=self.now)
+        self.store.data["mdic_comexstat_soja_mt_export_api"] = {
+            "last_checked_at": "2026-09-14T17:00:00+00:00",
+            "consecutive_failures": 0,
+        }
+        view = self.scheduler.operational_view(item, now=self.now)
+        self.assertEqual(view["source"]["source_id"], "mdic_comexstat")
+        self.assertEqual(view["health"]["status"], "HEALTHY")
+        self.assertFalse(view["health"]["alert"])
+
+    def test_alerting_view_surfaces_never_collected_active_sources(self) -> None:
+        alerts = self.scheduler.alerting_view(now=self.now)
+        source_ids = {row["source"]["source_id"] for row in alerts}
+        self.assertIn("conab_armazens_cadastrados", source_ids)
+        self.assertNotIn("conab_safra_graos_xlsx", source_ids)
+
 
 if __name__ == "__main__":
     unittest.main()
