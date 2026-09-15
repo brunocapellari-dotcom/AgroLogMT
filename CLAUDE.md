@@ -3,6 +3,7 @@
 Antes de alterar código, leia:
 - `docs/ARCHITECTURE.md`
 - `docs/DATA_GOVERNANCE.md`
+- `docs/SECURITY.md`
 - `docs/REPOSITORY_GOVERNANCE.md`
 - `docs/AI_TOOLING.md`
 - `docs/MULTI_AGENT_WORKFLOW.md`
@@ -16,6 +17,9 @@ Regras essenciais:
 - Se houver duas definições concorrentes, pare e identifique a fonte canônica antes de continuar.
 - Preserve compatibilidade com BigQuery e Cloud Run.
 - Nunca versione credenciais, tokens ou arquivos brutos pesados.
+- Nunca copie segredo, cookie, token, dado RESTRICTED ou credencial para logs, issues, PRs, artifacts, prompts reutilizáveis ou fixtures.
+- Respeite `docs/SECURITY.md`: least privilege, fail-closed, service accounts dedicadas, WIF/OIDC sem chave JSON e classificação de segurança independente da classe de evidência.
+- Mudanças materiais em IAM, autenticação, segredos, exposição HTTP, CI/CD ou acesso a dados exigem revisão explícita de superfície de ataque e teste de segurança quando tecnicamente possível.
 - Nomes de fontes como CONAB, IMEA, CEPEA, Comex Stat, ANTAQ, ANP e USDA identificam responsabilidades de código; não autorizam armazenar datasets reais no GitHub.
 - Código, parsers, schemas, SQL, configurações sem segredo, testes e documentação pertencem ao GitHub; dados reais/RAW e históricos pesados ficam em armazenamento externo.
 - Testes que dependam de dados reais devem receber caminho externo/configurável.
@@ -32,8 +36,8 @@ Para mudanças não triviais:
 2. descreva um plano curto;
 3. quando o MCP `codex` estiver disponível, peça ao Codex uma revisão independente do plano para mudanças materiais;
 4. implemente a menor mudança coerente possível;
-5. execute testes adequados;
-6. revise o diff;
+5. execute testes adequados, incluindo regressões de segurança quando aplicável;
+6. revise o diff e a superfície de ataque;
 7. quando aplicável, peça ao Codex revisão final do diff;
 8. só então considere a tarefa concluída.
 
