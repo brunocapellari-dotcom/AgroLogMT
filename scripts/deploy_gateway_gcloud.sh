@@ -33,14 +33,14 @@ assert_private_gateway() {
     return 0
   fi
 
-  local public_binding runtime_sa
-  public_binding="$(gcloud run services get-iam-policy "$SERVICE_NAME" \
+  local broad_binding runtime_sa
+  broad_binding="$(gcloud run services get-iam-policy "$SERVICE_NAME" \
     --region "$REGION" --project "$PROJECT_ID" \
     --flatten='bindings[].members' \
-    --filter='bindings.role=roles/run.invoker AND bindings.members=allUsers' \
+    --filter='bindings.role=roles/run.invoker AND (bindings.members=allUsers OR bindings.members=allAuthenticatedUsers)' \
     --format='value(bindings.members)' | head -n1)"
-  if [[ "$public_binding" == "allUsers" ]]; then
-    echo "ERRO: ${SERVICE_NAME} possui allUsers com roles/run.invoker. Corrija no bootstrap administrativo antes de deploy." >&2
+  if [[ "$broad_binding" == "allUsers" || "$broad_binding" == "allAuthenticatedUsers" ]]; then
+    echo "ERRO: ${SERVICE_NAME} possui invocação ampla (${broad_binding}) com roles/run.invoker. Corrija no bootstrap administrativo antes de deploy." >&2
     exit 4
   fi
 
@@ -99,7 +99,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --service-account "$GATEWAY_SERVICE_ACCOUNT" \
   --set-env-vars "AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_MARITIME_DATASET=${MARITIME_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION}"
 
-# Verificação pós-deploy: falha fechada se a revisão resultar pública ou com identidade incorreta.
+# Verificação pós-deploy: falha fechada se a revisão resultar ampla ou com identidade incorreta.
 assert_private_gateway
 
 echo "Gateway implantado e verificado como privado; autenticação obrigatória é governada pelo bootstrap administrativo."
