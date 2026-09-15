@@ -2,10 +2,6 @@ name: diagnose-comex-tls
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "scripts/diagnose_comex_tls_transition.py"
-      - ".github/workflows/diagnose-comex-tls.yml"
 
 permissions:
   contents: read
