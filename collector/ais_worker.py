@@ -127,8 +127,6 @@ class AisBatchSink:
             "zone": "SEA", "port_id": None, "terminal_id": None,
             "zone_id": None, "geofence_version": None, "source_id": None,
         }
-        # A physical location needs a corroborated sequence of position messages.
-        # Static AIS messages never count toward geofence confirmation.
         if (
             family == "POSITION"
             and quality.corroborated
@@ -226,7 +224,7 @@ def _capture_event(
 ) -> None:
     event_at = datetime.now(timezone.utc).isoformat()
     store.load_ais_capture_event({
-        "event_id": store.stable_id(run_id, event_type, event_at),
+        "event_id": store.stable_id(run_id, event_type),
         "run_id": run_id,
         "event_type": event_type,
         "event_at": event_at,
@@ -262,55 +260,24 @@ def main() -> int:
         batch_size=batch_size,
         dedup_window_size=dedup_window_size,
     )
-    aoi_count = len(bounding_boxes or [])
     _capture_event(
         store,
         run_id=run_id,
         event_type="START",
-        aoi_count=aoi_count,
+        aoi_count=len(bounding_boxes),
         capture_seconds=capture_seconds,
-        details={"zone_count": len(zones), "mmsi_filter_enabled": bool(mmsi_filter)},
+        details={"heartbeat_seconds": heartbeat_seconds},
     )
 
-    def on_heartbeat(payload: dict[str, Any]) -> None:
-        _capture_event(
-            store,
-            run_id=run_id,
-            event_type="HEARTBEAT",
-            aoi_count=aoi_count,
-            capture_seconds=capture_seconds,
-            records=sink.records_received,
-            details={
-                **payload,
-                "records_persisted": sink.records_persisted,
-                "duplicates_suppressed": sink.duplicates_suppressed,
-                "quarantined": sink.quarantined,
-            },
-        )
-
-    def on_reconnect(payload: dict[str, Any]) -> None:
-        _capture_event(
-            store,
-            run_id=run_id,
-            event_type="RECONNECT",
-            aoi_count=aoi_count,
-            capture_seconds=capture_seconds,
-            records=sink.records_received,
-            error_type=str(payload.get("error_type") or "ConnectionError"),
-            details=payload,
-        )
-
     try:
-        delivered = run_forever(
+        run_forever(
             api_key=api_key,
             bounding_boxes=bounding_boxes,
-            mmsi_filter=mmsi_filter,
             on_record=sink,
-            stop_after_records=max_records,
-            stop_after_seconds=capture_seconds,
+            mmsi_filter=mmsi_filter,
+            max_records=max_records,
+            run_seconds=capture_seconds,
             heartbeat_seconds=heartbeat_seconds,
-            on_heartbeat=on_heartbeat,
-            on_reconnect=on_reconnect,
         )
         sink.flush()
     except Exception as exc:
@@ -318,13 +285,12 @@ def main() -> int:
             store,
             run_id=run_id,
             event_type="ERROR",
-            aoi_count=aoi_count,
+            aoi_count=len(bounding_boxes),
             capture_seconds=capture_seconds,
-            records=sink.records_received,
+            records=sink.records_persisted,
             error_type=type(exc).__name__,
             details={
-                "zone_count": len(zones),
-                "records_persisted": sink.records_persisted,
+                "records_received": sink.records_received,
                 "duplicates_suppressed": sink.duplicates_suppressed,
                 "quarantined": sink.quarantined,
             },
@@ -335,28 +301,15 @@ def main() -> int:
         store,
         run_id=run_id,
         event_type="END",
-        aoi_count=aoi_count,
+        aoi_count=len(bounding_boxes),
         capture_seconds=capture_seconds,
-        records=delivered,
+        records=sink.records_persisted,
         details={
-            "zone_count": len(zones),
-            "records_persisted": sink.records_persisted,
+            "records_received": sink.records_received,
             "duplicates_suppressed": sink.duplicates_suppressed,
             "quarantined": sink.quarantined,
         },
     )
-    print(json.dumps({
-        "status": "ok",
-        "run_id": run_id,
-        "records_delivered": delivered,
-        "records_received": sink.records_received,
-        "records_persisted": sink.records_persisted,
-        "duplicates_suppressed": sink.duplicates_suppressed,
-        "quarantined": sink.quarantined,
-        "zones": len(zones),
-        "aoi_count": aoi_count,
-        "capture_seconds": capture_seconds,
-    }, sort_keys=True))
     return 0
 
 
