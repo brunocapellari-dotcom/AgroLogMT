@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: maritime-final-acceptance-${{ github.ref }}
@@ -18,10 +19,13 @@ jobs:
   full-project:
     name: full-project
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
-      - name: Checkout
+      - name: Checkout complete history
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Python 3.12
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
@@ -32,6 +36,28 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "22"
+
+      - name: GitHub Actions security analysis
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482
+        with:
+          inputs: .github/
+          version: v1.30.1
+          persona: auditor
+          min-severity: medium
+          min-confidence: medium
+          advanced-security: false
+          online-audits: true
+
+      - name: Repository filesystem security scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          cache: 'false'
 
       - name: Install complete Python test and runtime surface
         run: |
@@ -46,6 +72,49 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python scripts/maritime_final_acceptance.py --static-only
+
+      - name: Generate collector SBOM
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
+        with:
+          image: agrolog-collector:acceptance
+          format: spdx-json
+          output-file: outputs/maritime/collector.sbom.spdx.json
+          upload-artifact: false
+
+      - name: Generate Gateway SBOM
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
+        with:
+          image: agrolog-gateway:acceptance
+          format: spdx-json
+          output-file: outputs/maritime/gateway.sbom.spdx.json
+          upload-artifact: false
+
+      - name: Scan collector image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: agrolog-collector:acceptance
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          cache: 'false'
+
+      - name: Scan Gateway image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: agrolog-gateway:acceptance
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          cache: 'false'
+
+      - name: Validate SBOM outputs
+        run: |
+          test -s outputs/maritime/collector.sbom.spdx.json
+          test -s outputs/maritime/gateway.sbom.spdx.json
 
       - name: Publish acceptance report
         if: always()
