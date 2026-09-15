@@ -15,7 +15,10 @@ class GlobalArchitectureContractTests(unittest.TestCase):
     def test_architecture_keeps_official_geographic_priority(self) -> None:
         text = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
         self.assertIn("Mato Grosso → Brasil → América do Sul → Estados Unidos → Mundo", text)
-        self.assertIn("fonte → collector → storage", text)
+        # Validate the canonical pipeline semantically instead of coupling the
+        # contract to one prose rendering such as "fonte → collector → storage".
+        for stage in ("1. fonte;", "2. collector;", "3. storage;", "4. normalização;", "5. validação;"):
+            self.assertIn(stage, text)
         self.assertIn("UNTRUSTED EXTERNAL", text)
 
     def test_all_requested_intelligence_roles_are_canonical(self) -> None:
