@@ -14,9 +14,13 @@ class PecuariaTradeTests(unittest.TestCase):
         self.assertTrue(scope["offal_excluded"])
         self.assertEqual(set(scope["historical_aggregate"]["headings"]), {"0201", "0202"})
 
-    def test_query_uses_hs4_history_and_mt_semantics(self) -> None:
+    def test_query_uses_hs4_history_mt_semantics_and_latest_annual_snapshot(self) -> None:
         sql = build_mt_beef_export_query(project_id="agrolog-prod", end_year=2026)
         self.assertIn("`agrolog-prod.comercio_exterior.comexstat_ncm_export`", sql)
+        self.assertIn("latest_snapshot_by_year", sql)
+        self.assertIn("ARRAY_AGG(snapshot_id ORDER BY data_coleta DESC", sql)
+        self.assertIn("r.snapshot_id=s.snapshot_id", sql)
+        self.assertIn("source_snapshot_id", sql)
         self.assertIn("sg_uf_ncm = 'MT'", sql)
         self.assertIn("co_ano >= 1997", sql)
         self.assertIn("co_ano <= 2026", sql)
