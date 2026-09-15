@@ -1,234 +1,341 @@
-# Inteligência Pecuária — Arquitetura Operacional V1
+# Inteligência Pecuária — arquitetura integrada
 
-## Missão
+## Status desta versão
 
-A Inteligência Pecuária é um domínio operacional separado do relatório agrícola/logístico principal do AgroLog MT. Ela compartilha infraestrutura canônica — GitHub, BigQuery, RAW/Drive, AgroLog Gateway, observabilidade e Segundo Cérebro — sem misturar conteúdo pecuário no relatório agrícola principal.
+Esta documentação descreve o candidato integrado da Inteligência Pecuária dentro do AgroLog MT. O domínio não é declarado `PRODUCTION` apenas porque os componentes existem no GitHub.
 
-A V1 não é um protótipo descartável. O fluxo alvo é ponta a ponta:
+Estados válidos nesta fase:
 
-`fonte oficial/autorizada → RAW imutável → normalização → qualidade/linhagem → BigQuery → views analíticas → AgroLog Gateway → agentes/BI/Segundo Cérebro → validação previsto × realizado`
+- código/contratos/testes determinísticos: implementados;
+- fontes reais: `GATED` no Data Source Registry até canary + homologação GCP + promoção formal;
+- BigQuery/Cloud Run/Gateway: preparados para homologação real;
+- promoção para `active`: somente após evidência do gate de fonte e do Full Project Final Gate.
 
-## Fontes de verdade
+O domínio Pecuária permanece sob o AgroLog MT e usa os mesmos serviços compartilhados: GitHub, Data Source Registry, Cloud Run, BigQuery, armazenamento RAW, AgroLog Gateway, observabilidade, segurança, auditoria e Segundo Cérebro.
 
-- **GitHub** — código, contratos, schemas, testes, workflows e documentação.
-- **BigQuery** — verdade analítica estruturada.
-- **Drive/GCS RAW** — artefatos originais e evidências.
-- **AgroLog Gateway** — única camada de exposição controlada para consultas e agentes.
-- **Obsidian/Segundo Cérebro** — conhecimento técnico, contexto, relações causais e sínteses; não substitui os dados canônicos.
+## Princípios obrigatórios
 
-## Fontes implementadas
+1. BigQuery é a fonte única de verdade analítica.
+2. GitHub guarda código, contratos, SQL, testes, workflows e documentação — nunca bases RAW reais.
+3. Todo artefato RAW deve preservar origem, hash, timestamp e referência de armazenamento.
+4. `data_referencia`, `data_publicacao`, `data_coleta`, `competencia`, vintage e disponibilidade temporal são preservados quando aplicáveis.
+5. Dado observado, cálculo derivado, inferência, estimativa e projeção não podem ser confundidos.
+6. Uma fonte não substitui outra apenas porque mede conceito parecido.
+7. Fallback é outra evidência identificada, nunca relabeling silencioso.
+8. Histórico sem disponibilidade/vintage comprovado não pode ser usado como feature point-in-time.
+9. Nenhuma fonte `planned`, `gated` ou `blocked` vira produção por conveniência.
+10. A aceitação é do projeto inteiro, não do módulo isolado.
 
-### IBGE PPM — rebanho bovino municipal
+## Fontes Pecuária implementadas
 
-- tabela SIDRA 3939;
-- efetivo bovino por município de Mato Grosso;
-- histórico desde 1974 quando disponível na fonte;
-- `data_referencia = 31/12` do ano da PPM;
-- `data_publicacao` histórica não é inventada;
-- registros históricos permanecem `point_in_time_feature_eligible=false` até reconstrução documental de disponibilidade/vintage;
-- snapshot RAW preservado;
-- carga idempotente por `snapshot_id + record_id`;
-- views municipal/latest e agregado estadual por ano;
-- auditoria de carga e tie-out exato.
+### 1. IBGE PPM — estoque bovino municipal
 
-### MDIC/SECEX Comex Stat — carne bovina in natura
+`source_id`: `ibge_sidra_ppm_3939`
 
-Dois usos deliberadamente distintos:
+Uso:
+- efetivo bovino municipal em Mato Grosso;
+- histórico anual;
+- base para distribuição espacial do rebanho, concentração, crescimento e relação futura com pastagem, abate, preços e logística.
 
-1. **Operação corrente mensal** — usa os NCM8 correntes do contrato `product_trade_codes.v1.json` para 0201/0202, MT, exportação, sem miudezas.
-2. **Histórico analítico 1997+** — usa headings HS4 `0201` e `0202` sobre a tabela canônica `comexstat_ncm_export`. Isso mantém o agregado completo mesmo quando os subcódigos NCM8 mudam.
+Contrato temporal:
+- observado realizado;
+- `data_referencia` anual em 31/12;
+- publicação histórica não é inventada;
+- histórico permanece inelegível como feature point-in-time até reconstrução verificável dos vintages/publicações.
 
-Regras:
+### 2. IBGE Pesquisa Trimestral do Abate — fluxo oficial
 
-- `0201` → fresca/refrigerada;
-- `0202` → congelada;
-- miudezas `0206` permanecem fora do agregado;
-- qualquer análise histórica por NCM8 específico continua exigindo correlação temporal válida;
-- `SG_UF_NCM` representa a UF declarada do produto no módulo NCM;
-- URF é unidade da Receita Federal e não deve ser tratada automaticamente como porto físico;
-- kg, toneladas, FOB e USD/t são preservados/derivados com rastreabilidade.
+`source_id`: `ibge_sidra_slaughter_1092`
 
-## BigQuery
+Uso:
+- bovinos abatidos em MT;
+- peso total de carcaças;
+- cálculo derivado de peso médio de carcaça;
+- histórico trimestral revisionável por snapshot.
 
-Dataset próprio: `pecuaria`.
+Escopo SIDRA fixado:
+- tabela 1092;
+- variáveis 284 e 285;
+- trimestre total;
+- inspeção total;
+- bovinos total.
 
-Objetos principais:
+Peso médio é derivado, não observado bruto.
 
-- `pecuaria.ibge_ppm_cattle_mt`;
-- `pecuaria.v_ibge_ppm_cattle_mt_latest`;
-- `pecuaria.v_ibge_ppm_cattle_mt_state_year`;
-- `comercio_exterior.v_pecuaria_mt_beef_exports` — view derivada da tabela Comex canônica, sem segunda ingestão histórica.
+### 3. MAPA PGA/SIGSIF — snapshot SIF
 
-O histórico Comex continua no dataset canônico `comercio_exterior`; a Pecuária cria apenas a interpretação controlada do domínio.
+`source_id`: `mapa_sigsif_slaughter_snapshot`
 
-## AgroLog Gateway
+Uso:
+- abate sob SIF por sexo e UF de procedência;
+- composição macho/fêmea;
+- cross-check do ambiente federal de inspeção;
+- sinal para retenção/descarte de fêmeas quando metodologicamente aplicável.
 
-Rotas somente leitura:
+Limite temporal obrigatório:
+- o CSV oficial utilizado não contém competência/data interna da observação;
+- a atualização mensal do arquivo não autoriza reconstruir uma série mensal retroativa;
+- cada coleta é tratada como snapshot corrente do universo SIF;
+- nunca somar automaticamente com a Pesquisa Trimestral do Abate.
 
-- `GET /v1/pecuaria/herd/state`;
-- `GET /v1/pecuaria/herd/municipal`;
-- `GET /v1/pecuaria/exports/beef`.
+### 4. MDIC/SECEX Comex Stat — carne bovina
 
-Regras:
+`source_id`: `mdic_comexstat_beef_mt_export_api`
 
-- parâmetros validados;
-- queries parametrizadas;
-- sem exposição direta do BigQuery ao consumidor;
-- escopo NCM corrente lido do contrato canônico;
-- avisos temporais e semânticos retornados junto aos dados;
-- autenticação e IAM continuam governados pelo bootstrap central do Gateway.
+Escopo corrente:
+- exportação;
+- Mato Grosso;
+- carne bovina in natura NCM8 de 0201/0202;
+- miudezas explicitamente excluídas.
 
-## Automação e produção
+Escopo histórico:
+- agregado robusto em HS4 0201/0202;
+- detalhe NCM8 histórico exige mapping temporal observado antes de qualquer afirmação retroativa;
+- URF continua sendo unidade da Receita Federal, não porto físico.
+
+## Relação entre as quatro perspectivas
+
+As fontes são complementares e não intercambiáveis:
+
+| Perspectiva | Fonte | Natureza |
+|---|---|---|
+| Estoque | IBGE PPM | rebanho anual municipal |
+| Fluxo de abate | IBGE Abate | produção trimestral oficial |
+| Composição SIF | MAPA SIGSIF | snapshot corrente por sexo/procedência |
+| Demanda externa | Comex Stat | exportação por produto/destino |
+
+Nenhuma delas foi configurada como fallback semântico de outra no Registry.
+
+## Arquitetura operacional
+
+Fluxo canônico:
+
+`fonte → Source Registry → collector → RAW/hash → normalização → BigQuery → validação → Gateway → análise/modelo → conhecimento/relatório`
+
+### Data Source Registry
+
+As quatro fontes Pecuária existem como entradas concretas do domínio `cattle`.
+
+Estado inicial: `gated`.
+
+O job normal `agrolog-pecuaria` roda em Registry Mode e não executa fontes gated. Para homologação existe um canary explícito:
+
+- exige `AGROLOG_SOURCE_ID` individual;
+- exige `AGROLOG_GATED_CANARY=1`;
+- não funciona para um domínio inteiro;
+- não muda o status versionado do Registry;
+- não promove automaticamente a fonte.
+
+Essa separação evita o ciclo incorreto de ativar uma fonte antes de prová-la.
+
+### BigQuery
+
+Dataset principal:
+
+`pecuaria`
+
+Dataset de comércio exterior compartilhado:
+
+`comercio_exterior`
+
+Objetos principais do domínio são criados sob demanda pelos loaders homologados. Snapshots são idempotentes e preservam revisões; chaves naturais não são consideradas globalmente únicas entre snapshots.
 
 ### Cloud Run
 
-Job dedicado lógico: `agrolog-pecuaria`.
+Job:
 
-Ele reutiliza:
+`agrolog-pecuaria`
 
-- mesma imagem/código de coleta do AgroLog;
-- mesma service account do coletor;
-- mesmo RAW/Drive;
-- mesmos manifestos e observabilidade;
-- dataset pecuário próprio para isolamento analítico.
+Modo:
 
-### GitHub Actions
+- `AGROLOG_REGISTRY_MODE=1`;
+- `AGROLOG_DOMAIN=cattle`;
+- mesma imagem e runtime compartilhados do collector AgroLog;
+- sem segundo orquestrador.
 
-`pecuaria-production.yml`:
+### AgroLog Gateway
 
-- mudanças na `main` relacionadas ao domínio → deploy do coletor Pecuária, homologação completa, deploy/tie-out da view histórica, deploy do Gateway e teste E2E;
-- execução mensal → roda coleta corrente e toda a regressão operacional;
-- autenticação por Workload Identity Federation, sem chave JSON;
-- concorrência bloqueada para impedir dois ciclos produtivos simultâneos.
+O Gateway preserva o app endurecido global e registra o router Pecuária por composição em `gateway.production_app`.
 
-## Bootstrap administrativo
+Rotas do domínio:
 
-O deploy recorrente não recebe privilégio para criar datasets ou IAM.
+- `/v1/pecuaria/herd/state`;
+- `/v1/pecuaria/herd/municipal`;
+- `/v1/pecuaria/slaughter`;
+- `/v1/pecuaria/sigsif/current`;
+- `/v1/pecuaria/exports/beef`;
+- `/v1/pecuaria/exports/beef/history`.
 
-Uma única preparação administrativa cria/valida o dataset `pecuaria` e concede:
+O Gateway continua privado, non-root, com identidade própria, limites de BigQuery e sem acesso direto do usuário final ao banco.
 
-- `agrolog-collector`: `roles/bigquery.dataEditor` no dataset pecuário;
-- `agrolog-gateway`: `roles/bigquery.dataViewer` em `pecuaria` e `comercio_exterior`.
+## Teste e promoção
 
-Depois disso, rotina de deploy e coleta não exige privilégio administrativo.
+### Gate determinístico
 
-## Testes e gates
+Autoridade única:
 
-A política é regressão de **100% do projeto**, não apenas testes locais do módulo.
+`.github/workflows/full-project-final-gate.yml`
 
-A suíte global executa:
+Ele valida o repositório inteiro, incluindo:
+- todos os testes Python descobertos;
+- compilação Python;
+- JSON/YAML;
+- workflows via actionlint e Zizmor;
+- secret scan;
+- dependências;
+- frontend;
+- segurança e contratos globais.
 
-- todos os `unittest` existentes;
-- testes PPM;
-- testes BigQuery/PIT/idempotência;
-- contrato NCM/HS4;
-- queries do Gateway;
-- configs de produção;
-- compilação dos módulos Python relevantes;
-- validação de YAML;
-- validação de JSON;
-- sintaxe dos scripts shell;
-- harness sintético N6;
-- build completo da Maritime UI.
+Workflows Pecuária não substituem esse gate.
 
-Gates live adicionais:
+### Probes LIVE públicos
 
-- PPM SIDRA atual e histórico;
-- auditoria observada de subcódigos Comex;
-- carga BigQuery real;
-- reexecução idempotente;
-- tie-out da view histórica HS4 contra a tabela Comex canônica;
-- chamadas autenticadas ao Gateway.
+O workflow `.github/workflows/pecuaria-production.yml` concentra:
+- PPM corrente;
+- PPM histórico;
+- IBGE Abate;
+- SIGSIF;
+- amostra representativa de classificação bovina no Comex.
 
-## Regras temporais
+Não manter quatro workflows paralelos para a mesma responsabilidade.
 
-- dado realizado não vira feature point-in-time apenas porque existe hoje;
-- `data_referencia`, `data_publicacao`, `data_coleta` e `competencia` permanecem conceitos distintos;
-- backtests usam apenas informação cuja disponibilidade no corte tenha sido comprovada;
-- revisões de fonte são preservadas via snapshots quando aplicável;
-- previsão deve ser persistida antes do realizado para avaliação honesta.
+### Homologação GCP
 
-## Radar GitHub — melhorias avaliadas em 15/09/2026
+É deliberadamente manual (`workflow_dispatch`) enquanto as fontes estão gated.
 
-### rOpenSci/rnassqs — REFERÊNCIA / alta prioridade futura
+Sequência:
+1. preflight do bootstrap/datasets;
+2. deploy do collector compartilhado e job Pecuária;
+3. duas execuções canary de cada uma das quatro fontes;
+4. validação de carga e idempotência;
+5. gate agregado das tabelas Pecuária;
+6. view histórica de carne bovina;
+7. deploy do Gateway endurecido;
+8. validação E2E das rotas;
+9. promoção de fonte somente com evidência completa do contrato de promoção.
 
-Uso: padrão maduro para consultar USDA NASS QuickStats e construir benchmark internacional de rebanho, vacas, bezerros, produção e indicadores correlatos dos EUA.
+Nenhum script recorrente cria IAM ou reduz permissões para fazer o teste passar.
 
-Aproveitar conceitos:
+## Pesquisa GitHub e decisões de ferramentas
 
-- descoberta programática de parâmetros;
-- consultas reproduzíveis;
-- validação de filtros antes de grandes downloads;
-- separação entre aquisição e análise.
+### Adotar como próxima camada de dados: MapBiomas Pasture
 
-Não introduzir dependência R no runtime apenas para copiar a API; implementar adapter Python próprio sobre a fonte oficial quando a frente internacional entrar.
+Repositório auditado: `mapbiomas/brazil-pasture`.
 
-### USDA-REE-ERS/ARMS-Data-API — FONTE/REFERÊNCIA futura
+Capacidades relevantes:
+- pastagens anuais Landsat 30 m;
+- produto Sentinel-2 10 m;
+- vigor/condição de pastagem por EVI;
+- produtividade/biomassa baseada em GPP;
+- metodologia pública do MapBiomas/LAPIG.
 
-Uso: custos, estrutura econômica, produtividade e características de operações agropecuárias dos EUA, incluindo especialização em cattle.
+Uso pretendido no AgroLog:
+- área de pastagem municipal;
+- rebanho/ha implícito;
+- mudança de área;
+- vigor e produtividade da pastagem;
+- pressão animal;
+- degradação/capacidade de suporte como contexto analítico, nunca diagnóstico isolado.
 
-Valor: ajuda a separar sinal físico de rebanho de sinal econômico de margem/custo e fornece benchmark internacional de estrutura produtiva.
+Integração preferida: `mapbiomas/brazil-pasture` + cliente oficial `google/earthengine-api`, com autenticação Google Cloud adequada e exportação controlada para a arquitetura BigQuery/RAW. Não incorporar código Earth Engine antes de definir assets/licença/conta e teste reproduzível.
 
-### USDA LMPRS + cbw1243/usdampr — FONTE prioritária internacional / código apenas referência
+### Não adotar como fonte: `rpacco/cattlebr_data`
 
-Uso: preços obrigatórios reportados de bovinos, carne e transações no mercado dos EUA.
+O projeto encontrado usa essencialmente IBGE + PRODES para uma análise derivada. Não acrescenta uma fonte primária nem capacidade que justifique dependência adicional. Conceitos úteis podem ser reproduzidos diretamente a partir das fontes oficiais já governadas.
 
-Regra: priorizar a API oficial USDA AMS/LMPRS. O pacote `usdampr` serve como referência de contrato, histórico e tratamento; não deve se tornar dependência central sem necessidade.
+### Não promover dbt/SQLMesh por antecipação
 
-### mapbiomas/brazil-pasture — alta prioridade nacional
+`dbt-labs/dbt` e `SQLMesh/sqlmesh` seguem como referências fortes para transformação/versionamento SQL, mas o AgroLog já possui loaders, BigQuery, views, contracts e gates próprios. Uma migração geral agora duplicaria responsabilidade.
 
-Uso: metodologia e produtos para mapear área e dinâmica de pastagens com Landsat/Sentinel.
+Critério futuro para adoção:
+- reduzir materialmente boilerplate ou custo de manutenção;
+- oferecer lineage/versionamento/teste SQL não coberto de forma suficiente;
+- benchmark em um fluxo real antes de qualquer migração transversal.
 
-Aplicações Pecuária:
+### `agrobr` continua benchmark, não dependência CORE
 
-- área de pastagem por município/região;
-- conversão/recuperação/degradação quando suportada pelo produto oficial;
-- pressão `rebanho / área de pastagem`;
-- cruzamento com seca, NDVI/EVI, chuva e produtividade forrageira;
-- explicação espacial de retenção/abate e capacidade de suporte.
+É uma boa referência de contratos e cobertura de fontes brasileiras, mas sua adoção global adicionaria uma segunda camada de abstração e dependências que duplicam collectors já homologados. O AgroLog reutiliza ideias/endpoints quando úteis e mantém seu próprio controle de RAW, snapshot, vintage e temporalidade.
 
-Os produtos oficiais/metodologia são a fonte; o repositório é referência de implementação, não justificativa para copiar assets ou código sem revisão de licença.
+## Próxima expansão de dados
 
-### digivet-consortium/movenet / movenetapp — REFERÊNCIA metodológica
+Ordem recomendada depois da homologação das quatro fontes atuais:
 
-Uso futuro quando GTA/movimentação autorizada estiver estruturada.
+1. MapBiomas Pasture + Earth Engine oficial;
+2. preço físico de boi e indicadores autorizados IMEA/CEPEA;
+3. B3 futuro de boi quando o contrato/fonte oficial e direitos estiverem definidos;
+4. cadastro/atividade de plantas frigoríficas e capacidade quando fonte oficial estiver disponível;
+5. movimentação animal/GTA/INDEA-MT quando houver acesso legal e tecnicamente autorizado;
+6. USDA cattle/beef e sinais internacionais relevantes, reutilizando o stack USDA já presente no AgroLog;
+7. custos de alimentação (milho/farelo), clima, pastagem e logística como drivers externos.
 
-Conceitos úteis:
+## Camada analítica N6 Pecuária
 
-- padronização de diferentes layouts de movimentação;
-- pseudonimização;
-- geração de redes origem-destino;
-- centralidade, comunidades e hubs;
-- integração com modelos de transmissão sanitária;
-- avaliação do impacto de anonimização nas métricas de rede.
+Somente depois de dados/vintages adequados:
 
-O AgroLog deve implementar os conceitos sobre os próprios contratos e dados autorizados, sem necessidade de incorporar a interface Shiny.
+- ciclo pecuário;
+- retenção/descarte de fêmeas;
+- disponibilidade futura de animais;
+- pressão de abate;
+- peso médio de carcaça;
+- estoque × abate;
+- exportação × produção;
+- preço/basis;
+- pastagem/lotação implícita;
+- custos de alimentação;
+- risco climático e logístico.
 
-### Repositórios genéricos de previsão de preço de gado
+Modelos seguem os mesmos requisitos N6 do AgroLog:
+- walk-forward;
+- point-in-time;
+- baselines simples;
+- controle de leakage;
+- incerteza/calibração;
+- estabilidade temporal;
+- promoção somente após evidência fora da amostra.
 
-Não promovidos. Os candidatos encontrados têm baixa evidência de manutenção, metodologia, validação fora da amostra e prevenção de leakage. Modelos proprietários devem ser treinados sobre datasets point-in-time do AgroLog e comparados com benchmarks simples antes de qualquer promoção.
+## Google Cloud, Replit e Claude Code
 
-## Melhorias aprovadas para a próxima expansão
+### Google Cloud
 
-1. **Abate e oferta física** — integrar IBGE Pesquisa Trimestral do Abate e fontes oficiais de inspeção/frigoríficos, preservando metodologia e revisões.
-2. **Preços físicos e futuros** — CEPEA/IMEA/B3 e fontes privadas autorizadas; preço spot, diferencial regional, basis e curva futura separados.
-3. **Movimentação animal** — GTA/INDEA autorizada, com resolução de entidades, OD e rede de movimentações.
-4. **Pastagens** — MapBiomas + clima/sensoriamento remoto para área, condição e pressão animal.
-5. **Frigoríficos** — cadastro/capacidade/status de plantas, habilitações de exportação e raio de competição por boi.
-6. **Mercado internacional** — USDA NASS, AMS LMPRS, ERS/ARMS e comércio exterior dos principais concorrentes.
-7. **Sanidade** — eventos oficiais somente como variável de risco/fluxo e, quando relevante, driver externo de demanda/oferta.
-8. **Modelos N6** — ciclo pecuário, retenção/abate, disponibilidade de animais, preço/basis e exportação; promoção apenas com point-in-time, walk-forward, calibração e estabilidade de regime.
+Arquitetura-alvo já está alinhada:
+- BigQuery: verdade analítica;
+- Cloud Run Jobs: collectors;
+- Cloud Run Service: Gateway;
+- Artifact Registry: imagens;
+- WIF/OIDC: CI/CD sem chave JSON;
+- armazenamento RAW externo com hash/proveniência;
+- IAM/bootstrap separado de deploy recorrente.
 
-## Critério de versão operacional
+### Claude Code
 
-A V1 só é considerada operacional quando todos os itens abaixo forem comprovados no ambiente real:
+O repositório já possui `CLAUDE.md`, `.mcp.json`, `AGENTS.md` e workflow multiagente. Claude Code deve consumir o mesmo GitHub e os mesmos contratos; não criar uma cópia divergente do projeto.
 
-- bootstrap GCP concluído;
-- job `agrolog-pecuaria` implantado;
-- PPM carregada e reexecutada idempotentemente;
-- Comex corrente carregado/reexecutado;
-- view histórica 0201/0202 criada e reconciliada;
-- Gateway implantado e as três rotas aprovadas em E2E;
-- suíte global verde;
-- live probes sem quebra material de contrato;
-- evidências registradas em GitHub Actions/BigQuery.
+### Replit
+
+Replit será ambiente de desenvolvimento, não nova fonte de verdade. A integração só deve começar depois do candidato GitHub estar integralmente verde.
+
+Regras:
+- importar/clonar o GitHub canônico;
+- nunca iniciar um fork lógico do projeto;
+- secrets somente no secret store do ambiente;
+- não usar credencial GCP estática versionada;
+- ambiente dev deve apontar para recursos de desenvolvimento/homologação, nunca alterar produção por padrão;
+- todo código válido volta ao GitHub e passa pelo Full Project Final Gate;
+- não promover artefato produzido apenas no Replit sem commit e CI canônicos.
+
+## Critério de conclusão
+
+A Inteligência Pecuária só pode ser chamada de operacional quando, no mesmo release candidato:
+
+- Full Project Final Gate = PASS;
+- probes LIVE Pecuária = PASS;
+- bootstrap GCP necessário está comprovado;
+- quatro fontes canary carregadas e idempotentes;
+- RAW/proveniência presentes;
+- BigQuery validado;
+- Gateway E2E validado;
+- source promotion gates completos;
+- segurança/lineage/observabilidade/restore aplicáveis em PASS;
+- nenhuma fonte é promovida com evidência parcial.
+
+Até lá, o estado correto é `GATED`, nunca “quase produção”.
