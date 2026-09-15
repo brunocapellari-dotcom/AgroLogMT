@@ -4,12 +4,23 @@ on:
   push:
     branches: [main]
     paths:
+      - "Dockerfile"
+      - "collector/ibge_sidra.py"
       - "collector/ibge_ppm.py"
       - "collector/ibge_ppm_bigquery.py"
       - "collector/ibge_ppm_pipeline.py"
+      - "collector/ibge_slaughter.py"
+      - "collector/ibge_slaughter_bigquery.py"
+      - "collector/ibge_slaughter_pipeline.py"
+      - "collector/mapa_sigsif.py"
+      - "collector/mapa_sigsif_bigquery.py"
+      - "collector/mapa_sigsif_pipeline.py"
+      - "collector/snapshot_bigquery.py"
+      - "collector/adapters.py"
       - "collector/cloud_runner.py"
       - "collector/config/sources.pecuaria.json"
       - "collector/comexstat_pipeline.py"
+      - "ckan_connector/**"
       - "contracts/product_trade_codes.v1.json"
       - "models/pecuaria_trade.py"
       - "gateway/pecuaria_queries.py"
@@ -142,7 +153,8 @@ jobs:
             --project "$PROJECT_ID" \
             --dataset "$PECUARIA_DATASET" \
             --ops-dataset "$OPS_DATASET" \
-            --location "$BQ_LOCATION"
+            --location "$BQ_LOCATION" \
+            --scope all
           python scripts/validate_pecuaria_trade_history.py \
             --project "$PROJECT_ID" \
             --dataset "$TRADE_DATASET" \
