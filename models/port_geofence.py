@@ -5,7 +5,15 @@ from dataclasses import dataclass
 from typing import Iterable, Sequence
 
 
-ZONE_PRIORITY = {"UNKNOWN": 0, "SEA": 1, "APPROACH": 2, "ANCHORAGE": 3, "BERTH": 4}
+ZONE_PRIORITY = {
+    "UNKNOWN": 0,
+    "SEA": 1,
+    "APPROACH": 2,
+    "PORT": 3,
+    "ANCHORAGE": 4,
+    "CHANNEL": 5,
+    "BERTH": 6,
+}
 
 
 def _validate_coordinate(latitude: float, longitude: float) -> tuple[float, float]:

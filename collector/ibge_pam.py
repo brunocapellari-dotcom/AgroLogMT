@@ -8,6 +8,8 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from .transport_security import validate_https_url
+
 SOURCE_ID = "ibge_sidra_pam_1612"
 TABLE_ID = 1612
 MT_UF_CODE = 51
@@ -15,15 +17,23 @@ YIELD_VARIABLE = 112
 SOY_CATEGORY = 2713
 PRIMARY_URL = "https://apisidra.ibge.gov.br/values/t/1612/n3/51/v/112/p/all/c81/2713?formato=json"
 FALLBACK_URL = "https://api.sidra.ibge.gov.br/values/t/1612/n3/51/v/112/p/all/c81/2713?formato=json"
+IBGE_SIDRA_ALLOWED_HOSTS = {"apisidra.ibge.gov.br", "api.sidra.ibge.gov.br"}
+MAX_RESPONSE_BYTES = 20 * 1024 * 1024
 
 
 def fetch_payload(*, timeout: int = 90) -> tuple[bytes, str]:
     errors: list[str] = []
     for url in (PRIMARY_URL, FALLBACK_URL):
+        validate_https_url(url, allowed_hosts=IBGE_SIDRA_ALLOWED_HOSTS)
         request = Request(url, headers={"User-Agent": "AgroLogMT/0.1 (+ibge-pam)"})
         try:
-            with urlopen(request, timeout=timeout) as response:
-                return response.read(), response.geturl()
+            with urlopen(request, timeout=timeout) as response:  # nosec B310 - HTTPS and official IBGE hosts validated above.
+                observed = response.geturl()
+                validate_https_url(observed, allowed_hosts=IBGE_SIDRA_ALLOWED_HOSTS)
+                payload = response.read(MAX_RESPONSE_BYTES + 1)
+                if len(payload) > MAX_RESPONSE_BYTES:
+                    raise ValueError("SIDRA PAM excede limite de resposta")
+                return payload, observed
         except (HTTPError, URLError, TimeoutError, OSError) as exc:
             errors.append(f"{url}: {type(exc).__name__}: {exc}")
     raise RuntimeError("SIDRA PAM indisponivel: " + " | ".join(errors))

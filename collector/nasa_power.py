@@ -7,8 +7,12 @@ from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from .transport_security import validate_https_url
+
 BASE_URL = "https://power.larc.nasa.gov/api/temporal/daily/point"
+NASA_ALLOWED_HOSTS = {"power.larc.nasa.gov"}
 DEFAULT_PARAMETERS = ("PRECTOTCORR", "T2M", "T2M_MAX", "T2M_MIN", "RH2M")
+MAX_RESPONSE_BYTES = 20 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -96,8 +100,13 @@ def fetch_daily(
     parameters: tuple[str, ...] = DEFAULT_PARAMETERS, timeout: int = 60,
 ) -> tuple[str, list[PowerObservation]]:
     url = build_url(latitude=latitude, longitude=longitude, start=start, end=end, parameters=parameters)
+    validate_https_url(url, allowed_hosts=NASA_ALLOWED_HOSTS)
     request = Request(url, headers={"User-Agent": "AgroLogMT/0.1 (+NASA POWER)"})
-    with urlopen(request, timeout=timeout) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    with urlopen(request, timeout=timeout) as response:  # nosec B310 - HTTPS and official NASA host validated above.
         observed_url = response.geturl()
+        validate_https_url(observed_url, allowed_hosts=NASA_ALLOWED_HOSTS)
+        raw = response.read(MAX_RESPONSE_BYTES + 1)
+        if len(raw) > MAX_RESPONSE_BYTES:
+            raise ValueError("NASA POWER excede limite de resposta")
+        payload = json.loads(raw.decode("utf-8"))
     return observed_url, parse_response(payload)
