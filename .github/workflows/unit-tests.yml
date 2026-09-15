@@ -37,7 +37,7 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python scripts/run_n6_synthetic_backtest.py
-      - name: Compile N6, control-plane, connector, Comex and shipping Python modules
+      - name: Compile N6, control-plane, USDA, connector, Comex and shipping Python modules
         run: >-
           python -m py_compile
           scripts/validate_conab_n6.py
@@ -64,6 +64,8 @@ jobs:
           collector/input_security.py
           collector/cloud_runner.py
           collector/orchestrator.py
+          collector/adapters.py
+          collector/nass_quickstats.py
           collector/comexstat_pipeline.py
           collector/ais_stream.py
           collector/ais_stream_client.py
@@ -92,6 +94,7 @@ jobs:
           files = [
               'collector/config/sources.pilot.json',
               'collector/config/sources.p0.json',
+              'collector/config/sources.us.v1.json',
               'collector/config/maritime_lineup_sources.v1.json',
               'collector/config/data_source_registry.v1.json',
               'contracts/canonical_record_metadata.schema.json',
