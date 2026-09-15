@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Iterable
@@ -20,13 +21,13 @@ class MaritimePhysicalState(IntEnum):
     SAIU = 120
 
 
-# States that may be asserted only from explicit official/operational evidence.
 OFFICIAL_EVIDENCE_REQUIRED = frozenset({
     MaritimePhysicalState.OPERANDO,
     MaritimePhysicalState.CONCLUIDO,
 })
 
-# AIS can support these states, but one isolated AIS message is never enough.
+# These states may be inferred from AIS only when there is a corroborated sequence.
+# Explicit operational evidence from a port authority may satisfy the gate without AIS.
 AIS_CORROBORATION_REQUIRED = frozenset({
     MaritimePhysicalState.EM_VIAGEM,
     MaritimePhysicalState.APROXIMACAO,
@@ -50,16 +51,15 @@ class StateEvidence:
     official_operational: bool = False
 
 
+def _ascii_token(value: str) -> str:
+    text = unicodedata.normalize("NFKD", str(value)).encode("ascii", "ignore").decode("ascii")
+    return "_".join(text.strip().upper().replace("-", " ").split())
+
+
 def parse_state(value: str | MaritimePhysicalState) -> MaritimePhysicalState:
     if isinstance(value, MaritimePhysicalState):
         return value
-    normalized = str(value).strip().upper().replace(" ", "_").replace("Á", "A").replace("Ç", "C")
-    aliases = {
-        "APROXIMAÇÃO": "APROXIMACAO",
-        "ÁREA_PORTUÁRIA": "AREA_PORTUARIA",
-        "AREA_PORTUARIA": "AREA_PORTUARIA",
-    }
-    normalized = aliases.get(str(value).strip().upper(), normalized)
+    normalized = _ascii_token(str(value))
     try:
         return MaritimePhysicalState[normalized]
     except KeyError as exc:
@@ -72,13 +72,17 @@ def validate_state_evidence(state: str | MaritimePhysicalState, evidence: Iterab
     if not rows:
         raise ValueError("estado fisico exige evidencia")
 
-    if target in OFFICIAL_EVIDENCE_REQUIRED and not any(row.official_operational for row in rows):
+    has_official = any(row.official_operational for row in rows)
+    if target in OFFICIAL_EVIDENCE_REQUIRED and not has_official:
         raise ValueError(f"{target.name} exige evidencia operacional oficial")
 
-    if target in AIS_CORROBORATION_REQUIRED:
-        ais_rows = [row for row in rows if row.signal_type.upper().startswith("AIS")]
-        if ais_rows and sum(max(1, row.independent_message_count) for row in ais_rows) < 2:
-            raise ValueError(f"{target.name} nao pode ser confirmado por uma unica mensagem AIS")
+    if target in AIS_CORROBORATION_REQUIRED and not has_official:
+        ais_rows = [row for row in rows if row.signal_type.strip().upper().startswith("AIS")]
+        ais_messages = sum(max(0, int(row.independent_message_count)) for row in ais_rows)
+        if ais_messages < 2:
+            raise ValueError(
+                f"{target.name} exige evidencia operacional oficial ou ao menos duas mensagens AIS independentes"
+            )
 
 
 def validate_transition(previous: str | MaritimePhysicalState, current: str | MaritimePhysicalState) -> None:
