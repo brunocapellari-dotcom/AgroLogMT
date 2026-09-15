@@ -2,23 +2,20 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 from datetime import datetime, timezone
 from typing import Any
-from urllib.error import HTTPError, URLError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+
+from .ibge_sidra import PRIMARY_VALUES_BASE, fetch_sidra_path, parse_sidra_number
 
 SOURCE_ID = "ibge_sidra_ppm_3939"
 TABLE_ID = 3939
 MT_UF_CODE = 51
 HERD_VARIABLE = 105
 CATTLE_CATEGORY = 2670
-PRIMARY_BASE = "https://apisidra.ibge.gov.br/values"
-FALLBACK_BASE = "https://api.sidra.ibge.gov.br/values"
 
 
-def dataset_url(*, period: str | int = "all", base_url: str = PRIMARY_BASE) -> str:
+def dataset_path(*, period: str | int = "all") -> str:
     period_text = str(period).strip()
     if period_text != "all":
         try:
@@ -30,44 +27,22 @@ def dataset_url(*, period: str | int = "all", base_url: str = PRIMARY_BASE) -> s
         period_text = str(year)
     geography = quote(f"in n3 {MT_UF_CODE}", safe="")
     return (
-        f"{base_url}/t/{TABLE_ID}/n6/{geography}/v/{HERD_VARIABLE}"
+        f"t/{TABLE_ID}/n6/{geography}/v/{HERD_VARIABLE}"
         f"/p/{period_text}/c79/{CATTLE_CATEGORY}?formato=json"
     )
 
 
+def dataset_url(*, period: str | int = "all", base_url: str = PRIMARY_VALUES_BASE) -> str:
+    return f"{base_url.rstrip('/')}/{dataset_path(period=period)}"
+
+
 def fetch_payload(*, period: str | int = "all", timeout: int = 120) -> tuple[bytes, str]:
-    errors: list[str] = []
-    for base_url in (PRIMARY_BASE, FALLBACK_BASE):
-        url = dataset_url(period=period, base_url=base_url)
-        request = Request(url, headers={"User-Agent": "AgroLogMT/0.1 (+ibge-ppm)"})
-        try:
-            with urlopen(request, timeout=timeout) as response:
-                return response.read(), response.geturl()
-        except (HTTPError, URLError, TimeoutError, OSError) as exc:
-            errors.append(f"{url}: {type(exc).__name__}: {exc}")
-    raise RuntimeError("SIDRA PPM indisponivel: " + " | ".join(errors))
-
-
-def _number(value: object) -> float | None:
-    text = str(value or "").strip()
-    if not text or text in {"-", "...", "..", "X"}:
-        return None
-    text = text.replace(" ", "")
-    if "," in text and "." in text:
-        text = text.replace(".", "").replace(",", ".")
-    elif "," in text:
-        text = text.replace(",", ".")
-    elif text.count(".") == 1:
-        left, right = text.split(".", 1)
-        if left.lstrip("+-").isdigit() and right.isdigit() and len(right) == 3:
-            text = left + right
-    elif text.count(".") > 1 and all(part.isdigit() for part in text.split(".")):
-        text = text.replace(".", "")
-    try:
-        parsed = float(text)
-    except ValueError:
-        return None
-    return parsed if math.isfinite(parsed) else None
+    return fetch_sidra_path(
+        dataset_path(period=period),
+        timeout=timeout,
+        user_agent="AgroLogMT/0.1 (+ibge-ppm)",
+        error_label="SIDRA PPM",
+    )
 
 
 def parse_payload(payload: bytes) -> list[dict[str, Any]]:
@@ -83,7 +58,7 @@ def parse_payload(payload: bytes) -> list[dict[str, Any]]:
         variable = str(raw.get("D2N") or "").strip()
         period = str(raw.get("D3N") or raw.get("D3C") or "").strip()
         herd = str(raw.get("D4N") or "").strip()
-        value = _number(raw.get("V"))
+        value = parse_sidra_number(raw.get("V"))
 
         if (
             not municipality_code
