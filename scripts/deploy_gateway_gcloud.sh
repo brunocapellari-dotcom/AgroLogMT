@@ -39,6 +39,7 @@ done
 
 GATEWAY_SERVICE_ACCOUNT="${GATEWAY_SERVICE_ACCOUNT:-${GATEWAY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
 BUILD_SERVICE_ACCOUNT="${BUILD_SERVICE_ACCOUNT:-${BUILD_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
+BUILD_SERVICE_ACCOUNT_RESOURCE="${BUILD_SERVICE_ACCOUNT_RESOURCE:-projects/${PROJECT_ID}/serviceAccounts/${BUILD_SERVICE_ACCOUNT}}"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}"
 
 gcloud config set project "$PROJECT_ID" >/dev/null
@@ -95,9 +96,10 @@ gcloud storage buckets describe "gs://${BUILD_SOURCE_BUCKET}" --project "$PROJEC
 
 assert_private_gateway
 
+# Cloud Build API exige projects/{PROJECT_ID}/serviceAccounts/{ACCOUNT}.
 gcloud builds submit . \
   --project "$PROJECT_ID" \
-  --service-account "$BUILD_SERVICE_ACCOUNT" \
+  --service-account "$BUILD_SERVICE_ACCOUNT_RESOURCE" \
   --gcs-source-staging-dir "gs://${BUILD_SOURCE_BUCKET}/source" \
   --config gateway/cloudbuild.yaml \
   --substitutions "_IMAGE=${IMAGE}"
