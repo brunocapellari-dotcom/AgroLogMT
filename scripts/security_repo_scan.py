@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 MAX_TEXT_BYTES = 2 * 1024 * 1024
+MAX_HISTORY_SCAN_BYTES = 100 * 1024 * 1024
 TEXT_SUFFIXES = {
     ".py", ".js", ".ts", ".json", ".yml", ".yaml", ".toml", ".ini", ".cfg",
     ".md", ".txt", ".sh", ".sql", ".html", ".css", ".xml",
@@ -106,10 +107,78 @@ def scan_file(path: Path) -> list[Finding]:
     return findings
 
 
+def scan_git_history() -> list[Finding]:
+    """Scan reachable patch history so deleting a leaked token is not considered remediation.
+
+    Only high-confidence secret signatures are checked. Values are never echoed.
+    The scan is bounded; exceeding the bound blocks release because coverage would be incomplete.
+    """
+    command = [
+        "git", "log", "-p", "--all", "--no-ext-diff", "--no-textconv",
+        "--format=commit:%H", "--", ".",
+    ]
+    proc = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert proc.stdout is not None
+    findings: list[Finding] = []
+    seen: set[tuple[str, str, str]] = set()
+    current_commit = "unknown"
+    current_path = "unknown"
+    scanned_bytes = 0
+
+    for line in proc.stdout:
+        scanned_bytes += len(line.encode("utf-8", errors="replace"))
+        if scanned_bytes > MAX_HISTORY_SCAN_BYTES:
+            proc.kill()
+            findings.append(Finding(
+                "BLOCK", "git-history", "history-scan-limit",
+                "histórico excedeu limite de varredura; cobertura de segredos incompleta",
+            ))
+            break
+        if line.startswith("commit:"):
+            current_commit = line.removeprefix("commit:").strip()[:40] or "unknown"
+            continue
+        if line.startswith("+++ b/") or line.startswith("--- a/"):
+            current_path = line[6:].strip()
+            continue
+        # Scan both additions and removals: a deleted secret remains reachable in Git history.
+        if not line.startswith(("+", "-")) or line.startswith(("+++", "---")):
+            continue
+        for rule, pattern in SECRET_PATTERNS:
+            if pattern.search(line):
+                key = (current_commit, current_path, rule)
+                if key not in seen:
+                    seen.add(key)
+                    findings.append(Finding(
+                        "BLOCK",
+                        f"git-history:{current_commit}:{current_path}",
+                        f"historical-{rule}",
+                        "assinatura de segredo encontrada em histórico Git; valor redigido",
+                    ))
+
+    stderr = ""
+    if proc.stderr is not None:
+        stderr = proc.stderr.read().strip()
+    return_code = proc.wait()
+    if return_code not in (0, -9) and not any(f.rule == "history-scan-limit" for f in findings):
+        findings.append(Finding(
+            "BLOCK", "git-history", "history-scan-error",
+            f"varredura do histórico falhou: exit={return_code}; {stderr[:300]}",
+        ))
+    return findings
+
+
 def main() -> int:
     findings: list[Finding] = []
     for path in tracked_files():
         findings.extend(scan_file(path))
+    findings.extend(scan_git_history())
 
     for item in findings:
         print(f"{item.severity}\t{item.path}\t{item.rule}\t{item.detail}")
