@@ -70,15 +70,66 @@ def main() -> int:
         municipal_rows,
     )
 
+    slaughter = get_json(f"{service_url}/v1/pecuaria/slaughter/quarterly?limit=3", token)
+    slaughter_rows = slaughter.get("data") or []
+    add("slaughter_source", slaughter.get("source_id") == "ibge_sidra_slaughter_1092", slaughter.get("source_id"))
+    add("slaughter_rows", len(slaughter_rows) > 0, {"rows": len(slaughter_rows)})
+    add(
+        "slaughter_metrics_plausible",
+        all(
+            float(row.get("animais_abatidos_cabecas") or 0) > 0
+            and float(row.get("peso_carcacas_kg") or 0) > 0
+            and 100 <= float(row.get("peso_medio_carcaca_kg_cabeca") or 0) <= 500
+            and row.get("historical_pit_guard_preserved") is True
+            for row in slaughter_rows
+        ),
+        slaughter_rows,
+    )
+
+    sigsif = get_json(f"{service_url}/v1/pecuaria/slaughter/sigsif/current", token)
+    sigsif_rows = sigsif.get("data") or []
+    add("sigsif_source", sigsif.get("source_id") == "mapa_sigsif_slaughter_snapshot", sigsif.get("source_id"))
+    add("sigsif_single_summary", len(sigsif_rows) == 1, {"rows": len(sigsif_rows)})
+    if sigsif_rows:
+        row = sigsif_rows[0]
+        add("sigsif_total_positive", int(row.get("total_bovinos") or 0) > 0, row)
+        add(
+            "sigsif_temporal_semantics",
+            row.get("temporal_semantics") == "snapshot_collection_date_not_event_period",
+            row.get("temporal_semantics"),
+        )
+
     exports = get_json(f"{service_url}/v1/pecuaria/exports/beef?limit=3", token)
     export_rows = exports.get("data") or []
     add("beef_export_source", exports.get("source_id") == "mdic_comexstat_beef_mt_export_api", exports.get("source_id"))
     add("beef_export_rows", len(export_rows) > 0, {"rows": len(export_rows)})
-    add("beef_export_scope", exports.get("scope") == "carne_bovina_in_natura_0201_0202_sem_miudezas", exports.get("scope"))
+    add(
+        "beef_export_scope",
+        exports.get("scope") == "carne_bovina_in_natura_ncm8_corrente_0201_0202_sem_miudezas",
+        exports.get("scope"),
+    )
     add(
         "beef_export_metrics_positive",
         all(float(row.get("kg_liquido") or 0) >= 0 and float(row.get("valor_fob_usd") or 0) >= 0 for row in export_rows),
         export_rows,
+    )
+
+    history = get_json(
+        f"{service_url}/v1/pecuaria/exports/beef/history?{urllib.parse.urlencode({'year_start': 1997, 'limit': 3})}",
+        token,
+    )
+    history_rows = history.get("data") or []
+    add("beef_history_source", history.get("source_id") == "mdic_comexstat_annual_ncm", history.get("source_id"))
+    add("beef_history_rows", len(history_rows) > 0, {"rows": len(history_rows)})
+    add(
+        "beef_history_scope",
+        history.get("scope") == "historico_hs4_0201_0202_mato_grosso_latest_annual_snapshot",
+        history.get("scope"),
+    )
+    add(
+        "beef_history_segments",
+        all(row.get("segmento_carne") in {"fresca_refrigerada", "congelada"} for row in history_rows),
+        history_rows,
     )
 
     failed = [item for item in checks if not item["passed"]]
