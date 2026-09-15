@@ -6,6 +6,8 @@ REGION="${REGION:-southamerica-east1}"
 BQ_LOCATION="${BQ_LOCATION:-southamerica-east1}"
 LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
 MARITIME_DATASET="${MARITIME_DATASET:-agrolog_models}"
+PECUARIA_DATASET="${PECUARIA_DATASET:-pecuaria}"
+TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
 AR_REPOSITORY="${AR_REPOSITORY:-agrolog}"
 BUILD_SOURCE_BUCKET="${BUILD_SOURCE_BUCKET:-${PROJECT_ID}-agrolog-build-source}"
 IMAGE_NAME="${IMAGE_NAME:-gateway}"
@@ -40,9 +42,9 @@ for sa in "$GATEWAY_SERVICE_ACCOUNT" "$BUILD_SERVICE_ACCOUNT"; do
     exit 3
   }
 done
-for dataset in "$LOGISTICA_DATASET" "$MARITIME_DATASET"; do
+for dataset in "$LOGISTICA_DATASET" "$MARITIME_DATASET" "$PECUARIA_DATASET" "$TRADE_DATASET"; do
   bq show --project_id="$PROJECT_ID" "${PROJECT_ID}:${dataset}" >/dev/null 2>&1 || {
-    echo "ERRO: dataset ${dataset} ausente. Execute o bootstrap administrativo." >&2
+    echo "ERRO: dataset ${dataset} ausente. Execute o bootstrap administrativo apropriado." >&2
     exit 3
   }
 done
@@ -55,7 +57,6 @@ gcloud storage buckets describe "gs://${BUILD_SOURCE_BUCKET}" --project "$PROJEC
   exit 3
 }
 
-# Build com builder dedicado e staging exclusivo. IAM/datasets são responsabilidade do bootstrap.
 gcloud builds submit . \
   --project "$PROJECT_ID" \
   --service-account "$BUILD_SERVICE_ACCOUNT" \
@@ -63,18 +64,15 @@ gcloud builds submit . \
   --config gateway/cloudbuild.yaml \
   --substitutions "_IMAGE=${IMAGE}"
 
-# A exigência de autenticação é administrada no bootstrap. O deploy recorrente atualiza apenas a revisão.
 gcloud run deploy "$SERVICE_NAME" \
   --image "$IMAGE" \
   --region "$REGION" \
   --project "$PROJECT_ID" \
   --service-account "$GATEWAY_SERVICE_ACCOUNT" \
-  --set-env-vars "AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_MARITIME_DATASET=${MARITIME_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION}"
+  --set-env-vars "AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_MARITIME_DATASET=${MARITIME_DATASET},AGROLOG_PECUARIA_DATASET=${PECUARIA_DATASET},AGROLOG_TRADE_DATASET=${TRADE_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION},AGROLOG_TRADE_CODES_CONTRACT=/app/contracts/product_trade_codes.v1.json"
 
 echo "Gateway implantado; autenticação obrigatória é governada pelo bootstrap administrativo."
 echo "Maritime UI preservada em /maritime/"
-echo "Dataset Maritime: ${PROJECT_ID}.${MARITIME_DATASET}"
+echo "Datasets: logística=${LOGISTICA_DATASET}, maritime=${MARITIME_DATASET}, pecuária=${PECUARIA_DATASET}, trade=${TRADE_DATASET}"
 echo "Build staging: gs://${BUILD_SOURCE_BUCKET}"
 echo "IAM, APIs e permissões BigQuery permanecem responsabilidade do bootstrap administrativo."
-echo "Para teste local autenticado: gcloud run services proxy ${SERVICE_NAME} --region ${REGION} --port 8080"
-echo "Depois acesse: http://localhost:8080/maritime/"
