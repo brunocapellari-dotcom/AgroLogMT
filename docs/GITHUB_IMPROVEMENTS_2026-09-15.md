@@ -15,6 +15,17 @@ Critérios de seleção:
 
 ## Selecionados
 
+### Zizmor — `zizmorcore/zizmor`
+
+**Decisão:** selecionado para auditoria estática especializada dos workflows GitHub Actions/CI.
+
+- licença MIT verificada na documentação do projeto;
+- versão pesquisada e pinada no AgroLog: `1.30.1` via `requirements-security.txt`;
+- executado em modo `--offline`, persona `auditor`, para não depender de token/API externa no gate determinístico;
+- cobre riscos específicos como template injection, persistência/vazamento de credenciais, permissões excessivas e referências confusas/impostoras;
+- complementa, sem substituir, o pinning SHA do AgroLog e os scans do Trivy;
+- finding dentro do limiar configurado bloqueia o gate integral.
+
 ### Gitleaks CLI — `gitleaks/gitleaks`
 
 **Decisão:** selecionado para secret scanning do repositório e histórico relevante.
@@ -23,6 +34,7 @@ Critérios de seleção:
 - versão pesquisada: `v8.30.1`;
 - usar CLI/binário verificado por checksum, não `gitleaks-action`;
 - motivo: o `gitleaks-action` atual declara EULA comercial própria, portanto não será introduzido automaticamente no AgroLog;
+- release Linux x64 é validado contra SHA-256 publicado antes da execução;
 - falha de secret scan bloqueia release.
 
 ### Trivy — `aquasecurity/trivy` / `aquasecurity/trivy-action`
@@ -41,6 +53,7 @@ Critérios de seleção:
 
 - action pesquisada: `v0.24.2`;
 - tag aponta para commit `3ad7283483fc7af8ff2b4ea19663c2d5ca935e26`;
+- licença Apache-2.0 verificada;
 - formato padrão preferido: SPDX JSON;
 - SBOM faz parte da evidência de release, não substitui scanner de vulnerabilidades.
 
@@ -82,6 +95,12 @@ Critérios de seleção:
 
 ## Avaliados e não selecionados como CORE
 
+### Gitleaks Action — `gitleaks/gitleaks-action`
+
+**Decisão:** não selecionar automaticamente.
+
+A versão atual do action declara uma EULA própria. Como o núcleo `gitleaks/gitleaks` é MIT e disponibiliza binários com checksum, o AgroLog usa a CLI verificada diretamente e evita introduzir obrigação comercial desnecessária no CI.
+
 ### OSV-Scanner — `google/osv-scanner`
 
 **Decisão:** referência/segundo diagnóstico, não scanner principal.
@@ -107,19 +126,20 @@ O AgroLog já possui Cloud Run Jobs, Scheduler, Data Source Registry e estado op
 1. **Full Project Release Gate** único para o projeto inteiro.
 2. descoberta automática de todos os arquivos Python/testes/configs/workflows/scripts, reduzindo listas manuais incompletas;
 3. separação explícita entre testes determinísticos e testes live, mas ambos obrigatórios para `FINAL RELEASE: PASS`;
-4. secret scan obrigatório;
-5. vulnerability/IaC/image scan obrigatório;
-6. SBOM obrigatório;
-7. containers não-root e builds reproduzíveis obrigatórios;
-8. frontend só passa com `package-lock.json` + `npm ci`;
-9. GCP preflight + restore drill + freshness/quality real + `N6 CORE HOMOLOGATION: PASS` no mesmo critério final;
-10. qualquer stage ausente gera `BLOCKED`, nunca aprovação parcial.
+4. auditoria especializada de GitHub Actions com Zizmor;
+5. secret scan obrigatório com Gitleaks CLI verificada;
+6. vulnerability/IaC/image scan obrigatório com Trivy;
+7. SBOM obrigatório para source e imagens;
+8. containers non-root e builds reproduzíveis obrigatórios;
+9. frontend só passa com `package-lock.json` + `npm ci`;
+10. GCP preflight + restore drill + freshness/quality real + `N6 CORE HOMOLOGATION: PASS` no mesmo critério final;
+11. qualquer stage ausente gera `BLOCKED`, nunca aprovação parcial.
 
 ## Bloqueios atuais encontrados pela auditoria
 
 - GitHub Actions não recebe runner (#159), impedindo executar o gate hospedado;
 - bootstrap GCP/WIF/service accounts ainda não foi homologado (#160);
-- `maritime_ui/package-lock.json` ainda não existe; enquanto isso o build frontend não é reprodutível e a versão final permanece bloqueada;
+- `maritime_ui/package-lock.json` ainda não existe (#161); enquanto isso o build frontend não é reprodutível e a versão final permanece bloqueada;
 - assinatura/provenance de imagem depende do Artifact Registry/WIF real.
 
 Esses bloqueios não autorizam reduzir o gate. Eles definem exatamente o que falta para a versão final.
