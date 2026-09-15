@@ -31,6 +31,7 @@ class AisQualityTests(unittest.TestCase):
         previous = {
             "mmsi": "710123456",
             "imo": "9074729",
+            "message_type": "PositionReport",
             "observed_at": "2026-09-14T12:00:00+00:00",
             "latitude": -24.0,
             "longitude": -46.3,
@@ -38,6 +39,7 @@ class AisQualityTests(unittest.TestCase):
         current = {
             "mmsi": "710123456",
             "imo": "9074729",
+            "message_type": "PositionReport",
             "observed_at": "2026-09-14T12:05:00+00:00",
             "latitude": -23.0,
             "longitude": -45.0,
