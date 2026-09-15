@@ -75,12 +75,15 @@ for name in "$DEPLOYER_SA_NAME" "$BUILD_SA_NAME" "$COLLECTOR_SA_NAME" "$GATEWAY_
   SA_EMAILS+=("$sa")
   if gcloud iam service-accounts describe "$sa" --project "$PROJECT_ID" >/dev/null 2>&1; then
     ok "service account existe: $sa"
-    user_keys="$(gcloud iam service-accounts keys list \
-      --iam-account="$sa" --managed-by=user --project "$PROJECT_ID" --format='value(name)' 2>/dev/null || true)"
-    if [[ -n "$user_keys" ]]; then
-      fail "service account possui chave gerenciada por usuário (proibida): $sa"
+    if user_keys="$(gcloud iam service-accounts keys list \
+      --iam-account="$sa" --managed-by=user --project "$PROJECT_ID" --format='value(name)' 2>/dev/null)"; then
+      if [[ -n "$user_keys" ]]; then
+        fail "service account possui chave gerenciada por usuário (proibida): $sa"
+      else
+        ok "sem chave de longa duração gerenciada por usuário: $sa"
+      fi
     else
-      ok "sem chave de longa duração gerenciada por usuário: $sa"
+      fail "não foi possível inspecionar chaves da service account: $sa"
     fi
   else
     fail "service account obrigatória ausente: $sa"
@@ -168,15 +171,15 @@ if gcloud run services describe "$GATEWAY_SERVICE_NAME" --region "$REGION" --pro
   else
     fail "Gateway usa service account inesperada: ${gateway_sa:-<vazia>}"
   fi
-  public_binding="$(gcloud run services get-iam-policy "$GATEWAY_SERVICE_NAME" \
+  broad_binding="$(gcloud run services get-iam-policy "$GATEWAY_SERVICE_NAME" \
     --region "$REGION" --project "$PROJECT_ID" \
     --flatten='bindings[].members' \
-    --filter='bindings.role=roles/run.invoker AND bindings.members=allUsers' \
+    --filter='bindings.role=roles/run.invoker AND (bindings.members=allUsers OR bindings.members=allAuthenticatedUsers)' \
     --format='value(bindings.members)' | head -n1)"
-  if [[ "$public_binding" == "allUsers" ]]; then
-    fail "Gateway está público via allUsers/roles.run.invoker"
+  if [[ "$broad_binding" == "allUsers" || "$broad_binding" == "allAuthenticatedUsers" ]]; then
+    fail "Gateway possui invocação ampla: ${broad_binding}/roles.run.invoker"
   else
-    ok "Gateway sem allUsers/roles.run.invoker"
+    ok "Gateway sem allUsers/allAuthenticatedUsers em roles.run.invoker"
   fi
 else
   warn 'AgroLog Gateway ainda não implantado'
