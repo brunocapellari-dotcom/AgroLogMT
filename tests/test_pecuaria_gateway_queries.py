@@ -75,6 +75,14 @@ class PecuariaGatewayQueryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_slaughter_quarterly_sql("agrolog-prod", "bad.dataset")
 
+    def test_livestock_routes_reuse_hardened_gateway_bigquery_runtime(self) -> None:
+        routes = Path("gateway/pecuaria_routes.py").read_text(encoding="utf-8")
+        gateway = Path("gateway/app.py").read_text(encoding="utf-8")
+        self.assertIn("_query as _gateway_query", routes)
+        self.assertNotIn("bigquery.Client(", routes)
+        self.assertIn("maximum_bytes_billed=BQ_MAX_BYTES_BILLED", gateway)
+        self.assertIn("result(timeout=BQ_QUERY_TIMEOUT_SECONDS)", gateway)
+
 
 if __name__ == "__main__":
     unittest.main()
