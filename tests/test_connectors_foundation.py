@@ -14,6 +14,8 @@ class ConnectorFoundationTests(unittest.TestCase):
     def test_ckan_portals_are_https_official_configs(self):
         self.assertIn("antt", KNOWN_PORTALS)
         self.assertIn("aneel", KNOWN_PORTALS)
+        self.assertIn("mapa", KNOWN_PORTALS)
+        self.assertEqual(KNOWN_PORTALS["mapa"].base_url, "https://dados.agricultura.gov.br")
         for portal in KNOWN_PORTALS.values():
             self.assertTrue(portal.base_url.startswith("https://"))
 
