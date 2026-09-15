@@ -41,12 +41,11 @@ gcloud secrets add-iam-policy-binding "$SECRET_NAME" \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="roles/secretmanager.secretAccessor" >/dev/null
 
+# Limpeza best-effort de cópia legada. A credencial operacional tem uma única
+# origem: Secret Manager. GitHub Actions apenas dispara o Cloud Run Job.
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-  printf '%s' "$AIS_KEY" | gh secret set AISSTREAM_API_KEY --repo "$REPO"
-  echo "OK: AISSTREAM_API_KEY também gravada nos GitHub Actions secrets."
-else
-  echo "INFO: gh não autenticado; segredo foi gravado no Google Secret Manager, mas não no GitHub Actions."
+  gh secret delete AISSTREAM_API_KEY --repo "$REPO" >/dev/null 2>&1 || true
 fi
 unset AIS_KEY
 
-echo "OK: segredo ${SECRET_NAME} configurado para ${SA_EMAIL}."
+echo "OK: segredo ${SECRET_NAME} configurado somente no Google Secret Manager para ${SA_EMAIL}."
