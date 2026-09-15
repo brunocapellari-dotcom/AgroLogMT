@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import py_compile
 import shutil
 import subprocess
@@ -34,10 +33,6 @@ class CheckResult:
     status: str
     command: list[str] | None = None
     detail: str | None = None
-
-
-class AcceptanceFailure(RuntimeError):
-    pass
 
 
 def _run(name: str, command: Sequence[str], *, cwd: Path = ROOT) -> CheckResult:
@@ -86,7 +81,7 @@ def _validate_json() -> CheckResult:
             count += 1
             try:
                 json.loads(path.read_text(encoding="utf-8"))
-            except Exception as exc:  # syntax/encoding contract gate
+            except Exception as exc:
                 failures.append(f"{path.relative_to(ROOT)}: {type(exc).__name__}: {exc}")
     return CheckResult(
         name="json_contracts_all",
@@ -130,6 +125,12 @@ def _shell_syntax() -> CheckResult:
     )
 
 
+def _required_file(name: str, path: Path, *, reason: str) -> CheckResult:
+    if not path.is_file() or path.stat().st_size == 0:
+        return CheckResult(name=name, status="FAIL", detail=reason)
+    return CheckResult(name=name, status="PASS", detail=str(path.relative_to(ROOT)))
+
+
 def _load_evidence(path: Path) -> list[GateEvidence]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     rows = payload.get("gates") if isinstance(payload, dict) else payload
@@ -154,18 +155,27 @@ def run(*, static_only: bool, evidence_path: Path | None) -> dict[str, object]:
     results.append(_run("pip_audit_collector", ["pip-audit", "-r", "requirements-collector.txt"]))
 
     ui_dir = ROOT / "maritime_ui"
-    results.append(_run(
-        "ui_dependency_resolution",
-        ["npm", "install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"],
-        cwd=ui_dir,
-    ))
-    results.append(_run("ui_production_audit", ["npm", "audit", "--omit=dev", "--audit-level=high"], cwd=ui_dir))
-    results.append(_run(
-        "ui_install_no_lifecycle",
-        ["npm", "install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false"],
-        cwd=ui_dir,
-    ))
-    results.append(_run("ui_build", ["npm", "run", "build"], cwd=ui_dir))
+    lockfile = ui_dir / "package-lock.json"
+    lock_check = _required_file(
+        "ui_reproducible_lockfile",
+        lockfile,
+        reason="maritime_ui/package-lock.json must be committed; dynamic dependency resolution is not a final-release gate",
+    )
+    results.append(lock_check)
+    if lock_check.status == "PASS":
+        results.append(_run(
+            "ui_clean_install_no_lifecycle",
+            ["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"],
+            cwd=ui_dir,
+        ))
+        results.append(_run("ui_production_audit", ["npm", "audit", "--omit=dev", "--audit-level=high"], cwd=ui_dir))
+        results.append(_run("ui_build", ["npm", "run", "build"], cwd=ui_dir))
+    else:
+        results.extend([
+            CheckResult("ui_clean_install_no_lifecycle", "FAIL", detail="blocked_by_missing_reproducible_lockfile"),
+            CheckResult("ui_production_audit", "FAIL", detail="blocked_by_missing_reproducible_lockfile"),
+            CheckResult("ui_build", "FAIL", detail="blocked_by_missing_reproducible_lockfile"),
+        ])
 
     # Container build is part of final acceptance because Docker/runtime drift is a
     # production failure even when unit tests pass.
@@ -175,6 +185,7 @@ def run(*, static_only: bool, evidence_path: Path | None) -> dict[str, object]:
     static_failed = [r.name for r in results if r.status != "PASS"]
     output: dict[str, object] = {
         "acceptance": "AGROLOG_MARITIME_FULL_PROJECT",
+        "release_policy": "ALL_OR_NOTHING",
         "static_status": "PASS" if not static_failed else "FAIL",
         "checks": [asdict(r) for r in results],
         "failed_checks": static_failed,
