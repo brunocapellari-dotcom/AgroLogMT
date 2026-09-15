@@ -59,6 +59,7 @@ jobs:
           gateway/maritime_queries.py
           collector/source_registry.py
           collector/registry_scheduler.py
+          collector/source_promotion.py
           collector/input_security.py
           collector/cloud_runner.py
           collector/orchestrator.py
@@ -102,6 +103,7 @@ jobs:
               'contracts/shipping_reconciliation.v1.json',
               'contracts/maritime_geofences.v1.json',
               'contracts/data_source_registry.v1.schema.json',
+              'contracts/source_promotion_gate.v1.schema.json',
               'contracts/ai_roles.v1.json',
               'contracts/global_supply_demand.v1.schema.json',
               'contracts/forecast_vintage.v1.schema.json',
