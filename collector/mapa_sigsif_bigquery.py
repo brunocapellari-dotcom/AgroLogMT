@@ -7,9 +7,9 @@ from typing import Any
 
 from .mapa_sigsif import FEMALE_METRIC, MALE_METRIC, SOURCE_ID
 from .snapshot_bigquery import (
-    ensure_dataset,
     ensure_domain_audit_table,
     merge_snapshot_rows,
+    require_dataset,
     safe_identifier,
     write_domain_audit,
 )
@@ -91,7 +91,7 @@ class MapaSigsifBigQueryLoader:
         ]
 
     def ensure_objects(self) -> None:
-        ensure_dataset(
+        require_dataset(
             self.client,
             project_id=self.project_id,
             dataset_id=self.dataset_id,
