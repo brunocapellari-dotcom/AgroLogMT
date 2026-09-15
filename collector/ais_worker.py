@@ -51,6 +51,11 @@ def _observation_id(row: dict[str, Any]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _message_family(row: dict[str, Any]) -> str:
+    message_type = str(row.get("message_type") or "").strip().upper().replace("_", "")
+    return "POSITION" if message_type.endswith("POSITIONREPORT") or message_type == "POSITIONREPORT" else "STATIC"
+
+
 class AisBatchSink:
     def __init__(
         self,
@@ -68,8 +73,8 @@ class AisBatchSink:
         self.dedup_window_size = max(1_000, int(dedup_window_size))
         self.buffer: list[dict[str, Any]] = []
         self._seen_ids: OrderedDict[str, None] = OrderedDict()
-        self._last_by_mmsi: dict[str, dict[str, Any]] = {}
-        self._message_count_by_mmsi: dict[str, int] = {}
+        self._last_by_sequence: dict[str, dict[str, Any]] = {}
+        self._valid_sequence_count: dict[str, int] = {}
         self.records_received = 0
         self.records_persisted = 0
         self.duplicates_suppressed = 0
@@ -95,23 +100,26 @@ class AisBatchSink:
             return None
 
         mmsi = str(row.get("mmsi") or "")
-        previous = self._last_by_mmsi.get(mmsi)
-        message_count = self._message_count_by_mmsi.get(mmsi, 0) + 1
+        family = _message_family(row)
+        sequence_key = f"{mmsi}|{family}"
+        previous = self._last_by_sequence.get(sequence_key)
+        candidate_sequence_count = self._valid_sequence_count.get(sequence_key, 0) + 1
         quality = assess_ais_record(
             row,
             previous=previous,
-            same_identity_message_count=message_count,
+            same_identity_message_count=candidate_sequence_count,
         )
-        self._message_count_by_mmsi[mmsi] = message_count
         if quality.quality_status == "QUARANTINE":
             self.quarantined += 1
         else:
-            self._last_by_mmsi[mmsi] = {
+            self._valid_sequence_count[sequence_key] = candidate_sequence_count
+            self._last_by_sequence[sequence_key] = {
                 "mmsi": row.get("mmsi"),
                 "imo": row.get("imo"),
                 "observed_at": row.get("observed_at"),
                 "latitude": row.get("latitude"),
                 "longitude": row.get("longitude"),
+                "message_type": row.get("message_type"),
             }
 
         lat, lon = row.get("latitude"), row.get("longitude")
@@ -119,10 +127,11 @@ class AisBatchSink:
             "zone": "SEA", "port_id": None, "terminal_id": None,
             "zone_id": None, "geofence_version": None, "source_id": None,
         }
-        # Operational geofence classification is only applied to quality-valid,
-        # corroborated position sequences. A single AIS message never confirms state.
+        # A physical location needs a corroborated sequence of position messages.
+        # Static AIS messages never count toward geofence confirmation.
         if (
-            quality.corroborated
+            family == "POSITION"
+            and quality.corroborated
             and quality.quality_status != "QUARANTINE"
             and lat is not None and lon is not None and self.zones
         ):
@@ -134,7 +143,10 @@ class AisBatchSink:
             "mmsi": row.get("mmsi"),
             "imo": row.get("imo"),
             "vessel_name": row.get("vessel_name"),
-            "observed_at": row["observed_at"],
+            "observed_at": row.get("observed_at"),
+            "source_timestamp_raw": row.get("source_timestamp_raw"),
+            "received_at": row.get("received_at"),
+            "timestamp_basis": row.get("timestamp_basis"),
             "latitude": lat,
             "longitude": lon,
             "sog_kn": row.get("sog_kn"),
