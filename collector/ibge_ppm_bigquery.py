@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .snapshot_bigquery import (
-    ensure_dataset,
     ensure_domain_audit_table,
     merge_snapshot_rows,
+    require_dataset,
     safe_identifier,
     snapshot_count,
     write_domain_audit,
@@ -96,7 +96,7 @@ class IbgePpmBigQueryLoader:
         ]
 
     def ensure_objects(self) -> None:
-        ensure_dataset(
+        require_dataset(
             self.client,
             project_id=self.project_id,
             dataset_id=self.dataset_id,
