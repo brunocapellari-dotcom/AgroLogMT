@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "domain": "AGROLOG_MARITIME_INTELLIGENCE",
   "purpose": "canonical_registry_for_maritime_collection_and_evidence_governance",
   "rules": {
@@ -10,7 +10,9 @@
     "licensed_or_authorized_hydrography_only": true,
     "secrets_must_not_be_stored_in_git": true,
     "runtime_source_must_declare_freshness_and_health": true,
-    "source_failure_must_not_be_hidden_by_synthetic_substitution": true
+    "source_failure_must_not_be_hidden_by_synthetic_substitution": true,
+    "weather_does_not_imply_port_restriction_without_authorized_rule": true,
+    "aggregate_trade_data_never_implies_vessel_level_cargo": true
   },
   "sources": [
     {
@@ -38,15 +40,18 @@
       "runtime_status": "REFERENCE_CORE"
     },
     {
-      "source_id": "antaq_port_statistics",
+      "source_id": "antaq_estatistico_aquaviario",
       "kind": "official_dataset_family",
       "provider": "ANTAQ",
+      "url": "https://www.gov.br/antaq/pt-br/central-de-conteudos/paineis/documentos_paineis/estatistico_aquaviario",
       "role": ["PORT_MOVEMENT", "CARGO_FLOW", "TERMINAL_STATISTICS"],
-      "collection_mode": "API_OR_OFFICIAL_DOWNLOAD",
+      "collection_mode": "OFFICIAL_DOWNLOAD",
+      "expected_frequency": "MONTHLY",
       "evidence_class": "OBSERVADO",
-      "credential_class": "NONE_OR_OFFICIAL_CREDENTIAL",
+      "credential_class": "NONE",
       "raw_required": true,
-      "runtime_status": "REGISTERED_PENDING_SPECIFIC_ADAPTERS"
+      "runtime_status": "REGISTERED_ADAPTER_PENDING",
+      "vessel_level_attribution_allowed": false
     },
     {
       "source_id": "official_lineups",
@@ -80,7 +85,49 @@
       "evidence_class": "OBSERVADO",
       "credential_class": "NONE_OR_OFFICIAL_CREDENTIAL",
       "raw_required": true,
-      "runtime_status": "SHARED_AGROLOG_SOURCE"
+      "runtime_status": "SHARED_AGROLOG_SOURCE",
+      "vessel_level_attribution_allowed": false
+    },
+    {
+      "source_id": "chm_pnboia",
+      "kind": "official_ocean_observation",
+      "provider": "MARINHA_DO_BRASIL_CHM_PNBOIA",
+      "url": "https://www.marinha.mil.br/chm/dados-do-goos-brasil/pnboia",
+      "role": ["WIND", "WAVES", "SEA_TEMPERATURE", "CURRENTS", "PRESSURE", "OCEAN_OBSERVATION"],
+      "collection_mode": "OFFICIAL_PUBLIC_DATA_SURFACE",
+      "evidence_class": "OBSERVADO",
+      "credential_class": "NONE_OR_REQUEST_DEPENDING_PRODUCT",
+      "raw_required": true,
+      "runtime_status": "SOURCE_CONTRACT_DISCOVERY",
+      "operational_restriction_claim_allowed": false
+    },
+    {
+      "source_id": "chm_meteocean_forecast",
+      "kind": "official_meteocean_forecast",
+      "provider": "MARINHA_DO_BRASIL_CHM_SMM",
+      "url": "https://www.marinha.mil.br/chm/dados-do-smm-previsao-oceanografica/previsao-meteoceanografica",
+      "role": ["WIND_FORECAST", "WAVE_FORECAST", "MARINE_WEATHER_WARNING"],
+      "collection_mode": "OFFICIAL_BULLETIN",
+      "expected_frequency": "DAILY",
+      "evidence_class": "PROJETADO_OR_INFORMADO",
+      "credential_class": "NONE",
+      "raw_required": true,
+      "runtime_status": "ADAPTER_PENDING",
+      "forecast_horizon_hours": 48,
+      "operational_restriction_claim_allowed": false
+    },
+    {
+      "source_id": "chm_bndo_authorized_data",
+      "kind": "authorized_hydrographic_oceanographic_family",
+      "provider": "MARINHA_DO_BRASIL_CHM_BNDO",
+      "url": "https://www.marinha.mil.br/chm/bndo/acesso",
+      "role": ["TIDE", "CURRENT", "METEOROLOGY", "BATHYMETRY_REFERENCE", "HYDROGRAPHIC_QA"],
+      "collection_mode": "PUBLIC_DOWNLOAD_OR_FORMAL_REQUEST",
+      "evidence_class": "OBSERVADO",
+      "credential_class": "LICENSE_OR_AUTHORIZATION_WHEN_REQUIRED",
+      "raw_required": true,
+      "runtime_status": "RIGHTS_GATED",
+      "commercial_use_requires_rights_review": true
     },
     {
       "source_id": "maritime_weather",
@@ -91,7 +138,8 @@
       "evidence_class": "OBSERVADO_OR_PROJETADO",
       "credential_class": "SOURCE_SPECIFIC",
       "raw_required": true,
-      "runtime_status": "DATA_GATED_UNTIL_SOURCE_CONTRACTS_ARE_DEFINED"
+      "runtime_status": "DATA_GATED_UNTIL_SOURCE_CONTRACTS_ARE_DEFINED",
+      "operational_restriction_claim_allowed": false
     },
     {
       "source_id": "authorized_hydrography",
@@ -109,7 +157,7 @@
       "source_id": "port_geofences",
       "kind": "governed_derived_geometry",
       "provider": "AGROLOG_FROM_AUTHORIZED_EVIDENCE",
-      "role": ["APPROACH", "PORT_AREA", "ANCHORAGE", "BERTH", "TERMINAL"],
+      "role": ["APPROACH", "PORT_AREA", "ANCHORAGE", "CHANNEL", "BERTH", "TERMINAL"],
       "collection_mode": "VALIDATED_DERIVATION",
       "evidence_class": "INFERIDO_WITH_PROVENANCE",
       "credential_class": "NONE",
