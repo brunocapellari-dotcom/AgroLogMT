@@ -1,13 +1,6 @@
-name: comex-export30-hurdle
+name: comex-export30-hurdle-diagnostic
 
 on:
-  pull_request:
-    paths:
-      - "collector/comexstat_api.py"
-      - "models/first_backtests.py"
-      - "scripts/build_comex_soy_export30_hurdle.py"
-      - "tests/test_comex_soy_export30_hurdle.py"
-      - ".github/workflows/comex-export30-hurdle.yml"
   workflow_dispatch:
 
 permissions:
