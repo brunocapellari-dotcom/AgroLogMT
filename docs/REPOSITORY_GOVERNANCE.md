@@ -118,6 +118,33 @@ O GitHub não deve virar depósito de bases históricas, planilhas de operação
 
 Se a integração automatizada não tiver permissão administrativa para configurar essas regras, o estado deve permanecer explicitamente `SECURITY_GATED`; não declarar proteção concluída por documentação apenas.
 
-## 11. Princípio final
+## 11. Melhoria contínua de ferramentas e fontes
+
+A evolução do AgroLog MT inclui revisão recorrente do ecossistema técnico e de dados. Em auditorias arquiteturais, revisões de release ou quando surgir uma lacuna material, os agentes devem pesquisar projetos GitHub, bibliotecas, padrões, APIs, datasets e fontes primárias que possam elevar qualidade, cobertura, segurança, custo, desempenho ou capacidade analítica.
+
+A pesquisa não autoriza `tool-sprawl`. Antes de incorporar ou substituir uma ferramenta:
+
+1. definir a responsabilidade exata que precisa ser resolvida;
+2. identificar o componente atual que já cobre total ou parcialmente essa responsabilidade;
+3. comparar maturidade, manutenção, licença, segurança, integração, custo operacional, performance, auditabilidade e risco de lock-in;
+4. preferir substituição a coexistência quando a nova ferramenta cobre melhor a mesma função;
+5. manter duas ferramentas equivalentes somente quando houver ganho independente demonstrável, como defesa em profundidade ou validação cruzada material;
+6. evitar frameworks completos quando uma biblioteca pequena e madura resolve a necessidade;
+7. registrar a decisão como `APLICAR`, `POC`, `DEFERIR` ou `REJEITAR`, com motivo;
+8. remover dependência, código, workflow ou documento tornado obsoleto depois da migração e da validação;
+9. executar o `Full Project Final Gate` sobre 100% do repositório após qualquer substituição material.
+
+Para novas fontes de dados, a mesma regra vale com controles adicionais:
+
+- priorizar fonte primária/oficial, granular e tecnicamente acessível;
+- registrar licença/termos, cobertura, granularidade, frequência, freshness, histórico, autenticação e provenance;
+- distinguir fonte de dados estruturada de Radar Informativo/Analítico e Biblioteca/Segundo Cérebro;
+- incorporar ao `Data Source Registry` antes de ativação operacional;
+- preservar `data_referencia`, `data_publicacao`, `data_coleta`, `competencia` e vintage/cutoff quando aplicável;
+- nunca ativar uma fonte nova apenas porque possui API ou código disponível; ela deve passar segurança, qualidade, deduplicação, idempotência, PIT/look-ahead e teste ponta a ponta.
+
+Ferramentas de pesquisa e avaliação não se tornam dependências de produção automaticamente. Dependência só é promovida quando existe consumidor real, responsabilidade não redundante e critério de remoção/substituição claro.
+
+## 12. Princípio final
 
 Uma função, um contrato, um schema ou uma regra deve possuir uma única fonte canônica no repositório. Todo novo conteúdo deve melhorar, complementar ou referenciar o que já existe — nunca criar uma segunda verdade concorrente. Segurança não é exceção a essa regra: controles devem ser executáveis/testáveis quando possível e documentação nunca substitui o gate real.
