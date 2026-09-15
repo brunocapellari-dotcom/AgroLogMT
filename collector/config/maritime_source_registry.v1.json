@@ -1,0 +1,121 @@
+{
+  "version": "1.0",
+  "domain": "AGROLOG_MARITIME_INTELLIGENCE",
+  "purpose": "canonical_registry_for_maritime_collection_and_evidence_governance",
+  "rules": {
+    "preserve_current_collectors": true,
+    "raw_before_normalization": true,
+    "single_ais_message_never_confirms_physical_state": true,
+    "programming_is_not_realized": true,
+    "licensed_or_authorized_hydrography_only": true,
+    "secrets_must_not_be_stored_in_git": true,
+    "runtime_source_must_declare_freshness_and_health": true,
+    "source_failure_must_not_be_hidden_by_synthetic_substitution": true
+  },
+  "sources": [
+    {
+      "source_id": "aisstream_live",
+      "kind": "live_stream",
+      "provider": "AISStream",
+      "role": ["AIS_POSITION", "AIS_STATIC_IDENTITY"],
+      "collection_mode": "WEBSOCKET",
+      "evidence_class": "OBSERVADO",
+      "credential_class": "SECRET_MANAGER_ONLY",
+      "raw_required": true,
+      "checkpoint_semantics": "LOGICAL_CHECKPOINT_ONLY_NO_UPSTREAM_REPLAY",
+      "health_required": ["heartbeat", "retry", "reconnect", "checkpoint", "deduplication"],
+      "runtime_status": "CREDENTIAL_GATED"
+    },
+    {
+      "source_id": "pyais_decoder",
+      "kind": "decoder_library",
+      "provider": "pyais",
+      "role": ["AIS_DECODING", "AIS_VALIDATION_SUPPORT"],
+      "collection_mode": "LIBRARY",
+      "evidence_class": "DERIVED_FROM_SOURCE",
+      "credential_class": "NONE",
+      "raw_required": false,
+      "runtime_status": "REFERENCE_CORE"
+    },
+    {
+      "source_id": "antaq_port_statistics",
+      "kind": "official_dataset_family",
+      "provider": "ANTAQ",
+      "role": ["PORT_MOVEMENT", "CARGO_FLOW", "TERMINAL_STATISTICS"],
+      "collection_mode": "API_OR_OFFICIAL_DOWNLOAD",
+      "evidence_class": "OBSERVADO",
+      "credential_class": "NONE_OR_OFFICIAL_CREDENTIAL",
+      "raw_required": true,
+      "runtime_status": "REGISTERED_PENDING_SPECIFIC_ADAPTERS"
+    },
+    {
+      "source_id": "official_lineups",
+      "kind": "official_operational_sources",
+      "provider": "PORT_AUTHORITIES",
+      "role": ["LINEUP", "ETA_INFORMED", "BERTH_PROGRAMMING", "PORT_CALL_EVIDENCE"],
+      "collection_mode": "HTML_PDF_API_PER_PORT",
+      "evidence_class": "INFORMADO",
+      "credential_class": "NONE_UNLESS_SOURCE_REQUIRES",
+      "raw_required": true,
+      "runtime_status": "PARTIAL_FIVE_PORT_PILOT",
+      "registry_ref": "collector/config/maritime_lineup_sources.v1.json"
+    },
+    {
+      "source_id": "official_port_terminals",
+      "kind": "official_reference_family",
+      "provider": "PORT_AUTHORITIES_AND_TERMINALS",
+      "role": ["PORT_REFERENCE", "TERMINAL_REFERENCE", "BERTH_REFERENCE", "OPERATIONAL_EVENTS"],
+      "collection_mode": "OFFICIAL_PAGES_DATASETS_AND_AUTHORIZED_FEEDS",
+      "evidence_class": "OBSERVADO_OR_INFORMADO",
+      "credential_class": "SOURCE_SPECIFIC",
+      "raw_required": true,
+      "runtime_status": "INCREMENTAL"
+    },
+    {
+      "source_id": "comexstat_trade",
+      "kind": "official_trade_dataset",
+      "provider": "MDIC_COMEX_STAT",
+      "role": ["FOREIGN_TRADE_FLOW", "PRODUCT", "VALUE", "MASS", "FISCAL_GEOGRAPHY"],
+      "collection_mode": "OFFICIAL_API_AND_FILES",
+      "evidence_class": "OBSERVADO",
+      "credential_class": "NONE_OR_OFFICIAL_CREDENTIAL",
+      "raw_required": true,
+      "runtime_status": "SHARED_AGROLOG_SOURCE"
+    },
+    {
+      "source_id": "maritime_weather",
+      "kind": "weather_source_family",
+      "provider": "OFFICIAL_AND_SPECIALIZED_WEATHER_SOURCES",
+      "role": ["WIND", "WAVES", "VISIBILITY", "PRECIPITATION", "STORM_RISK", "PORT_OPERATION_IMPACT"],
+      "collection_mode": "API_OR_OFFICIAL_DOWNLOAD",
+      "evidence_class": "OBSERVADO_OR_PROJETADO",
+      "credential_class": "SOURCE_SPECIFIC",
+      "raw_required": true,
+      "runtime_status": "DATA_GATED_UNTIL_SOURCE_CONTRACTS_ARE_DEFINED"
+    },
+    {
+      "source_id": "authorized_hydrography",
+      "kind": "hydrographic_source_family",
+      "provider": "AUTHORIZED_HYDROGRAPHIC_AUTHORITIES",
+      "role": ["CHANNEL", "BATHYMETRY_REFERENCE", "NAVIGATION_CONTEXT", "GEOSPATIAL_QA"],
+      "collection_mode": "AUTHORIZED_DOWNLOAD_OR_LICENSED_FEED",
+      "evidence_class": "OBSERVADO",
+      "credential_class": "LICENSE_OR_AUTHORIZATION_WHEN_REQUIRED",
+      "raw_required": true,
+      "runtime_status": "RIGHTS_GATED",
+      "commercial_use_requires_rights_review": true
+    },
+    {
+      "source_id": "port_geofences",
+      "kind": "governed_derived_geometry",
+      "provider": "AGROLOG_FROM_AUTHORIZED_EVIDENCE",
+      "role": ["APPROACH", "PORT_AREA", "ANCHORAGE", "BERTH", "TERMINAL"],
+      "collection_mode": "VALIDATED_DERIVATION",
+      "evidence_class": "INFERIDO_WITH_PROVENANCE",
+      "credential_class": "NONE",
+      "raw_required": true,
+      "runtime_status": "GEOFENCE_VALIDATED_GATE",
+      "registry_ref": "contracts/maritime_geofences.v1.json"
+    }
+  ]
+}
