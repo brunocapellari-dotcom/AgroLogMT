@@ -3,6 +3,8 @@ set -euo pipefail
 
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
 REGION="${REGION:-southamerica-east1}"
+BQ_LOCATION="${BQ_LOCATION:-southamerica-east1}"
+TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
 EVIDENCE_DIR="${EVIDENCE_DIR:-outputs/n6-core}"
 CONAB_SOURCE_ID="conab_armazens_cadastrados"
 COMEX_SOURCE_ID="mdic_comexstat_soja_mt_export_api"
@@ -51,20 +53,43 @@ python scripts/validate_conab_n6.py \
   --out "${RUN_DIR}/06-conab-final-validation.json" \
   2>&1 | tee "${RUN_DIR}/06-conab-final-validation.log"
 
-log_step "7. Gate ComexStat API -> Drive/BigQuery + idempotência"
+log_step "7. Gate ComexStat soja API -> Drive/BigQuery + idempotência"
 PROJECT_ID="${PROJECT_ID}" REGION="${REGION}" \
   bash scripts/homologate_comex_gcp.sh \
   2>&1 | tee "${RUN_DIR}/07-comex-homologation.log"
 grep -Fq 'COMEXSTAT_HOMOLOGATION_PASS' "${RUN_DIR}/07-comex-homologation.log"
 
-log_step "8. Deploy Gateway"
-bash scripts/deploy_gateway_gcloud.sh 2>&1 | tee "${RUN_DIR}/08-deploy-gateway.log"
+log_step "8. Gate Pecuária: quatro feeds gated + BigQuery + idempotência"
+PROJECT_ID="${PROJECT_ID}" REGION="${REGION}" BQ_LOCATION="${BQ_LOCATION}" \
+  bash scripts/homologate_pecuaria_gcp.sh \
+  2>&1 | tee "${RUN_DIR}/08-pecuaria-homologation.log"
+grep -Fq 'PECUARIA_HOMOLOGATION_PASS' "${RUN_DIR}/08-pecuaria-homologation.log"
 
-log_step "9. Validação Gateway x BigQuery"
+log_step "9. View histórica de exportação bovina + validação temporal"
+python scripts/deploy_pecuaria_views.py \
+  --project "${PROJECT_ID}" \
+  --trade-dataset "${TRADE_DATASET}" \
+  --location "${BQ_LOCATION}" \
+  2>&1 | tee "${RUN_DIR}/09-pecuaria-trade-view.log"
+python scripts/validate_pecuaria_trade_history.py \
+  --project "${PROJECT_ID}" \
+  --dataset "${TRADE_DATASET}" \
+  --location "${BQ_LOCATION}" \
+  2>&1 | tee "${RUN_DIR}/09-pecuaria-trade-validation.log"
+
+log_step "10. Deploy único do Gateway endurecido"
+bash scripts/deploy_gateway_gcloud.sh 2>&1 | tee "${RUN_DIR}/10-deploy-gateway.log"
+
+log_step "11. Validação Gateway core x BigQuery"
 python scripts/validate_gateway_n6.py \
   --project "${PROJECT_ID}" --region "${REGION}" \
-  --out "${RUN_DIR}/09-gateway-validation.json" \
-  2>&1 | tee "${RUN_DIR}/09-gateway-validation.log"
+  --out "${RUN_DIR}/11-gateway-validation.json" \
+  2>&1 | tee "${RUN_DIR}/11-gateway-validation.log"
+
+log_step "12. Validação Gateway Pecuária end-to-end"
+python scripts/validate_pecuaria_gateway.py \
+  --project "${PROJECT_ID}" --region "${REGION}" \
+  2>&1 | tee "${RUN_DIR}/12-pecuaria-gateway-validation.log"
 
 cat > "${RUN_DIR}/RESULT.txt" <<EOF
 N6 CORE HOMOLOGATION: PASS
@@ -73,6 +98,10 @@ region=${REGION}
 conab_source=${CONAB_SOURCE_ID}
 comex_source=${COMEX_SOURCE_ID}
 comex_gate=PASS
+pecuaria_feeds_gate=PASS
+pecuaria_trade_history_gate=PASS
+pecuaria_gateway_gate=PASS
+pecuaria_registry_promotion=NOT_AUTOMATIC
 generated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 evidence_dir=${RUN_DIR}
 EOF
