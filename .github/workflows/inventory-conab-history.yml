@@ -1,15 +1,7 @@
-name: inventory-conab-history
+name: inventory-conab-history-diagnostic
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "collector/conab_safra_history.py"
-      - "scripts/backfill_conab_safra.py"
-      - "scripts/inventory_conab_history.py"
-      - "tests/test_conab_history_inventory.py"
-      - "tests/test_conab_safra_history.py"
-      - ".github/workflows/inventory-conab-history.yml"
 
 permissions:
   contents: read
