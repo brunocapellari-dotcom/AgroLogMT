@@ -1,13 +1,7 @@
-name: inventory-conab-history-deep
+name: inventory-conab-history-deep-diagnostic
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "collector/conab_safra_history.py"
-      - "scripts/inventory_conab_history.py"
-      - "scripts/merge_conab_inventories.py"
-      - ".github/workflows/inventory-conab-history-deep.yml"
 
 permissions:
   contents: read
