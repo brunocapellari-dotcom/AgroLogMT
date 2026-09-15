@@ -8,7 +8,10 @@ from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from .transport_security import validate_https_url
+
 BASE_URL = "https://www.ana.gov.br/hidrowebservice"
+ANA_ALLOWED_HOSTS = {"www.ana.gov.br"}
 AUTH_PATH = "/EstacoesTelemetricas/OAuth/v1"
 INVENTORY_PATH = "/EstacoesTelemetricas/HidroInventarioEstacoes/v1"
 TELEMETRY_PATH = "/EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v1"
@@ -151,21 +154,25 @@ class AnaHidroWebServiceClient:
         self.password = password or os.environ.get("ANA_HIDRO_SENHA")
         if not self.identifier or not self.password:
             raise RuntimeError("ANA HidroWebService requer ANA_HIDRO_IDENTIFICADOR e ANA_HIDRO_SENHA")
-        self.base_url = base_url.rstrip("/")
+        self.base_url = validate_https_url(base_url.rstrip("/"), allowed_hosts=ANA_ALLOWED_HOSTS)
         self.timeout = timeout
         self._token: str | None = None
         self._token_at: datetime | None = None
 
     def _json(self, path: str, *, headers: dict[str, str] | None = None, params: dict[str, Any] | None = None) -> Any:
+        if not path.startswith("/") or path.startswith("//"):
+            raise ValueError("path ANA inválido")
         url = self.base_url + path
         if params:
             clean = {key: value for key, value in params.items() if value not in (None, "")}
             if clean:
                 url += "?" + urlencode(clean)
+        validate_https_url(url, allowed_hosts=ANA_ALLOWED_HOSTS)
         request_headers = {"Accept": "application/json", "User-Agent": "AgroLogMT/0.1 (+ANA HidroWebService)"}
         request_headers.update(headers or {})
         req = Request(url, headers=request_headers, method="GET")
-        with urlopen(req, timeout=self.timeout) as response:
+        with urlopen(req, timeout=self.timeout) as response:  # nosec B310 - HTTPS and ANA host validated above.
+            validate_https_url(response.geturl(), allowed_hosts=ANA_ALLOWED_HOSTS)
             return json.loads(response.read().decode("utf-8"))
 
     @staticmethod
