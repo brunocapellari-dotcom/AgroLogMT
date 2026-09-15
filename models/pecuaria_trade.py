@@ -22,6 +22,7 @@ def load_beef_scope(contract_path: str | Path = DEFAULT_CONTRACT_PATH) -> dict[s
         raise ValueError("contrato sem carne_bovina_in_natura")
     codes = product.get("ncm8")
     segments = product.get("segments")
+    historical = product.get("historical_aggregate")
     if not isinstance(codes, list) or not codes or not all(isinstance(code, str) and len(code) == 8 for code in codes):
         raise ValueError("contrato bovino com ncm8 invalido")
     if not isinstance(segments, dict) or not segments:
@@ -31,6 +32,14 @@ def load_beef_scope(contract_path: str | Path = DEFAULT_CONTRACT_PATH) -> dict[s
         raise ValueError("segmentos bovinos devem particionar exatamente ncm8")
     if not product.get("offal_excluded"):
         raise ValueError("contrato bovino deve excluir miudezas explicitamente")
+    if not isinstance(historical, dict) or historical.get("basis") != "hs4_heading":
+        raise ValueError("contrato bovino sem escopo historico HS4")
+    headings = historical.get("headings")
+    segment_by_heading = historical.get("segment_by_heading")
+    if set(headings or {}) != {"0201", "0202"} or set(segment_by_heading or {}) != {"0201", "0202"}:
+        raise ValueError("escopo historico bovino deve usar exatamente HS4 0201/0202")
+    if historical.get("ncm8_temporal_mapping_required") is not True:
+        raise ValueError("detalhe NCM8 historico deve exigir mapping temporal")
     return product
 
 
@@ -44,18 +53,21 @@ def build_mt_beef_export_query(
 ) -> str:
     project = _safe_identifier(project_id, "project_id")
     dataset = _safe_identifier(dataset_id, "dataset_id")
-    if start_year < 1997:
-        raise ValueError("Comex Stat detalhado moderno comeca em 1997")
+    scope = load_beef_scope(contract_path)
+    historical = scope["historical_aggregate"]
+    valid_from = int(historical["valid_from"])
+    if start_year < valid_from:
+        raise ValueError(f"Comex Stat histórico bovino começa em {valid_from}")
     if end_year is not None and end_year < start_year:
         raise ValueError("end_year anterior a start_year")
 
-    scope = load_beef_scope(contract_path)
-    codes = list(scope["ncm8"])
-    segments = scope["segments"]
-    code_sql = ", ".join(f"'{code}'" for code in codes)
+    segment_by_heading = historical["segment_by_heading"]
     when_sql = "\n".join(
-        f"    WHEN co_ncm IN ({', '.join(repr(code) for code in segment_codes)}) THEN '{segment}'"
-        for segment, segment_codes in segments.items()
+        f"    WHEN STARTS_WITH(co_ncm, '{heading}') THEN '{segment}'"
+        for heading, segment in sorted(segment_by_heading.items())
+    )
+    heading_predicate = " OR ".join(
+        f"STARTS_WITH(co_ncm, '{heading}')" for heading in sorted(historical["headings"])
     )
     end_filter = f"\n  AND co_ano <= {int(end_year)}" if end_year is not None else ""
 
@@ -81,7 +93,7 @@ def build_mt_beef_export_query(
 FROM `{project}.{dataset}.comexstat_ncm_export`
 WHERE sg_uf_ncm = 'MT'
   AND co_ano >= {int(start_year)}{end_filter}
-  AND co_ncm IN ({code_sql})
+  AND ({heading_predicate})
 GROUP BY competencia, co_ano, co_mes, co_ncm, segmento_carne, co_pais, co_via, co_urf, sg_uf_ncm
 ORDER BY competencia, co_ncm, co_pais
 """
