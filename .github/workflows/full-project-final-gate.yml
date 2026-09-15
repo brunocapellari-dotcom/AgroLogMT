@@ -26,6 +26,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 pinned
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0 pinned
         with:
@@ -60,6 +61,7 @@ jobs:
           print(f'combined_requirements={len(unique)}')
           PY
           python -m pip install --disable-pip-version-check -r /tmp/agrolog-requirements.txt 'PyYAML>=6,<7'
+          python -m pip check
 
       - name: Prepare evidence directory
         run: mkdir -p outputs/full-project-gate
@@ -69,6 +71,23 @@ jobs:
         run: |
           set -euo pipefail
           zizmor --offline --persona=auditor --min-severity=high . | tee outputs/full-project-gate/zizmor.txt
+
+      - name: Install verified actionlint
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz'
+          expected='8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
+          curl --proto '=https' --tlsv1.2 -fsSLo /tmp/actionlint.tar.gz "$url"
+          echo "${expected}  /tmp/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+          /tmp/actionlint -version
+
+      - name: Lint every GitHub Actions workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/actionlint -color never
 
       - name: Install verified Gitleaks CLI
         shell: bash
@@ -85,7 +104,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          /tmp/gitleaks dir --redact --no-banner --exit-code 1 .
+          set +e
+          /tmp/gitleaks dir --redact --no-banner --exit-code 1 \
+            --report-format json --report-path /tmp/gitleaks-report.json .
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          report = Path('/tmp/gitleaks-report.json')
+          rows = json.loads(report.read_text(encoding='utf-8')) if report.exists() else []
+          for item in rows:
+              print(
+                  'GITLEAKS_FINDING',
+                  f"file={item.get('File', 'unknown')}",
+                  f"line={item.get('StartLine', 'unknown')}",
+                  f"rule={item.get('RuleID', 'unknown')}",
+              )
+          PY
+            exit "$code"
+          fi
           printf 'GITLEAKS TREE PASS\nversion=8.30.1\n' > outputs/full-project-gate/gitleaks.txt
 
       - name: Run whole-project deterministic validator
@@ -100,7 +139,7 @@ jobs:
           {
             echo '## AgroLog MT — Whole Project CI'
             echo
-            echo 'Automatic PR gate: all deterministic tests, Python compile, contracts, workflows, registry, frontend npm ci/build, zizmor high severity and Gitleaks tree scan.'
+            echo 'Automatic PR gate: all deterministic tests, Python compile, dependency consistency, contracts, workflows, registry, frontend npm ci/build, Zizmor, actionlint and Gitleaks tree scan.'
             echo
             echo 'Docker, Trivy, SBOM, full Git-history scan, LIVE tests and GCP run once in the manual final release gate.'
           } >> "$GITHUB_STEP_SUMMARY"
@@ -129,6 +168,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 pinned
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0 pinned
         with:
@@ -163,6 +203,7 @@ jobs:
           print(f'combined_requirements={len(unique)}')
           PY
           python -m pip install --disable-pip-version-check -r /tmp/agrolog-requirements.txt 'PyYAML>=6,<7'
+          python -m pip check
           mkdir -p outputs/full-project-gate
 
       - name: Fail closed if GCP bootstrap values are missing
