@@ -14,6 +14,9 @@ class SecurityPolicyTests(unittest.TestCase):
     def read(self, path: str) -> str:
         return (ROOT / path).read_text(encoding="utf-8")
 
+    def workflows(self) -> list[Path]:
+        return sorted((ROOT / ".github" / "workflows").glob("*.y*ml"))
+
     def test_canonical_security_policy_defines_independent_confidentiality_classes(self) -> None:
         text = self.read("docs/SECURITY.md")
         for token in ("PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED"):
@@ -49,19 +52,22 @@ class SecurityPolicyTests(unittest.TestCase):
         self.assertIn("serviceAccountName", text)
         self.assertIn("GATEWAY_SERVICE_ACCOUNT", text)
 
-    def test_ci_never_receives_ana_production_credentials(self) -> None:
-        for path in (
-            ".github/workflows/p0-connectors-ci.yml",
-            ".github/workflows/operational-models-readiness.yml",
-        ):
-            text = self.read(path)
-            for forbidden in (
-                "secrets.ANA_IDENTIFICADOR", "secrets.ANA_SENHA",
-                "secrets.ANA_HIDRO_IDENTIFICADOR", "secrets.ANA_HIDRO_SENHA",
-                "ANA_IDENTIFICADOR:", "ANA_SENHA:",
-                "ANA_HIDRO_IDENTIFICADOR:", "ANA_HIDRO_SENHA:",
-            ):
-                self.assertNotIn(forbidden, text, f"credencial ANA de produção em {path}")
+    def test_no_github_workflow_receives_source_production_credentials(self) -> None:
+        forbidden = (
+            "secrets.ANA_IDENTIFICADOR", "secrets.ANA_SENHA",
+            "secrets.ANA_HIDRO_IDENTIFICADOR", "secrets.ANA_HIDRO_SENHA",
+            "secrets.AISSTREAM_API_KEY",
+        )
+        for path in self.workflows():
+            text = path.read_text(encoding="utf-8")
+            for token in forbidden:
+                self.assertNotIn(token, text, f"credencial de fonte de produção em {path.name}: {token}")
+
+    def test_ais_secret_setup_keeps_single_operational_origin(self) -> None:
+        text = self.read("scripts/setup_aisstream_secret.sh")
+        self.assertIn("Secret Manager", text)
+        self.assertNotIn("gh secret set AISSTREAM_API_KEY", text)
+        self.assertIn("gh secret delete AISSTREAM_API_KEY", text)
 
     def test_pr_validation_job_does_not_receive_oidc_permission(self) -> None:
         text = self.read(".github/workflows/operational-models-readiness.yml")
@@ -72,24 +78,22 @@ class SecurityPolicyTests(unittest.TestCase):
         cloud = text.split("cloud-readiness:", 1)[1]
         self.assertIn("id-token: write", cloud)
 
-    def test_privileged_and_core_workflows_pin_remote_actions_by_full_sha(self) -> None:
-        paths = (
-            ".github/workflows/gcp-core-homologation.yml",
-            ".github/workflows/maritime-ais-deploy.yml",
-            ".github/workflows/maritime-ais-hourly.yml",
-            ".github/workflows/operational-models-readiness.yml",
-            ".github/workflows/p0-connectors-ci.yml",
-            ".github/workflows/unit-tests.yml",
-        )
-        for path in paths:
-            text = self.read(path)
+    def test_all_remote_github_actions_are_pinned_by_full_sha(self) -> None:
+        workflows = self.workflows()
+        self.assertTrue(workflows)
+        for path in workflows:
+            text = path.read_text(encoding="utf-8")
             remote = list(ANY_REMOTE_ACTION.finditer(text))
             pinned = list(FULL_SHA_ACTION.finditer(text))
-            self.assertTrue(remote, f"workflow sem actions remotas esperado: {path}")
             self.assertEqual(
                 len(remote), len(pinned),
-                f"toda action remota deve usar SHA completo em {path}",
+                f"toda action remota deve usar SHA completo em {path.name}",
             )
+
+    def test_workflows_declare_explicit_permissions(self) -> None:
+        for path in self.workflows():
+            text = path.read_text(encoding="utf-8")
+            self.assertRegex(text, r"(?m)^permissions:\s*$", f"permissions explícitas ausentes em {path.name}")
 
     def test_gitignore_and_dockerignore_cover_high_risk_secret_material(self) -> None:
         gitignore = self.read(".gitignore")
