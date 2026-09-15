@@ -86,11 +86,10 @@ class SecurityPolicyTests(unittest.TestCase):
 
     def test_repository_does_not_contain_obvious_private_key_or_google_key_payload(self) -> None:
         ignored_dirs = {".git", ".venv", "venv", "node_modules", "dist", "outputs"}
-        signatures = (
-            "-----BEGIN PRIVATE KEY-----",
-            "-----BEGIN RSA PRIVATE KEY-----",
-            '"private_key": "-----BEGIN PRIVATE KEY-----',
-        )
+        private_key = "-----BEGIN " + "PRIVATE KEY-----"
+        rsa_private_key = "-----BEGIN RSA " + "PRIVATE KEY-----"
+        google_private_key = '"private_key": "' + private_key
+        signatures = (private_key, rsa_private_key, google_private_key)
         offenders: list[str] = []
         for path in ROOT.rglob("*"):
             if not path.is_file() or any(part in ignored_dirs for part in path.parts):
