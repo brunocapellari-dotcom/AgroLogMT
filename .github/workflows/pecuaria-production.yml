@@ -18,8 +18,10 @@ on:
       - "gateway/Dockerfile"
       - "scripts/deploy_collectors_gcloud.sh"
       - "scripts/deploy_gateway_gcloud.sh"
+      - "scripts/deploy_pecuaria_views.py"
       - "scripts/homologate_pecuaria_gcp.sh"
       - "scripts/validate_pecuaria_bigquery.py"
+      - "scripts/validate_pecuaria_trade_history.py"
       - "scripts/validate_pecuaria_gateway.py"
       - ".github/workflows/pecuaria-production.yml"
   schedule:
@@ -97,6 +99,20 @@ jobs:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: bash scripts/homologate_pecuaria_gcp.sh
 
+      - name: Deploy and validate historical beef view
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy_homologate')
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          python scripts/deploy_pecuaria_views.py \
+            --project "$PROJECT_ID" \
+            --trade-dataset "$TRADE_DATASET" \
+            --location "$BQ_LOCATION"
+          python scripts/validate_pecuaria_trade_history.py \
+            --project "$PROJECT_ID" \
+            --dataset "$TRADE_DATASET" \
+            --location "$BQ_LOCATION"
+
       - name: Deploy AgroLog Gateway with livestock routes
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy_homologate')
         env:
@@ -113,7 +129,7 @@ jobs:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: python scripts/validate_pecuaria_gateway.py --project "$PROJECT_ID" --region "$REGION"
 
-      - name: Run scheduled livestock collection
+      - name: Run scheduled livestock collection and regression checks
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'run')
         env:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -126,6 +142,10 @@ jobs:
             --project "$PROJECT_ID" \
             --dataset "$PECUARIA_DATASET" \
             --ops-dataset "$OPS_DATASET" \
+            --location "$BQ_LOCATION"
+          python scripts/validate_pecuaria_trade_history.py \
+            --project "$PROJECT_ID" \
+            --dataset "$TRADE_DATASET" \
             --location "$BQ_LOCATION"
           python scripts/validate_pecuaria_gateway.py \
             --project "$PROJECT_ID" \
