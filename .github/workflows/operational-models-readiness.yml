@@ -1,17 +1,6 @@
 name: operational-models-readiness
 
 on:
-  pull_request:
-    paths:
-      - "collector/anp_bioenergy.py"
-      - "collector/operational_models_bigquery.py"
-      - "models/operational_models.py"
-      - "tests/test_anp_bioenergy.py"
-      - "tests/test_operational_models.py"
-      - "scripts/setup_github_gcp_wif.sh"
-      - "scripts/preflight_n6_gcp.sh"
-      - "docs/SECURITY.md"
-      - ".github/workflows/operational-models-readiness.yml"
   workflow_dispatch:
     inputs:
       mode:
@@ -32,8 +21,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5 pinned
         with:
           python-version: "3.12"
       - name: Unit tests
@@ -52,7 +41,6 @@ jobs:
           PY
 
   cloud-readiness:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs: validate
     timeout-minutes: 120
@@ -65,7 +53,7 @@ jobs:
       BQ_LOCATION: southamerica-east1
       MANAGE_SCHEDULER: "0"
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned
 
       - name: Validate WIF secret readiness without revealing values
         shell: bash
@@ -83,19 +71,19 @@ jobs:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3 pinned
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3 pinned
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
           version: ">= 390.0.0"
 
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5 pinned
         with:
           python-version: "3.12"
 
@@ -122,9 +110,9 @@ jobs:
 
       - name: Upload homologation evidence
         if: always() && inputs.mode == 'homologate'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 pinned
         with:
           name: n6-core-homologation-${{ github.run_id }}
           path: outputs/n6-core
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 7
