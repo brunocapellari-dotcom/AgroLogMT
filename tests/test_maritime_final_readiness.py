@@ -1,4 +1,6 @@
+import json
 import unittest
+from pathlib import Path
 
 from models.maritime_final_readiness import (
     GateEvidence,
@@ -15,6 +17,14 @@ class MaritimeFinalReadinessTests(unittest.TestCase):
             evidence_ref=f"evidence://{gate}",
             measured_at="2026-09-15T12:00:00+00:00",
         )
+
+    def test_contract_and_runtime_gate_lists_are_identical(self):
+        contract = json.loads(
+            Path("contracts/maritime_final_acceptance.v1.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(tuple(contract["final_gates"]), REQUIRED_FINAL_GATES)
+        self.assertEqual(contract["release_policy"], "ALL_OR_NOTHING")
+        self.assertFalse(contract["partial_module_release_allowed"])
 
     def test_missing_single_gate_blocks_entire_product(self):
         rows = [self._evidence(g) for g in REQUIRED_FINAL_GATES[:-1]]
