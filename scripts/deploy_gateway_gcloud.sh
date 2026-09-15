@@ -13,6 +13,13 @@ IMAGE_TAG="${IMAGE_TAG:-$(date +%Y%m%d%H%M%S)}"
 GATEWAY_SA_NAME="${GATEWAY_SA_NAME:-agrolog-gateway}"
 BUILD_SA_NAME="${BUILD_SA_NAME:-agrolog-builder}"
 SERVICE_NAME="${SERVICE_NAME:-agrolog-gateway}"
+MAX_INSTANCES="${GATEWAY_MAX_INSTANCES:-3}"
+CONCURRENCY="${GATEWAY_CONCURRENCY:-20}"
+REQUEST_TIMEOUT="${GATEWAY_REQUEST_TIMEOUT:-60}"
+MEMORY="${GATEWAY_MEMORY:-512Mi}"
+CPU="${GATEWAY_CPU:-1}"
+BQ_MAX_BYTES_BILLED="${AGROLOG_BQ_MAX_BYTES_BILLED:-1000000000}"
+BQ_QUERY_TIMEOUT_SECONDS="${AGROLOG_BQ_QUERY_TIMEOUT_SECONDS:-30}"
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "ERRO: projeto GCP não configurado" >&2
@@ -21,6 +28,14 @@ fi
 for cmd in gcloud bq; do
   command -v "$cmd" >/dev/null || { echo "ERRO: $cmd ausente" >&2; exit 2; }
 done
+for value in "$MAX_INSTANCES" "$CONCURRENCY" "$REQUEST_TIMEOUT" "$BQ_MAX_BYTES_BILLED" "$BQ_QUERY_TIMEOUT_SECONDS"; do
+  [[ "$value" =~ ^[0-9]+$ ]] || { echo "ERRO: limite numérico inválido: $value" >&2; exit 2; }
+done
+[[ "$MAX_INSTANCES" -ge 1 && "$MAX_INSTANCES" -le 20 ]] || { echo "ERRO: GATEWAY_MAX_INSTANCES fora do limite 1..20" >&2; exit 2; }
+[[ "$CONCURRENCY" -ge 1 && "$CONCURRENCY" -le 100 ]] || { echo "ERRO: GATEWAY_CONCURRENCY fora do limite 1..100" >&2; exit 2; }
+[[ "$REQUEST_TIMEOUT" -ge 5 && "$REQUEST_TIMEOUT" -le 120 ]] || { echo "ERRO: GATEWAY_REQUEST_TIMEOUT fora do limite 5..120" >&2; exit 2; }
+[[ "$BQ_MAX_BYTES_BILLED" -ge 1000000 ]] || { echo "ERRO: AGROLOG_BQ_MAX_BYTES_BILLED baixo/inválido" >&2; exit 2; }
+[[ "$BQ_QUERY_TIMEOUT_SECONDS" -ge 1 && "$BQ_QUERY_TIMEOUT_SECONDS" -le 120 ]] || { echo "ERRO: timeout BigQuery inválido" >&2; exit 2; }
 
 GATEWAY_SERVICE_ACCOUNT="${GATEWAY_SERVICE_ACCOUNT:-${GATEWAY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
 BUILD_SERVICE_ACCOUNT="${BUILD_SERVICE_ACCOUNT:-${BUILD_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
@@ -63,15 +78,32 @@ gcloud builds submit . \
   --config gateway/cloudbuild.yaml \
   --substitutions "_IMAGE=${IMAGE}"
 
-# A exigência de autenticação é administrada no bootstrap. O deploy recorrente atualiza apenas a revisão.
+# Deploy recorrente não altera IAM. Ele aplica somente limites de execução e configuração não sensível.
 gcloud run deploy "$SERVICE_NAME" \
   --image "$IMAGE" \
   --region "$REGION" \
   --project "$PROJECT_ID" \
   --service-account "$GATEWAY_SERVICE_ACCOUNT" \
-  --set-env-vars "AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_MARITIME_DATASET=${MARITIME_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION}"
+  --execution-environment gen2 \
+  --cpu "$CPU" \
+  --memory "$MEMORY" \
+  --max-instances "$MAX_INSTANCES" \
+  --concurrency "$CONCURRENCY" \
+  --timeout "${REQUEST_TIMEOUT}s" \
+  --set-env-vars "AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_MARITIME_DATASET=${MARITIME_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION},AGROLOG_BQ_MAX_BYTES_BILLED=${BQ_MAX_BYTES_BILLED},AGROLOG_BQ_QUERY_TIMEOUT_SECONDS=${BQ_QUERY_TIMEOUT_SECONDS},AGROLOG_ENABLE_DOCS=0"
 
-echo "Gateway implantado; autenticação obrigatória é governada pelo bootstrap administrativo."
+# Fail closed if a public invoker binding appears. Bootstrap owns IAM; deploy only audits it.
+public_binding="$(gcloud run services get-iam-policy "$SERVICE_NAME" \
+  --region "$REGION" --project "$PROJECT_ID" \
+  --flatten='bindings[].members' \
+  --filter='bindings.role:roles/run.invoker AND bindings.members:allUsers' \
+  --format='value(bindings.members)' 2>/dev/null || true)"
+if grep -qx 'allUsers' <<<"$public_binding"; then
+  echo "ERRO CRÍTICO: ${SERVICE_NAME} possui roles/run.invoker para allUsers. Corrija no bootstrap antes de usar." >&2
+  exit 4
+fi
+
+echo "Gateway implantado com limites de recurso e auditoria de exposição pública."
 echo "Maritime UI preservada em /maritime/"
 echo "Dataset Maritime: ${PROJECT_ID}.${MARITIME_DATASET}"
 echo "Build staging: gs://${BUILD_SOURCE_BUCKET}"
