@@ -7,6 +7,7 @@ Antes de alterar qualquer arquivo, leia:
 - `docs/ARCHITECTURE.md`
 - `docs/TECHNOLOGY_STACK.md`
 - `docs/DATA_GOVERNANCE.md`
+- `docs/SECURITY.md`
 - `docs/REPOSITORY_GOVERNANCE.md`
 - `docs/AI_TOOLING.md`
 - `docs/MULTI_AGENT_WORKFLOW.md`
@@ -29,6 +30,9 @@ O Codex não cria uma segunda fonte de verdade. GitHub continua canônico para c
 - Antes de criar arquivo, módulo, schema, SQL ou regra, pesquise responsabilidade equivalente.
 - Prefira atualizar/refatorar a fonte canônica existente.
 - Não versionar dados RAW, arquivos grandes, credenciais, tokens ou segredos.
+- Não copiar segredo para issue, PR, log, artifact, prompt reutilizável ou fixture.
+- Respeitar `docs/SECURITY.md`: least privilege, fail-closed, separação de identidades, WIF sem chave JSON e classificação PUBLIC/INTERNAL/CONFIDENTIAL/RESTRICTED.
+- Mudança que afete IAM, autenticação, segredo, exposição de serviço, CI/CD ou acesso a dados deve incluir revisão explícita de superfície de ataque e teste de regressão de segurança quando possível.
 - Não executar `DROP`, `TRUNCATE`, `DELETE`, force push ou operação destrutiva sem autorização explícita.
 - Preserve `data_referencia`, `data_publicacao`, `data_coleta` e `competencia` quando aplicável.
 - Diferencie dado observado, inferência, estimativa e informação negociada/autorizada.
