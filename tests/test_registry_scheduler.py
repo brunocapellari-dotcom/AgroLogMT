@@ -93,6 +93,27 @@ class RegistrySchedulerTests(unittest.TestCase):
         self.assertIn("conab_armazens_cadastrados", source_ids)
         self.assertNotIn("conab_safra_graos_xlsx", source_ids)
 
+    def test_gated_source_remains_blocked_in_normal_schedule(self) -> None:
+        item = self.scheduler.plan_source("ibge_sidra_ppm_3939", now=self.now)
+        self.assertFalse(item.due)
+        self.assertEqual(item.reason, "status:gated")
+        self.assertEqual(item.execution_source_id, "ibge_sidra_ppm_3939")
+
+    def test_explicit_gated_canary_can_execute_without_promotion(self) -> None:
+        item = self.scheduler.plan_source(
+            "ibge_sidra_ppm_3939",
+            now=self.now,
+            allow_gated_canary=True,
+        )
+        self.assertTrue(item.due)
+        self.assertEqual(item.reason, "gated_canary")
+        self.assertEqual(item.execution_source_id, "ibge_sidra_ppm_3939")
+        self.assertEqual(self.registry.get("ibge_sidra_ppm_3939").status, "gated")
+
+    def test_gated_canary_cannot_be_enabled_for_a_whole_domain(self) -> None:
+        with self.assertRaisesRegex(ValueError, "explicit source_id"):
+            self.scheduler.plan(domain="cattle", now=self.now, allow_gated_canary=True)
+
 
 if __name__ == "__main__":
     unittest.main()
