@@ -1,0 +1,47 @@
+name: mapa-sigsif-probe
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "collector/adapters.py"
+      - "collector/mapa_sigsif.py"
+      - "collector/mapa_sigsif_bigquery.py"
+      - "collector/mapa_sigsif_pipeline.py"
+      - "collector/config/sources.pecuaria.json"
+      - "ckan_connector/**"
+      - "scripts/probe_mapa_sigsif.py"
+      - "tests/test_mapa_sigsif.py"
+      - "tests/test_pecuaria_source_config.py"
+      - ".github/workflows/mapa-sigsif-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime dependency
+        run: python -m pip install "requests>=2.32,<3"
+      - name: Run SIGSIF contract tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m unittest -v tests.test_mapa_sigsif tests.test_pecuaria_source_config tests.test_connectors_foundation
+      - name: Probe official MAPA SIGSIF cattle snapshot
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/probe_mapa_sigsif.py --out mapa_sigsif_probe.json
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mapa-sigsif-${{ github.run_id }}
+          path: mapa_sigsif_probe.json
+          if-no-files-found: error
+          retention-days: 30
