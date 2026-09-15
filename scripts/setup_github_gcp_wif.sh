@@ -40,8 +40,19 @@ gcloud auth list --filter=status:ACTIVE --format='value(account)' | grep -q . ||
 }
 gh auth status >/dev/null 2>&1 || { echo 'ERRO: gh não autenticado; execute gh auth login' >&2; exit 2; }
 
-echo "Projeto: $PROJECT_ID"
-echo "Repo:    $REPO"
+# Nomes do GitHub são mutáveis/reutilizáveis. Produção confia nos IDs numéricos
+# imutáveis do repositório e proprietário, resolvidos pela API autenticada.
+REPO_NUMERIC_ID="${REPO_NUMERIC_ID:-$(gh api "repos/${REPO}" --jq '.id')}"
+REPO_OWNER_NUMERIC_ID="${REPO_OWNER_NUMERIC_ID:-$(gh api "repos/${REPO}" --jq '.owner.id')}"
+if [[ ! "$REPO_NUMERIC_ID" =~ ^[0-9]+$ || ! "$REPO_OWNER_NUMERIC_ID" =~ ^[0-9]+$ ]]; then
+  echo 'ERRO: não foi possível resolver repository_id/repository_owner_id numéricos.' >&2
+  exit 2
+fi
+
+echo "Projeto:        $PROJECT_ID"
+echo "Repo:           $REPO"
+echo "Repository ID:  $REPO_NUMERIC_ID"
+echo "Owner ID:       $REPO_OWNER_NUMERIC_ID"
 
 gcloud services enable \
   iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com \
@@ -190,20 +201,36 @@ fi
 if ! gcloud iam workload-identity-pools describe "$POOL_ID" --location=global --project "$PROJECT_ID" >/dev/null 2>&1; then
   gcloud iam workload-identity-pools create "$POOL_ID" --location=global --project "$PROJECT_ID" --display-name="GitHub Actions"
 fi
+
+WIF_MAPPING="google.subject=assertion.sub,attribute.repository_id=assertion.repository_id,attribute.repository_owner_id=assertion.repository_owner_id,attribute.ref=assertion.ref"
+WIF_CONDITION="assertion.repository_id=='${REPO_NUMERIC_ID}' && assertion.repository_owner_id=='${REPO_OWNER_NUMERIC_ID}' && assertion.ref=='refs/heads/main'"
 if ! gcloud iam workload-identity-pools providers describe "$PROVIDER_ID" \
   --workload-identity-pool="$POOL_ID" --location=global --project "$PROJECT_ID" >/dev/null 2>&1; then
   gcloud iam workload-identity-pools providers create-oidc "$PROVIDER_ID" \
     --workload-identity-pool="$POOL_ID" --location=global --project "$PROJECT_ID" \
     --display-name="AgroLogMT GitHub" \
     --issuer-uri="https://token.actions.githubusercontent.com" \
-    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
-    --attribute-condition="assertion.repository=='${REPO}' && assertion.ref=='refs/heads/main'"
+    --attribute-mapping="$WIF_MAPPING" \
+    --attribute-condition="$WIF_CONDITION"
+else
+  # Reconciliar configuração existente para não manter provider legado baseado em nomes mutáveis.
+  gcloud iam workload-identity-pools providers update-oidc "$PROVIDER_ID" \
+    --workload-identity-pool="$POOL_ID" --location=global --project "$PROJECT_ID" \
+    --issuer-uri="https://token.actions.githubusercontent.com" \
+    --attribute-mapping="$WIF_MAPPING" \
+    --attribute-condition="$WIF_CONDITION" \
+    --quiet >/dev/null
 fi
 
 PROVIDER_RESOURCE="projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/providers/${PROVIDER_ID}"
-PRINCIPAL="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/attribute.repository/${REPO}"
+PRINCIPAL="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/attribute.repository_id/${REPO_NUMERIC_ID}"
+LEGACY_PRINCIPAL="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/attribute.repository/${REPO}"
+
 gcloud iam service-accounts add-iam-policy-binding "$DEPLOYER_SA_EMAIL" \
   --project "$PROJECT_ID" --role=roles/iam.workloadIdentityUser --member="$PRINCIPAL" --quiet >/dev/null
+# Limpeza best-effort de binding legado baseado no nome do repositório.
+gcloud iam service-accounts remove-iam-policy-binding "$DEPLOYER_SA_EMAIL" \
+  --project "$PROJECT_ID" --role=roles/iam.workloadIdentityUser --member="$LEGACY_PRINCIPAL" --quiet >/dev/null 2>&1 || true
 
 printf '%s' "$PROVIDER_RESOURCE" | gh secret set GCP_WORKLOAD_IDENTITY_PROVIDER --repo "$REPO"
 printf '%s' "$DEPLOYER_SA_EMAIL" | gh secret set GCP_SERVICE_ACCOUNT --repo "$REPO"
@@ -211,6 +238,11 @@ printf '%s' "$DEPLOYER_SA_EMAIL" | gh secret set GCP_DEPLOYER_SERVICE_ACCOUNT --
 printf '%s' "$BUILD_SA_EMAIL" | gh secret set GCP_BUILD_SERVICE_ACCOUNT --repo "$REPO"
 printf '%s' "$BUILD_SOURCE_BUCKET" | gh secret set GCP_BUILD_SOURCE_BUCKET --repo "$REPO"
 printf '%s' "$PROJECT_ID" | gh secret set GCP_PROJECT_ID --repo "$REPO"
+
+# Credenciais de fonte não devem existir em dois cofres. Remover aliases legados
+# do GitHub e manter ANA somente no Secret Manager/runtime GCP.
+gh secret delete ANA_IDENTIFICADOR --repo "$REPO" >/dev/null 2>&1 || true
+gh secret delete ANA_SENHA --repo "$REPO" >/dev/null 2>&1 || true
 
 if [[ "$CONFIGURE_ANA" == "1" ]]; then
   printf 'ANA HidroWeb identificador: '
@@ -223,12 +255,6 @@ if [[ "$CONFIGURE_ANA" == "1" ]]; then
     exit 2
   fi
 
-  # Nomes canônicos consumidos pelo CI e pelo runtime.
-  printf '%s' "$ANA_ID" | gh secret set ANA_IDENTIFICADOR --repo "$REPO"
-  printf '%s' "$ANA_PASSWORD" | gh secret set ANA_SENHA --repo "$REPO"
-
-  # Secret Manager é a origem dos segredos do Cloud Run; GitHub recebe somente
-  # os aliases necessários ao probe opcional de CI.
   ensure_secret "$ANA_IDENTIFICADOR_SECRET" "$ANA_ID"
   ensure_secret "$ANA_SENHA_SECRET" "$ANA_PASSWORD"
   for secret in "$ANA_IDENTIFICADOR_SECRET" "$ANA_SENHA_SECRET"; do
@@ -245,6 +271,9 @@ printf 'Builder:            %s\n' "$BUILD_SA_EMAIL"
 printf 'Collector:          %s\n' "$COLLECTOR_SA_EMAIL"
 printf 'Gateway:            %s\n' "$GATEWAY_SA_EMAIL"
 printf 'Build staging:      gs://%s\n' "$BUILD_SOURCE_BUCKET"
+printf 'WIF repository_id:  %s\n' "$REPO_NUMERIC_ID"
+printf 'WIF owner_id:       %s\n' "$REPO_OWNER_NUMERIC_ID"
 printf 'Datasets:           %s, %s, %s, %s, %s, %s, %s\n' "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"
 printf 'IMPORTANTE: compartilhe a pasta RAW do Drive como Editor somente com %s.\n' "$COLLECTOR_SA_EMAIL"
+printf 'Credenciais ANA ficam somente no Secret Manager; não em GitHub Secrets.\n'
 printf 'Deploy/homologação recorrente não deve alterar IAM, APIs ou criar datasets.\n'
