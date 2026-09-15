@@ -13,13 +13,30 @@ def safe_identifier(value: str, label: str) -> str:
     return value
 
 
-def ensure_dataset(client: Any, *, project_id: str, dataset_id: str, location: str) -> None:
+def require_dataset(client: Any, *, project_id: str, dataset_id: str, location: str) -> None:
+    """Fail closed unless an administratively provisioned dataset is accessible.
+
+    Runtime collectors deliberately do not execute ``CREATE SCHEMA``. Dataset
+    creation is a bootstrap/IAM responsibility; the collector service account only
+    needs the permissions required to create/update tables and views inside datasets
+    that were explicitly granted to it.
+    """
     project = safe_identifier(project_id, "project_id")
     dataset = safe_identifier(dataset_id, "dataset_id")
-    safe_location = location.replace("'", "")
-    client.query(
-        f"CREATE SCHEMA IF NOT EXISTS `{project}.{dataset}` OPTIONS(location='{safe_location}')"
-    ).result()
+    dataset_ref = f"{project}.{dataset}"
+    try:
+        obj = client.get_dataset(dataset_ref)
+    except Exception as exc:  # noqa: BLE001 - normalize provider-specific errors
+        raise RuntimeError(
+            f"BigQuery dataset preprovisionado ausente ou inacessivel: {dataset_ref}"
+        ) from exc
+
+    actual_location = str(getattr(obj, "location", "") or "").strip()
+    expected_location = str(location or "").strip()
+    if actual_location and expected_location and actual_location.casefold() != expected_location.casefold():
+        raise RuntimeError(
+            f"BigQuery dataset {dataset_ref} em {actual_location}; esperado {expected_location}"
+        )
 
 
 def ensure_domain_audit_table(
@@ -31,7 +48,7 @@ def ensure_domain_audit_table(
 ) -> str:
     project = safe_identifier(project_id, "project_id")
     dataset = safe_identifier(ops_dataset_id, "ops_dataset_id")
-    ensure_dataset(client, project_id=project, dataset_id=dataset, location=location)
+    require_dataset(client, project_id=project, dataset_id=dataset, location=location)
     audit_table = f"{project}.{dataset}.domain_load_runs"
     client.query(
         f"""
