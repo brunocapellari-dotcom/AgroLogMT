@@ -24,6 +24,7 @@ class ShippingBigQueryStore:
         self.lineup = f"{prefix}.shipping_lineup_calls"
         self.ais = f"{prefix}.shipping_ais_positions"
         self.ais_capture_events = f"{prefix}.shipping_ais_capture_events"
+        self.stream_checkpoints = f"{prefix}.shipping_stream_checkpoints"
         self.operations = f"{prefix}.shipping_port_operations"
         self.reconciliation = f"{prefix}.shipping_reconciliation"
 
@@ -47,10 +48,20 @@ CREATE TABLE IF NOT EXISTS `{self.ais}` (
  sog_kn FLOAT64, cog_deg FLOAT64, navigation_status STRING, destination STRING,
  port_id STRING, terminal_id STRING, zone STRING NOT NULL,
  source_id STRING NOT NULL, collected_at TIMESTAMP NOT NULL,
- raw_artifact_ref STRING, raw_message_json STRING
+ raw_artifact_ref STRING, raw_message_json STRING,
+ quality_status STRING, quality_flags_json STRING,
+ corroborated BOOL, spoofing_suspected BOOL, calculated_speed_kn FLOAT64
 ) PARTITION BY DATE(observed_at) CLUSTER BY mmsi, imo, port_id, zone
 """).result()
-        self.client.query(f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS raw_message_json STRING").result()
+        for statement in (
+            f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS raw_message_json STRING",
+            f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS quality_status STRING",
+            f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS quality_flags_json STRING",
+            f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS corroborated BOOL",
+            f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS spoofing_suspected BOOL",
+            f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS calculated_speed_kn FLOAT64",
+        ):
+            self.client.query(statement).result()
         self.client.query(f"""
 CREATE TABLE IF NOT EXISTS `{self.ais_capture_events}` (
  event_id STRING NOT NULL, run_id STRING NOT NULL, event_type STRING NOT NULL,
@@ -58,6 +69,14 @@ CREATE TABLE IF NOT EXISTS `{self.ais_capture_events}` (
  records INT64, aoi_count INT64, capture_seconds_requested FLOAT64,
  error_type STRING, details_json STRING
 ) PARTITION BY DATE(event_at) CLUSTER BY event_type, source_id, run_id
+""").result()
+        self.client.query(f"""
+CREATE TABLE IF NOT EXISTS `{self.stream_checkpoints}` (
+ checkpoint_id STRING NOT NULL, run_id STRING NOT NULL, source_id STRING NOT NULL,
+ checkpoint_at TIMESTAMP NOT NULL, last_observed_at TIMESTAMP,
+ last_observation_id STRING, records_delivered INT64, records_persisted INT64,
+ upstream_offset STRING, replay_capable BOOL NOT NULL, details_json STRING
+) PARTITION BY DATE(checkpoint_at) CLUSTER BY source_id, run_id
 """).result()
         self.client.query(f"""
 CREATE TABLE IF NOT EXISTS `{self.operations}` (
@@ -125,6 +144,23 @@ CREATE TABLE IF NOT EXISTS `{self.reconciliation}` (
             "details_json": json.dumps(row.get("details", {}), ensure_ascii=False, sort_keys=True),
         }
         return self._insert(self.ais_capture_events, [event], row_ids=[str(event["event_id"])])
+
+    def load_stream_checkpoint(self, row: dict[str, Any]) -> int:
+        self.ensure_objects()
+        checkpoint = {
+            "checkpoint_id": row["checkpoint_id"],
+            "run_id": row["run_id"],
+            "source_id": row.get("source_id", "aisstream"),
+            "checkpoint_at": row.get("checkpoint_at", self._now()),
+            "last_observed_at": row.get("last_observed_at"),
+            "last_observation_id": row.get("last_observation_id"),
+            "records_delivered": row.get("records_delivered"),
+            "records_persisted": row.get("records_persisted"),
+            "upstream_offset": row.get("upstream_offset"),
+            "replay_capable": bool(row.get("replay_capable", False)),
+            "details_json": json.dumps(row.get("details", {}), ensure_ascii=False, sort_keys=True),
+        }
+        return self._insert(self.stream_checkpoints, [checkpoint], row_ids=[str(checkpoint["checkpoint_id"])])
 
     def load_operations(self, rows: Iterable[dict[str, Any]]) -> int:
         self.ensure_objects()
