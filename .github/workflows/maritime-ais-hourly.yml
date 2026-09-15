@@ -1,16 +1,22 @@
-name: maritime-ais-hourly
+name: maritime-ais-control
 
 on:
-  schedule:
-    - cron: "5 * * * *"
-    - cron: "4 * * * *"
   workflow_dispatch:
+    inputs:
+      action:
+        description: "Action to trigger after GCP/WIF homologation"
+        required: true
+        default: ais
+        type: choice
+        options:
+          - ais
+          - reconcile
 
 permissions:
   contents: read
 
 concurrency:
-  group: maritime-ais-hourly-${{ github.event.schedule || 'manual' }}
+  group: maritime-ais-control
   cancel-in-progress: false
 
 jobs:
@@ -27,11 +33,12 @@ jobs:
       REGION: southamerica-east1
       AIS_JOB_NAME: agrolog-ais
       RECON_JOB_NAME: agrolog-shipping-reconcile
-      EVENT_SCHEDULE: ${{ github.event.schedule }}
+      REQUESTED_ACTION: ${{ inputs.action }}
     steps:
       - name: Fail closed if GCP bootstrap is incomplete
         shell: bash
         run: |
+          set -euo pipefail
           missing=0
           for key in WIF_PROVIDER GCP_SERVICE_ACCOUNT PROJECT_ID; do
             if [ -z "${!key}" ]; then
@@ -40,6 +47,7 @@ jobs:
             fi
           done
           test "$missing" -eq 0
+          case "$REQUESTED_ACTION" in ais|reconcile) ;; *) echo "Invalid action" >&2; exit 2 ;; esac
 
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3 pinned
         with:
@@ -48,21 +56,11 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3 pinned
 
-      - name: Select scheduled action
-        id: action
-        shell: bash
-        run: |
-          schedule="${EVENT_SCHEDULE:-}"
-          if [ "$schedule" = '4 * * * *' ]; then
-            echo 'kind=reconcile' >> "$GITHUB_OUTPUT"
-          else
-            echo 'kind=ais' >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Trigger near-continuous AIS capture
-        if: steps.action.outputs.kind == 'ais'
+        if: env.REQUESTED_ACTION == 'ais'
         shell: bash
         run: |
+          set -euo pipefail
           gcloud run jobs describe "$AIS_JOB_NAME" --region "$REGION" --project "$PROJECT_ID" >/dev/null
           gcloud run jobs executions list \
             --job "$AIS_JOB_NAME" \
@@ -71,10 +69,8 @@ jobs:
             --sort-by='~metadata.creationTimestamp' \
             --limit=1 \
             --format=json > /tmp/latest-ais-execution.json
-
           if python3 - <<'PY'
-          import json
-          import sys
+          import json, sys
           rows = json.load(open('/tmp/latest-ais-execution.json', encoding='utf-8'))
           active = bool(rows and rows[0].get('status', {}).get('startTime') and not rows[0].get('status', {}).get('completionTime'))
           sys.exit(10 if active else 0)
@@ -92,9 +88,13 @@ jobs:
           fi
 
       - name: Trigger reconciliation
-        if: steps.action.outputs.kind == 'reconcile'
+        if: env.REQUESTED_ACTION == 'reconcile'
         shell: bash
         run: |
+          set -euo pipefail
           gcloud run jobs describe "$RECON_JOB_NAME" --region "$REGION" --project "$PROJECT_ID" >/dev/null
           gcloud run jobs execute "$RECON_JOB_NAME" --region "$REGION" --project "$PROJECT_ID" --async
           echo 'Reconciliation execution triggered.'
+
+      - name: Scheduling ownership
+        run: echo 'Recurring production scheduling belongs to GCP Cloud Scheduler after final homologation, not GitHub Actions.'
