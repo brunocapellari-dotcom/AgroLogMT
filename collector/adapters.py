@@ -44,7 +44,7 @@ def _http_get(url: str, *, headers: dict[str, str] | None = None, timeout: int =
     request_headers = {"User-Agent": "AgroLogMT/0.1 (+source-monitor)"}
     request_headers.update(headers or {})
     request = Request(url, headers=request_headers)
-    # nosec B310: scheme/authority are validated immediately above; URLs come from versioned SourceSpec.
+    # URL is repository-controlled and explicitly restricted to absolute HTTPS above.
     with urlopen(request, timeout=timeout) as response:  # nosec B310
         observed_url = response.geturl()
         _validated_https_url(observed_url)
@@ -140,49 +140,175 @@ class EnvQueryHttpAdapter:
         env_var = str(spec.options.get("query_env_var", "")).strip()
         if not param_name or not env_var:
             raise ValueError("http_env_query exige options.query_param_name e options.query_env_var")
-        secret = os.environ.get(env_var)
-        if not secret:
+
+        value = os.environ.get(env_var)
+        if not value:
             raise RuntimeError(f"Variavel de ambiente obrigatoria ausente: {env_var}")
+
         parts = urlsplit(spec.url)
-        query = dict(parse_qsl(parts.query, keep_blank_values=True))
-        query[param_name] = secret
+        query = parse_qsl(parts.query, keep_blank_values=True)
+        query = [(key, item) for key, item in query if key != param_name]
+        query.append((param_name, value))
         url = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
-        timeout = int(spec.options.get("timeout_seconds", 60))
-        return _http_get(url, headers=spec.options.get("headers", {}), timeout=timeout)
+        child_spec = SourceSpec(
+            source_id=spec.source_id,
+            name=spec.name,
+            group=spec.group,
+            method="http",
+            enabled=spec.enabled,
+            url=url,
+            expected_frequency=spec.expected_frequency,
+            file_extension=spec.file_extension,
+            evidence_class=spec.evidence_class,
+            source_timezone=spec.source_timezone,
+            notes=spec.notes,
+            options={
+                "timeout_seconds": spec.options.get("timeout_seconds", 60),
+                "headers": spec.options.get("headers", {}),
+            },
+        )
+        return HttpAdapter().fetch(child_spec)
 
 
-class JsonApiAdapter:
+class CkanResourceAdapter:
+    """Resolve um recurso CKAN e baixa o arquivo publicado pela fonte."""
+
     def fetch(self, spec: SourceSpec) -> AcquisitionResult:
-        if not spec.url:
-            raise ValueError(f"Fonte {spec.source_id} sem URL")
-        result = _http_get(spec.url, headers={"Accept": "application/json"})
-        json.loads(result.payload.decode("utf-8"))
+        base_url = str(spec.options.get("base_url", "")).rstrip("/")
+        dataset_id = spec.options.get("dataset_id")
+        resource_id = spec.options.get("resource_id")
+        resource_name = spec.options.get("resource_name")
+        if not base_url or not dataset_id:
+            raise ValueError("CKAN exige options.base_url e options.dataset_id")
+        _validated_https_url(base_url)
+
+        api_url = f"{base_url}/api/3/action/package_show?{urlencode({'id': dataset_id})}"
+        timeout = int(spec.options.get("timeout_seconds", 60))
+        response = _http_get(api_url, headers={"User-Agent": "AgroLogMT/0.1"}, timeout=timeout)
+        body = json.loads(response.payload.decode("utf-8"))
+        if not body.get("success"):
+            raise RuntimeError(f"CKAN package_show falhou para {dataset_id}")
+
+        resources = body["result"].get("resources", [])
+        selected = None
+        for resource in resources:
+            if resource_id and resource.get("id") == resource_id:
+                selected = resource
+                break
+            if resource_name and str(resource.get("name", "")).strip().lower() == str(resource_name).strip().lower():
+                selected = resource
+                break
+        if selected is None:
+            raise RuntimeError(f"Recurso CKAN nao encontrado: {resource_id or resource_name}")
+
+        resource_url = selected.get("url")
+        if not resource_url:
+            raise RuntimeError("Recurso CKAN sem URL")
+        _validated_https_url(resource_url)
+        result = _http_get(resource_url, headers=spec.options.get("headers", {}), timeout=timeout)
+        result.content_type = result.content_type or selected.get("mimetype") or selected.get("format")
         return result
 
 
-class LatestAttachmentAdapter:
-    """Seleciona o primeiro anexo que casa com um regex em uma pagina HTML."""
+class GovBrLatestAttachmentAdapter:
+    """Descobre o item mais recente em uma listagem GOV.BR e baixa um anexo oficial.
+
+    O adapter é determinístico: segue apenas links no mesmo host da página inicial,
+    seleciona o primeiro item que casa com `item_url_regex`, depois o primeiro anexo
+    que casa com `attachment_url_regex`. Para arquivos Plone terminados em `/view`,
+    converte para `/@@download/file`.
+    """
 
     def fetch(self, spec: SourceSpec) -> AcquisitionResult:
         if not spec.url:
             raise ValueError(f"Fonte {spec.source_id} sem URL")
-        page = _http_get(spec.url, headers={"Accept": "text/html,application/xhtml+xml"})
-        html = page.payload.decode("utf-8", errors="replace")
-        pattern = str(spec.options.get("attachment_url_regex", ""))
-        if not pattern:
-            raise ValueError("latest_attachment exige options.attachment_url_regex")
-        link = select_first_matching_link(extract_html_links(html, page.observed_url), pattern, same_host_as=page.observed_url)
-        return _http_get(link)
+        timeout = int(spec.options.get("timeout_seconds", 60))
+        item_pattern = str(spec.options.get("item_url_regex", r"/\d+[oº]-levantamento-safra-"))
+        attachment_pattern = str(spec.options.get("attachment_url_regex", r"\.xlsx(?:/view)?(?:$|[?#])"))
+        headers = spec.options.get("headers", {})
+
+        listing = _http_get(spec.url, headers=headers, timeout=timeout)
+        listing_html = listing.payload.decode("utf-8", errors="replace")
+        item_url = select_first_matching_link(
+            extract_html_links(listing_html, listing.observed_url), item_pattern, same_host_as=listing.observed_url
+        )
+        item = _http_get(item_url, headers=headers, timeout=timeout)
+        item_html = item.payload.decode("utf-8", errors="replace")
+        attachment_url = select_first_matching_link(
+            extract_html_links(item_html, item.observed_url), attachment_pattern, same_host_as=item.observed_url
+        )
+        if attachment_url.endswith("/view"):
+            attachment_url = attachment_url[:-5] + "/@@download/file"
+        elif re.search(r"\.xlsx(?:$|[?#])", attachment_url, flags=re.IGNORECASE):
+            clean = attachment_url.split("#", 1)[0].split("?", 1)[0]
+            attachment_url = clean.rstrip("/") + "/@@download/file"
+        return _http_get(attachment_url, headers=headers, timeout=timeout)
 
 
 class ComexStatApiAdapter:
-    """Adapter da API pública Comex Stat com allowlist e contrato de query."""
+    """Coleta operacional mensal pelo endpoint oficial da API ComexStat.
+
+    O período default é obtido de ``/general/dates/updated``; portanto o AgroLog não
+    assume que o mês corrente já está completo. A resposta oficial é persistida como
+    JSON RAW. CSV aberto permanece fora deste adapter como rota de backfill/reconciliação.
+    """
 
     def fetch(self, spec: SourceSpec) -> AcquisitionResult:
-        query = spec.options.get("query")
-        if not isinstance(query, dict):
-            raise ValueError("comexstat_api exige options.query")
-        client = ComexStatApiClient(timeout=int(spec.options.get("timeout_seconds", 60)))
-        payload = client.query(dict(query))
-        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        return AcquisitionResult(payload=body, observed_url="https://comexstat.mdic.gov.br/pt/api")
+        timeout = int(spec.options.get("timeout_seconds", 120))
+        module = str(spec.options.get("module", "general")).strip().lower()
+        if module not in {"general", "cities"}:
+            raise ValueError("comexstat_api options.module deve ser general ou cities")
+
+        client = ComexStatApiClient(timeout=timeout)
+        update = client.last_update()
+        competence = update.competence
+        if not competence:
+            raise RuntimeError("ComexStat API não informou a última competência publicada")
+
+        period_mode = str(spec.options.get("period_mode", "latest_complete_month"))
+        if period_mode != "latest_complete_month":
+            raise ValueError("somente period_mode=latest_complete_month está homologado")
+
+        flow = str(spec.options.get("flow", "export"))
+        filters = spec.options.get("filters", [])
+        details = spec.options.get("details", [])
+        metrics = spec.options.get("metrics", ["metricFOB", "metricKG"])
+        if not isinstance(filters, list) or not isinstance(details, list) or not isinstance(metrics, list):
+            raise ValueError("comexstat_api filters/details/metrics devem ser listas")
+
+        payload = {
+            "flow": flow,
+            "monthDetail": bool(spec.options.get("month_detail", True)),
+            "period": {"from": competence, "to": competence},
+            "filters": filters,
+            "details": details,
+            "metrics": metrics,
+        }
+        response = client.query(payload, module=module)
+        encoded = json.dumps(response, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return AcquisitionResult(
+            payload=encoded,
+            observed_url=f"{client.base_url}/{module}?language=pt",
+            content_type="application/json",
+            last_modified=update.updated,
+        )
+
+
+def get_adapter(method: str) -> Adapter:
+    normalized = method.strip().lower()
+    if normalized in {"http", "http_file", "json_api", "api"}:
+        return HttpAdapter()
+    if normalized in {"http_env_header", "api_env_header"}:
+        return EnvHeaderHttpAdapter()
+    if normalized in {"http_env_query", "api_env_query"}:
+        return EnvQueryHttpAdapter()
+    if normalized in {"ckan", "ckan_resource"}:
+        return CkanResourceAdapter()
+    if normalized in {"govbr_latest_attachment", "govbr_attachment"}:
+        return GovBrLatestAttachmentAdapter()
+    if normalized in {"comexstat_api", "mdic_comexstat_api"}:
+        return ComexStatApiAdapter()
+    raise NotImplementedError(
+        f"Metodo '{method}' ainda nao implementado. Ordem de fallback aprovada: "
+        "HTTP/API/arquivo -> Crawl4AI -> Playwright -> browser-use."
+    )
