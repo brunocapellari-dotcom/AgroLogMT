@@ -1,8 +1,7 @@
 FROM node:22-alpine AS maritime-ui
 WORKDIR /ui
-COPY maritime_ui/package.json /ui/package.json
-# TODO security gate: switch to npm ci --ignore-scripts when package-lock.json is generated and reviewed.
-RUN npm install --package-lock=false --ignore-scripts
+COPY maritime_ui/package.json maritime_ui/package-lock.json /ui/
+RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY maritime_ui /ui
 RUN npm run build
 
