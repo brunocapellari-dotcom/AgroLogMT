@@ -5,8 +5,10 @@ on:
   pull_request:
     paths:
       - "collector/ibge_ppm.py"
+      - "contracts/product_trade_codes.v1.json"
       - "scripts/probe_ibge_ppm_cattle.py"
       - "tests/test_ibge_ppm_collector.py"
+      - "tests/test_product_trade_codes_contract.py"
       - ".github/workflows/ibge-ppm-cattle-probe.yml"
 
 permissions:
@@ -25,7 +27,11 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python -m unittest -v tests.test_ibge_ppm_collector tests.test_product_trade_codes_contract
-      - name: Probe live IBGE PPM cattle data for MT municipalities
+      - name: Probe current IBGE PPM cattle data for MT municipalities
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python scripts/probe_ibge_ppm_cattle.py --period 2024 --min-municipalities 100
+      - name: Probe full IBGE PPM cattle history for MT municipalities
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/probe_ibge_ppm_cattle.py --period all --min-municipalities 100 --min-year 1974 --max-year 2024
