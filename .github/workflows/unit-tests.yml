@@ -48,6 +48,7 @@ jobs:
           scripts/probe_news_signal_writer.py
           models/point_in_time.py
           models/readiness.py
+          models/restore_readiness.py
           models/baselines.py
           models/feature_matrix.py
           models/training_dataset.py
@@ -104,6 +105,7 @@ jobs:
               'contracts/maritime_geofences.v1.json',
               'contracts/data_source_registry.v1.schema.json',
               'contracts/source_promotion_gate.v1.schema.json',
+              'contracts/restore_drill.v1.schema.json',
               'contracts/ai_roles.v1.json',
               'contracts/global_supply_demand.v1.schema.json',
               'contracts/forecast_vintage.v1.schema.json',
