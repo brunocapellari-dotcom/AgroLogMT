@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import logging
 import os
 import re
-from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from google.cloud import bigquery
 
+from .app import PROJECT_ID, _jsonable as _gateway_jsonable, _query as _gateway_query
 from .pecuaria_queries import (
     build_beef_export_history_sql,
     build_beef_exports_sql,
@@ -22,37 +21,21 @@ from .pecuaria_queries import (
 from .storage_queries import safe_identifier
 
 router = APIRouter(prefix="/v1/pecuaria", tags=["pecuaria"])
-logger = logging.getLogger("agrolog.gateway.pecuaria")
 
-PROJECT_ID = safe_identifier(
-    os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("AGROLOG_GCP_PROJECT") or "",
-    label="project",
-)
 PECUARIA_DATASET = safe_identifier(os.environ.get("AGROLOG_PECUARIA_DATASET", "pecuaria"), label="pecuaria_dataset")
 TRADE_DATASET = safe_identifier(os.environ.get("AGROLOG_TRADE_DATASET", "comercio_exterior"), label="trade_dataset")
-BQ_LOCATION = os.environ.get("AGROLOG_BQ_LOCATION", "southamerica-east1")
 CONTRACT_PATH = Path(os.environ.get("AGROLOG_TRADE_CODES_CONTRACT", "/app/contracts/product_trade_codes.v1.json"))
 BEEF_NCMS = load_beef_ncms(CONTRACT_PATH)
-client = bigquery.Client(project=PROJECT_ID, location=BQ_LOCATION)
-
-
-def _jsonable(value: Any) -> Any:
-    if isinstance(value, (date, datetime)):
-        return value.isoformat()
-    if isinstance(value, dict):
-        return {key: _jsonable(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_jsonable(item) for item in value]
-    return value
 
 
 def _query(sql: str, parameters: list[Any]) -> list[dict[str, Any]]:
-    try:
-        cfg = bigquery.QueryJobConfig(query_parameters=parameters)
-        return [_jsonable(dict(row.items())) for row in client.query(sql, job_config=cfg).result()]
-    except Exception as exc:
-        logger.exception("pecuaria_bigquery_error", extra={"error_type": type(exc).__name__})
-        raise HTTPException(status_code=502, detail="Falha controlada ao consultar a inteligência pecuária") from exc
+    """Reuse the hardened Gateway BigQuery runtime.
+
+    This keeps livestock routes under the same maximum-bytes-billed, query timeout,
+    query cache and controlled-error policy as every other Gateway route instead of
+    creating a second BigQuery client/runtime.
+    """
+    return [_gateway_jsonable(row) for row in _gateway_query(sql, parameters)]
 
 
 def _year_range(year_start: int | None, year_end: int | None) -> tuple[int | None, int | None]:
