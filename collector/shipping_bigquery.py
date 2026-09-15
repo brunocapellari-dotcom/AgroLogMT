@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS `{self.lineup}` (
         self.client.query(f"""
 CREATE TABLE IF NOT EXISTS `{self.ais}` (
  observation_id STRING NOT NULL, mmsi STRING, imo STRING, vessel_name STRING,
- observed_at TIMESTAMP NOT NULL, latitude FLOAT64, longitude FLOAT64,
+ observed_at TIMESTAMP NOT NULL, source_timestamp_raw STRING, received_at TIMESTAMP,
+ timestamp_basis STRING, latitude FLOAT64, longitude FLOAT64,
  sog_kn FLOAT64, cog_deg FLOAT64, navigation_status STRING, destination STRING,
  port_id STRING, terminal_id STRING, zone STRING NOT NULL,
  source_id STRING NOT NULL, collected_at TIMESTAMP NOT NULL,
@@ -55,6 +56,9 @@ CREATE TABLE IF NOT EXISTS `{self.ais}` (
 """).result()
         for statement in (
             f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS raw_message_json STRING",
+            f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS source_timestamp_raw STRING",
+            f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS received_at TIMESTAMP",
+            f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS timestamp_basis STRING",
             f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS quality_status STRING",
             f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS quality_flags_json STRING",
             f"ALTER TABLE `{self.ais}` ADD COLUMN IF NOT EXISTS corroborated BOOL",
