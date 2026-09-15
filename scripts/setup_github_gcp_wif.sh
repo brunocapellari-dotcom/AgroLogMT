@@ -27,18 +27,34 @@ GATEWAY_SERVICE_NAME="${GATEWAY_SERVICE_NAME:-agrolog-gateway}"
 CONFIGURE_ANA="${CONFIGURE_ANA:-0}"
 ANA_IDENTIFICADOR_SECRET="${ANA_IDENTIFICADOR_SECRET:-agrolog-ana-identificador}"
 ANA_SENHA_SECRET="${ANA_SENHA_SECRET:-agrolog-ana-senha}"
+ALLOW_UNPROTECTED_MAIN="${ALLOW_UNPROTECTED_MAIN:-0}"
+ALLOW_USER_MANAGED_SA_KEYS="${ALLOW_USER_MANAGED_SA_KEYS:-0}"
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "ERRO: configure o projeto: gcloud config set project <PROJECT_ID>" >&2
   exit 2
 fi
-for cmd in gcloud bq gh; do
+for cmd in gcloud bq gh python3; do
   command -v "$cmd" >/dev/null || { echo "ERRO: $cmd ausente" >&2; exit 2; }
 done
 gcloud auth list --filter=status:ACTIVE --format='value(account)' | grep -q . || {
   echo 'ERRO: nenhuma conta gcloud ativa' >&2; exit 2;
 }
 gh auth status >/dev/null 2>&1 || { echo 'ERRO: gh não autenticado; execute gh auth login' >&2; exit 2; }
+
+[[ "$ALLOW_UNPROTECTED_MAIN" =~ ^[01]$ ]] || { echo 'ERRO: ALLOW_UNPROTECTED_MAIN deve ser 0 ou 1' >&2; exit 2; }
+[[ "$ALLOW_USER_MANAGED_SA_KEYS" =~ ^[01]$ ]] || { echo 'ERRO: ALLOW_USER_MANAGED_SA_KEYS deve ser 0 ou 1' >&2; exit 2; }
+
+main_protected="$(gh api "repos/${REPO}/branches/main" --jq '.protected' 2>/dev/null || true)"
+if [[ "$main_protected" != "true" ]]; then
+  if [[ "$ALLOW_UNPROTECTED_MAIN" != "1" ]]; then
+    echo "ERRO DE SEGURANÇA: branch main não está protegida." >&2
+    echo "Proteja main/ruleset e exija unit-tests + security-gate antes do bootstrap." >&2
+    echo "Somente em emergência explícita: ALLOW_UNPROTECTED_MAIN=1 bash scripts/setup_github_gcp_wif.sh" >&2
+    exit 4
+  fi
+  echo "AVISO CRÍTICO: bootstrap prosseguindo com main desprotegida por override explícito." >&2
+fi
 
 echo "Projeto: $PROJECT_ID"
 echo "Repo:    $REPO"
@@ -62,7 +78,7 @@ ensure_dataset() {
   local dataset="$1"
   if bq show --project_id="$PROJECT_ID" "${PROJECT_ID}:${dataset}" >/dev/null 2>&1; then
     local actual
-    actual="$(bq show --project_id="$PROJECT_ID" --format=prettyjson "${PROJECT_ID}:${dataset}" | python -c 'import json,sys; print(json.load(sys.stdin).get("location", ""))')"
+    actual="$(bq show --project_id="$PROJECT_ID" --format=prettyjson "${PROJECT_ID}:${dataset}" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("location", ""))')"
     if [[ -n "$actual" && "$actual" != "$BQ_LOCATION" ]]; then
       echo "ERRO: dataset ${dataset} existe em ${actual}; esperado ${BQ_LOCATION}" >&2
       exit 3
@@ -98,6 +114,22 @@ ensure_secret() {
   printf '%s' "$value" | gcloud secrets versions add "$name" --project "$PROJECT_ID" --data-file=- >/dev/null
 }
 
+assert_no_user_managed_keys() {
+  local email="$1"
+  local keys
+  keys="$(gcloud iam service-accounts keys list \
+    --iam-account="$email" --project="$PROJECT_ID" \
+    --filter='keyType=USER_MANAGED' --format='value(name)' 2>/dev/null || true)"
+  if [[ -n "$keys" ]]; then
+    if [[ "$ALLOW_USER_MANAGED_SA_KEYS" != "1" ]]; then
+      echo "ERRO DE SEGURANÇA: ${email} possui chave USER_MANAGED." >&2
+      echo "Revogue chaves JSON e use WIF/metadata identity. Override de emergência: ALLOW_USER_MANAGED_SA_KEYS=1." >&2
+      exit 4
+    fi
+    echo "AVISO CRÍTICO: chave USER_MANAGED detectada em ${email}; prosseguindo por override explícito." >&2
+  fi
+}
+
 ensure_sa "$DEPLOYER_SA_NAME" "AgroLog GitHub deployer"
 ensure_sa "$BUILD_SA_NAME" "AgroLog Cloud Build"
 ensure_sa "$COLLECTOR_SA_NAME" "AgroLog collector runtime"
@@ -109,6 +141,10 @@ COLLECTOR_SA_EMAIL="${COLLECTOR_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 GATEWAY_SA_EMAIL="${GATEWAY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
 BUILD_SERVICE_AGENT="service-${PROJECT_NUMBER}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
+
+for sa in "$DEPLOYER_SA_EMAIL" "$BUILD_SA_EMAIL" "$COLLECTOR_SA_EMAIL" "$GATEWAY_SA_EMAIL"; do
+  assert_no_user_managed_keys "$sa"
+done
 
 for role in \
   roles/serviceusage.serviceUsageAdmin \
@@ -133,6 +169,8 @@ if ! gcloud storage buckets describe "gs://${BUILD_SOURCE_BUCKET}" --project "$P
   gcloud storage buckets create "gs://${BUILD_SOURCE_BUCKET}" \
     --project "$PROJECT_ID" --location "$REGION" --uniform-bucket-level-access
 fi
+# Build staging must never become public. Objects expire because it is not a business-data store.
+gcloud storage buckets update "gs://${BUILD_SOURCE_BUCKET}" --public-access-prevention=enforced >/dev/null
 cat >/tmp/agrolog-build-lifecycle.json <<'JSON'
 {"rule":[{"action":{"type":"Delete"},"condition":{"age":7}}]}
 JSON
@@ -185,6 +223,15 @@ if gcloud run services describe "$GATEWAY_SERVICE_NAME" --region "$REGION" --pro
   gcloud run services remove-iam-policy-binding "$GATEWAY_SERVICE_NAME" \
     --region "$REGION" --project "$PROJECT_ID" \
     --member=allUsers --role=roles/run.invoker --quiet >/dev/null 2>&1 || true
+  public_binding="$(gcloud run services get-iam-policy "$GATEWAY_SERVICE_NAME" \
+    --region "$REGION" --project "$PROJECT_ID" \
+    --flatten='bindings[].members' \
+    --filter='bindings.role:roles/run.invoker AND bindings.members:allUsers' \
+    --format='value(bindings.members)' 2>/dev/null || true)"
+  if grep -qx 'allUsers' <<<"$public_binding"; then
+    echo "ERRO DE SEGURANÇA: Gateway continua público após remoção de allUsers." >&2
+    exit 4
+  fi
 fi
 
 if ! gcloud iam workload-identity-pools describe "$POOL_ID" --location=global --project "$PROJECT_ID" >/dev/null 2>&1; then
@@ -198,6 +245,18 @@ if ! gcloud iam workload-identity-pools providers describe "$PROVIDER_ID" \
     --issuer-uri="https://token.actions.githubusercontent.com" \
     --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
     --attribute-condition="assertion.repository=='${REPO}' && assertion.ref=='refs/heads/main'"
+else
+  # Existing providers are audited; a broader condition must not be accepted silently.
+  actual_condition="$(gcloud iam workload-identity-pools providers describe "$PROVIDER_ID" \
+    --workload-identity-pool="$POOL_ID" --location=global --project "$PROJECT_ID" \
+    --format='value(attributeCondition)')"
+  expected_condition="assertion.repository=='${REPO}' && assertion.ref=='refs/heads/main'"
+  if [[ "$actual_condition" != "$expected_condition" ]]; then
+    echo "ERRO DE SEGURANÇA: condição WIF divergente/mais ampla que o contrato esperado." >&2
+    echo "Atual:    ${actual_condition}" >&2
+    echo "Esperada: ${expected_condition}" >&2
+    exit 4
+  fi
 fi
 
 PROVIDER_RESOURCE="projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/providers/${PROVIDER_ID}"
@@ -248,3 +307,4 @@ printf 'Build staging:      gs://%s\n' "$BUILD_SOURCE_BUCKET"
 printf 'Datasets:           %s, %s, %s, %s, %s, %s, %s\n' "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"
 printf 'IMPORTANTE: compartilhe a pasta RAW do Drive como Editor somente com %s.\n' "$COLLECTOR_SA_EMAIL"
 printf 'Deploy/homologação recorrente não deve alterar IAM, APIs ou criar datasets.\n'
+printf 'Segurança: main protegida=%s; user-managed SA keys permitidas=%s; public access prevention do build bucket=enforced.\n' "$main_protected" "$ALLOW_USER_MANAGED_SA_KEYS"
