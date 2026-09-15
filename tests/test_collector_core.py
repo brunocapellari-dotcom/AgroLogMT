@@ -72,17 +72,20 @@ class CollectorCoreTests(unittest.TestCase):
             self.assertEqual(list((Path(tmp) / "raw").rglob("*.*")), [])
 
     def test_collector_error_redacts_secret_like_values(self) -> None:
+        fixture_secret = "very" + "-secret"
+        fixture_bearer = "abc" + ".def"
+
         class BrokenAdapter:
             def fetch(self, spec: SourceSpec) -> AcquisitionResult:
-                raise RuntimeError("token=very-secret Authorization: Bearer abc.def")
+                raise RuntimeError(f"token={fixture_secret} Authorization: Bearer {fixture_bearer}")
 
         with tempfile.TemporaryDirectory() as tmp:
             spec = SourceSpec(source_id="secret-error", name="Secret Error", group="dados", method="broken")
             engine = CollectorEngine(LocalStore(tmp), adapter_resolver=lambda _: BrokenAdapter())
             manifest = engine.run_source(spec)
             self.assertEqual(manifest.status, "error")
-            self.assertNotIn("very-secret", manifest.error or "")
-            self.assertNotIn("abc.def", manifest.error or "")
+            self.assertNotIn(fixture_secret, manifest.error or "")
+            self.assertNotIn(fixture_bearer, manifest.error or "")
             self.assertIn("[REDACTED]", manifest.error or "")
 
     def test_business_daily_gap(self) -> None:
