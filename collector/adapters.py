@@ -298,6 +298,12 @@ def get_adapter(method: str) -> Adapter:
         return GovBrLatestAttachmentAdapter()
     if normalized in {"comexstat_api", "mdic_comexstat_api"}:
         return ComexStatApiAdapter()
+    if normalized in {"nass_quickstats", "usda_nass_quickstats"}:
+        # Lazy import avoids a module cycle: the source-specific adapter returns
+        # the canonical AcquisitionResult defined in this module.
+        from .nass_quickstats import NassQuickStatsAdapter
+
+        return NassQuickStatsAdapter()
     raise NotImplementedError(
         f"Metodo '{method}' ainda nao implementado. Ordem de fallback aprovada: "
         "HTTP/API/arquivo -> Crawl4AI -> Playwright -> browser-use."
