@@ -1,0 +1,50 @@
+{
+  "sources": [
+    {
+      "source_id": "ibge_sidra_ppm_3939",
+      "name": "IBGE SIDRA PPM - efetivo bovino municipal MT",
+      "group": "pecuaria",
+      "method": "http",
+      "enabled": true,
+      "url": "https://apisidra.ibge.gov.br/values/t/3939/n6/in%20n3%2051/v/105/p/all/c79/2670?formato=json",
+      "expected_frequency": "annual",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "timeout_seconds": 180
+      },
+      "notes": "Histórico municipal completo da PPM para bovinos em Mato Grosso. RAW oficial preservado; disponibilidade/publicação histórica não é inventada e o histórico permanece inelegível como feature point-in-time até reconstrução de vintages."
+    },
+    {
+      "source_id": "mdic_comexstat_beef_mt_export_api",
+      "name": "MDIC/SECEX ComexStat API - exportação carne bovina in natura MT",
+      "group": "pecuaria",
+      "method": "comexstat_api",
+      "enabled": true,
+      "expected_frequency": "monthly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "module": "general",
+        "period_mode": "latest_complete_month",
+        "flow": "export",
+        "month_detail": true,
+        "expected_state_name": "Mato Grosso",
+        "filters": [
+          {
+            "filter": "ncm",
+            "values": [2011000, 2012010, 2012020, 2012090, 2013000, 2021000, 2022010, 2022020, 2022090, 2023000]
+          },
+          {
+            "filter": "state",
+            "values": [52]
+          }
+        ],
+        "details": ["ncm", "state", "country", "via", "urf"],
+        "metrics": ["metricFOB", "metricKG"],
+        "timeout_seconds": 180
+      },
+      "notes": "Fluxo operacional corrente de carne bovina in natura 0201/0202, sem miudezas. A cesta corrente não autoriza retroatividade histórica; o backfill 1997-presente depende do gate anual de NCM observado."
+    }
+  ]
+}
