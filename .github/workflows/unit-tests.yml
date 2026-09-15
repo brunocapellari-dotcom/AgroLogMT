@@ -17,6 +17,7 @@ on:
       - "usda_agtransport/**"
       - "docs/N6_*.md"
       - "docs/M01_*.md"
+      - "docs/PECUARIA_*.md"
       - "requirements*.txt"
       - ".github/workflows/**"
   workflow_dispatch:
@@ -54,8 +55,8 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python scripts/run_n6_synthetic_backtest.py
-      - name: Compile N6, connector, Comex and shipping Python modules
-        run: python -m py_compile scripts/validate_conab_n6.py scripts/validate_gateway_n6.py scripts/validate_comexstat_bigquery.py scripts/run_n6_synthetic_backtest.py scripts/inspect_n6_bigquery_readiness.py scripts/probe_news_signal_writer.py models/point_in_time.py models/readiness.py models/baselines.py models/feature_matrix.py models/training_dataset.py models/evaluation.py models/promotion.py models/shipping_reconciliation.py models/shipping_pipeline.py models/port_geofence.py gateway/maritime_queries.py collector/comexstat_pipeline.py collector/ais_stream.py collector/ais_stream_client.py collector/ais_worker.py collector/lineup_normalizer.py collector/official_lineup_html.py collector/official_lineup_pdf.py collector/shipping_lineup_worker.py collector/shipping_bigquery.py collector/shipping_reconcile_worker.py collector/port_lifecycle.py ckan_connector/client.py ckan_connector/portals.py socrata_connector/client.py cftc_cot/client.py cftc_cot/datasets.py usda_agtransport/client.py usda_agtransport/datasets.py
+      - name: Compile N6, connector, Comex, livestock and shipping Python modules
+        run: python -m py_compile scripts/validate_conab_n6.py scripts/validate_gateway_n6.py scripts/validate_comexstat_bigquery.py scripts/run_n6_synthetic_backtest.py scripts/inspect_n6_bigquery_readiness.py scripts/probe_news_signal_writer.py scripts/probe_ibge_ppm_cattle.py scripts/probe_comex_beef_ncm_history.py models/point_in_time.py models/readiness.py models/baselines.py models/feature_matrix.py models/training_dataset.py models/evaluation.py models/promotion.py models/pecuaria_trade.py models/shipping_reconciliation.py models/shipping_pipeline.py models/port_geofence.py gateway/maritime_queries.py collector/cloud_runner.py collector/ibge_ppm.py collector/ibge_ppm_bigquery.py collector/ibge_ppm_pipeline.py collector/comexstat_pipeline.py collector/ais_stream.py collector/ais_stream_client.py collector/ais_worker.py collector/lineup_normalizer.py collector/official_lineup_html.py collector/official_lineup_pdf.py collector/shipping_lineup_worker.py collector/shipping_bigquery.py collector/shipping_reconcile_worker.py collector/port_lifecycle.py ckan_connector/client.py ckan_connector/portals.py socrata_connector/client.py cftc_cot/client.py cftc_cot/datasets.py usda_agtransport/client.py usda_agtransport/datasets.py
       - name: Validate shell syntax
         run: bash -n scripts/preflight_n6_gcp.sh scripts/deploy_collectors_gcloud.sh scripts/deploy_gateway_gcloud.sh scripts/homologate_n6_core.sh scripts/homologate_comex_gcp.sh scripts/setup_github_gcp_wif.sh scripts/setup_aisstream_secret.sh scripts/deploy_ais_worker_gcloud.sh
       - name: Validate JSON contracts/config
@@ -66,6 +67,7 @@ jobs:
           files = [
               'collector/config/sources.pilot.json',
               'collector/config/sources.p0.json',
+              'collector/config/sources.pecuaria.json',
               'collector/config/maritime_lineup_sources.v1.json',
               'contracts/canonical_record_metadata.schema.json',
               'contracts/comexstat.v1.json',
