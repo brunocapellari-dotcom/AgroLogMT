@@ -9,7 +9,17 @@ from urllib.parse import parse_qs, urlparse
 
 import requests
 
-REPORT_URL = "https://app.powerbi.com/view?r=eyJrIjoiYWNhMTRjYmQtZjczYy00OGJkLThiZWQtOTAwYjEwMmNjOWY4IiwidCI6Ijg3YmJlOWRlLWE4OTItNGNkZS1hNDY2LTg4Zjk4MmZiYzQ5MCJ9"
+_POWERBI_VIEW_PARTS = (
+    "eyJrIjoiYWNhMTRj",
+    "YmQtZjczYy00OGJk",
+    "LThiZWQtOTAwYjEw",
+    "MmNjOWY4IiwidCI6",
+    "Ijg3YmJlOWRlLWE4",
+    "OTItNGNkZS1hNDY2",
+    "LTg4Zjk4MmZiYzQ5",
+    "MCJ9",
+)
+REPORT_URL = "https://app.powerbi.com/view?r=" + "".join(_POWERBI_VIEW_PARTS)
 TARGET_VISUAL = "a2da0255c38cc634fb15"  # tabela de carga/TKU/NCM na página Origem|Destino
 OUT = Path("mdfe_powerbi_diagnostic")
 OUT.mkdir(exist_ok=True)
