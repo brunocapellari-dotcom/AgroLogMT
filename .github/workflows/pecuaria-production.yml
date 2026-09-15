@@ -1,0 +1,105 @@
+name: pecuaria-production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "collector/ibge_ppm.py"
+      - "collector/ibge_ppm_bigquery.py"
+      - "collector/ibge_ppm_pipeline.py"
+      - "collector/cloud_runner.py"
+      - "collector/config/sources.pecuaria.json"
+      - "collector/comexstat_pipeline.py"
+      - "contracts/product_trade_codes.v1.json"
+      - "models/pecuaria_trade.py"
+      - "scripts/deploy_collectors_gcloud.sh"
+      - "scripts/homologate_pecuaria_gcp.sh"
+      - "scripts/validate_pecuaria_bigquery.py"
+      - ".github/workflows/pecuaria-production.yml"
+  schedule:
+    - cron: "17 09 10 * *"
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Operação"
+        required: true
+        default: "run"
+        type: choice
+        options:
+          - run
+          - deploy_homologate
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: pecuaria-production
+  cancel-in-progress: false
+
+env:
+  REGION: southamerica-east1
+  BQ_LOCATION: southamerica-east1
+  PECUARIA_DATASET: pecuaria
+  TRADE_DATASET: comercio_exterior
+  OPS_DATASET: agrolog_ops
+
+jobs:
+  production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud without JSON key
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Install validation runtime
+        run: python -m pip install "google-cloud-bigquery>=3.25,<4"
+
+      - name: Verify livestock bootstrap
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          if ! bq show --project_id="$PROJECT_ID" "${PROJECT_ID}:${PECUARIA_DATASET}" >/dev/null 2>&1; then
+            echo "Dataset ${PECUARIA_DATASET} ausente. Execute scripts/bootstrap_pecuaria_gcp.sh uma vez com identidade administradora." >&2
+            exit 3
+          fi
+
+      - name: Deploy livestock collector
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy_homologate')
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          BUILD_SERVICE_ACCOUNT: ${{ secrets.GCP_BUILD_SERVICE_ACCOUNT }}
+          BUILD_SOURCE_BUCKET: ${{ secrets.GCP_BUILD_SOURCE_BUCKET }}
+          DEPLOY_SCOPE: pecuaria
+        run: bash scripts/deploy_collectors_gcloud.sh
+
+      - name: Homologate full livestock pipeline
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy_homologate')
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: bash scripts/homologate_pecuaria_gcp.sh
+
+      - name: Run scheduled livestock collection
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'run')
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          gcloud run jobs execute agrolog-pecuaria \
+            --region "$REGION" \
+            --project "$PROJECT_ID" \
+            --wait
+          python scripts/validate_pecuaria_bigquery.py \
+            --project "$PROJECT_ID" \
+            --dataset "$PECUARIA_DATASET" \
+            --ops-dataset "$OPS_DATASET" \
+            --location "$BQ_LOCATION"
