@@ -1,0 +1,35 @@
+name: TEMP BDMEP token comparison
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/temp-bdmep-range.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare working and second BDMEP links
+        shell: bash
+        run: |
+          set +e
+          URL1='https://bdmep.inmet.gov.br/$2a$10$Il5Utr1Kvotkvb.mOqpuKO.oXEU6jrxcUcOJRvMmiouACVJgVxSm.zip'
+          URL2='https://bdmep.inmet.gov.br/$2a$10$LJanUGGYAoX8zFNnY1WHOjjRP8ghoJulUeOjIFu4Caq1520xZSK.zip'
+          for N in 1 2; do
+            VAR="URL${N}"
+            URL="${!VAR}"
+            echo "=== URL${N} ==="
+            curl -4 --http1.1 -sS -D "headers${N}.txt" -L --range 0-1023 --connect-timeout 15 --max-time 30 "$URL" -o "part${N}.bin"
+            RC=$?
+            echo "curl_rc=$RC"
+            cat "headers${N}.txt" || true
+            ls -l "part${N}.bin" || true
+            xxd -l 16 "part${N}.bin" || true
+          done
+          exit 0
