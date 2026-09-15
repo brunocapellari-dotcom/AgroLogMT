@@ -6,6 +6,7 @@ from pathlib import Path
 
 from collector.ibge_ppm import SOURCE_ID as PPM_SOURCE_ID
 from collector.ibge_slaughter import SOURCE_ID as SLAUGHTER_SOURCE_ID
+from collector.mapa_sigsif import PACKAGE_ID, RESOURCE_ID, SOURCE_ID as SIGSIF_SOURCE_ID
 
 CONFIG = Path("collector/config/sources.pecuaria.json")
 EXPECTED_BEEF_NCM = {
@@ -39,6 +40,17 @@ class PecuariaSourceConfigTests(unittest.TestCase):
         self.assertIn("/c12529/118225", source["url"])
         self.assertIn("/c18/992", source["url"])
         self.assertEqual(source["evidence_class"], "observado")
+
+    def test_sigsif_uses_official_mapa_ckan_resource_and_stays_crosscheck(self) -> None:
+        source = self.by_id[SIGSIF_SOURCE_ID]
+        self.assertTrue(source["enabled"])
+        self.assertEqual(source["method"], "ckan_resource")
+        self.assertEqual(source["expected_frequency"], "monthly")
+        self.assertEqual(source["options"]["base_url"], "https://dados.agricultura.gov.br")
+        self.assertEqual(source["options"]["dataset_id"], PACKAGE_ID)
+        self.assertEqual(source["options"]["resource_id"], RESOURCE_ID)
+        self.assertIn("cross-check", source["notes"])
+        self.assertIn("não possui competência", source["notes"])
 
     def test_beef_current_source_matches_contract_scope(self) -> None:
         source = self.by_id["mdic_comexstat_beef_mt_export_api"]
