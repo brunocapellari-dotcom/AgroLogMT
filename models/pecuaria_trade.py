@@ -69,9 +69,27 @@ def build_mt_beef_export_query(
     heading_predicate = " OR ".join(
         f"STARTS_WITH(co_ncm, '{heading}')" for heading in sorted(historical["headings"])
     )
-    end_filter = f"\n  AND co_ano <= {int(end_year)}" if end_year is not None else ""
+    end_filter = f"\n    AND co_ano <= {int(end_year)}" if end_year is not None else ""
 
-    return f"""SELECT
+    return f"""WITH candidate_rows AS (
+  SELECT *
+  FROM `{project}.{dataset}.comexstat_ncm_export`
+  WHERE co_ano >= {int(start_year)}{end_filter}
+),
+latest_snapshot_by_year AS (
+  SELECT
+    co_ano,
+    ARRAY_AGG(snapshot_id ORDER BY data_coleta DESC, snapshot_id DESC LIMIT 1)[OFFSET(0)] AS snapshot_id
+  FROM candidate_rows
+  GROUP BY co_ano
+),
+latest_rows AS (
+  SELECT r.*
+  FROM candidate_rows r
+  JOIN latest_snapshot_by_year s
+    ON r.co_ano=s.co_ano AND r.snapshot_id=s.snapshot_id
+)
+SELECT
   competencia,
   co_ano,
   co_mes,
@@ -88,11 +106,12 @@ def build_mt_beef_export_query(
   SUM(toneladas) AS toneladas,
   SUM(vl_fob) AS vl_fob_usd,
   SAFE_DIVIDE(SUM(vl_fob), SUM(toneladas)) AS usd_por_t,
+  ANY_VALUE(snapshot_id) AS source_snapshot_id,
+  MAX(data_coleta) AS source_data_coleta,
   ANY_VALUE(geo_semantics) AS geo_semantics,
   ANY_VALUE(urf_semantics) AS urf_semantics
-FROM `{project}.{dataset}.comexstat_ncm_export`
+FROM latest_rows
 WHERE sg_uf_ncm = 'MT'
-  AND co_ano >= {int(start_year)}{end_filter}
   AND ({heading_predicate})
 GROUP BY competencia, co_ano, co_mes, co_ncm, segmento_carne, co_pais, co_via, co_urf, sg_uf_ncm
 ORDER BY competencia, co_ncm, co_pais
