@@ -1,14 +1,7 @@
-name: conab-soy-revision-calibration
+name: conab-soy-revision-calibration-diagnostic
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "scripts/analyze_conab_soy_revision_calibration.py"
-      - "tests/test_conab_soy_revision_calibration.py"
-      - "scripts/build_conab_soy_yield_hurdle.py"
-      - "contracts/conab_vintage_registry.v1.json"
-      - ".github/workflows/conab-soy-revision-calibration.yml"
 
 permissions:
   contents: read
@@ -29,9 +22,7 @@ jobs:
       - name: Build live CONAB revision calibration
         env:
           PYTHONPATH: ${{ github.workspace }}
-        run: |
-          python scripts/analyze_conab_soy_revision_calibration.py \
-            --out conab_soy_revision_calibration.json
+        run: python scripts/analyze_conab_soy_revision_calibration.py --out conab_soy_revision_calibration.json
       - name: Upload calibration artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
