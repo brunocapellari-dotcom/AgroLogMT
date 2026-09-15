@@ -13,6 +13,7 @@ Antes de alterar qualquer arquivo, leia:
 - `docs/MULTI_AGENT_WORKFLOW.md`
 - `docs/OBSIDIAN.md`
 - `docs/BACKUP_RESTORE.md`
+- `docs/FINAL_RELEASE_GATE.md`
 - `docs/PHASE0_AUDIT_GAP_ANALYSIS_2026-09-14.md`
 - `docs/BACKLOG.md`
 
@@ -49,19 +50,36 @@ O Codex não cria uma segunda fonte de verdade. GitHub continua canônico para c
 - Divergências entre Claude e Codex devem ser resolvidas pelo código, testes, documentação canônica e evidência, não por preferência de modelo.
 - Componentes do `docs/TECHNOLOGY_STACK.md` só entram no runtime conforme estado e gate definidos; não instalar todo o stack por antecipação.
 
+## Política de versão final
+
+O AgroLog é aceito como uma plataforma inteira. Teste isolado de collector, domínio, modelo, UI ou conector é apenas diagnóstico e nunca significa “projeto aprovado”.
+
+Para qualquer mudança material:
+
+1. testes locais/específicos podem ser usados durante implementação;
+2. antes de considerar a mudança pronta, executar o `Full Project Final Gate` sobre **todo o repositório**;
+3. o gate deve descobrir/compilar todo Python e descobrir/executar todos os testes aplicáveis, em vez de depender de listas manuais por módulo;
+4. `FINAL RELEASE: PASS` exige também todos os testes live, supply-chain scans, SBOM, containers, restore, freshness/quality real, GCP preflight e homologação N6;
+5. teste live pulado, etapa sem evidência ou bloqueio externo impede a promoção final;
+6. não reduzir o gate para destravar merge ou release.
+
+Contrato: `contracts/full_project_release_gate.v1.schema.json`.
+Implementação: `scripts/validate_full_project.py`.
+Workflow: `.github/workflows/full-project-final-gate.yml`.
+
 ## Critério operacional
 
-Um módulo só pode ser tratado como operacional quando existe evidência para:
+Um domínio só pode alimentar uma versão operacional quando existe evidência para:
 
 `fonte → collector → storage → normalização → validação → análise → conhecimento → relatório/alerta → teste`
 
-Freshness, segurança, lineage, observabilidade e restore são gates transversais. Etapa ausente implica `PARTIAL`, `GATED`, `BLOCKED` ou `GAP`.
+Freshness, segurança, lineage, observabilidade e restore são gates transversais. Etapa ausente implica `PARTIAL`, `GATED`, `BLOCKED` ou `GAP` no domínio e bloqueio de release quando a capacidade for obrigatória para a versão candidata.
 
 ## Prioridade atual
 
-1. Resolver o bloqueio externo de GitHub Actions e promover o hardening de segurança.
-2. Homologar CONAB Armazéns + AgroLog Gateway no GCP real até `N6 CORE HOMOLOGATION: PASS`.
-3. Ativar Data Source Registry em canário apenas para fontes já homologadas.
-4. Fechar Brasil/MT: CONAB Safra, IMEA, Comex Stat, IBGE, BCB/PTAX, ANTT/ANTAQ, clima/hidrologia e Maritime.
-5. Expandir, nessa ordem, Estados Unidos → Argentina → Global Supply & Demand.
-6. Promover forecast e agentes de inteligência somente sobre datasets point-in-time e fontes homologadas.
+1. Fazer o `Full Project Final Gate` ser a autoridade única de aceitação do projeto.
+2. Resolver o bloqueio externo de GitHub Actions (#159), sem contornar testes.
+3. Gerar/revisar o lockfile reproduzível da Maritime UI (#161).
+4. Executar bootstrap GCP/WIF/service accounts (#160).
+5. Executar o gate final completo até `AGROLOG MT FINAL RELEASE: PASS`, incluindo `N6 CORE HOMOLOGATION: PASS`.
+6. Só depois promover novas capacidades/fonte para `active` quando o novo release inteiro permanecer verde.
