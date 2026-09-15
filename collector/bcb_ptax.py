@@ -8,7 +8,10 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
+from .transport_security import validate_https_url
+
 BASE_URL = "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata"
+BCB_ALLOWED_HOSTS = {"olinda.bcb.gov.br"}
 BRASILIA = ZoneInfo("America/Sao_Paulo")
 NORMAL_FINAL_WINDOW_END = time(13, 10)
 # Comunicado BCB 44.603/2026: horários excepcionais da PTAX em 2026.
@@ -116,7 +119,9 @@ def classify_daily_state(*, reference_date: date, quotes: list[PtaxQuote], now: 
 
 def fetch_dollar_day(value: date, *, timeout: int = 30) -> tuple[list[PtaxQuote], str]:
     url = dollar_day_url(value)
+    validate_https_url(url, allowed_hosts=BCB_ALLOWED_HOSTS)
     req = Request(url, headers={"Accept": "application/json", "User-Agent": "AgroLogMT/0.1 (+BCB PTAX)"})
-    with urlopen(req, timeout=timeout) as response:
+    with urlopen(req, timeout=timeout) as response:  # nosec B310 - HTTPS and BCB host validated above.
+        validate_https_url(response.geturl(), allowed_hosts=BCB_ALLOWED_HOSTS)
         payload = json.loads(response.read().decode("utf-8"))
     return parse_quotes(payload, reference_date=value), url
