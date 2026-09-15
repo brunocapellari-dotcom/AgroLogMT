@@ -1,0 +1,112 @@
+{
+  "sources": [
+    {
+      "source_id": "usda_nass_corn_weekly_current",
+      "name": "USDA NASS Quick Stats - Corn weekly state observations",
+      "group": "dados",
+      "method": "nass_quickstats",
+      "enabled": false,
+      "expected_frequency": "weekly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "source_timezone": "America/New_York",
+      "options": {
+        "api_key_env": "NASS_API_KEY",
+        "required_env_vars": ["NASS_API_KEY"],
+        "timeout_seconds": 90,
+        "max_records": 50000,
+        "year_mode": "current",
+        "query": {
+          "source_desc": "SURVEY",
+          "sector_desc": "CROPS",
+          "commodity_desc": "CORN",
+          "agg_level_desc": "STATE",
+          "freq_desc": "WEEKLY",
+          "domain_desc": "TOTAL"
+        }
+      },
+      "notes": "GATED. Official Quick Stats raw slice for current-year weekly state observations. Activate only after Secret Manager/runtime canary, row-count QA and promotion gate. Historical backfill must be segmented to stay below the official 50k API limit."
+    },
+    {
+      "source_id": "usda_nass_soybeans_weekly_current",
+      "name": "USDA NASS Quick Stats - Soybeans weekly state observations",
+      "group": "dados",
+      "method": "nass_quickstats",
+      "enabled": false,
+      "expected_frequency": "weekly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "source_timezone": "America/New_York",
+      "options": {
+        "api_key_env": "NASS_API_KEY",
+        "required_env_vars": ["NASS_API_KEY"],
+        "timeout_seconds": 90,
+        "max_records": 50000,
+        "year_mode": "current",
+        "query": {
+          "source_desc": "SURVEY",
+          "sector_desc": "CROPS",
+          "commodity_desc": "SOYBEANS",
+          "agg_level_desc": "STATE",
+          "freq_desc": "WEEKLY",
+          "domain_desc": "TOTAL"
+        }
+      },
+      "notes": "GATED. Official Quick Stats raw slice for current-year weekly state observations. Activate only after Secret Manager/runtime canary, row-count QA and promotion gate."
+    },
+    {
+      "source_id": "usda_nass_cotton_weekly_current",
+      "name": "USDA NASS Quick Stats - Cotton weekly state observations",
+      "group": "dados",
+      "method": "nass_quickstats",
+      "enabled": false,
+      "expected_frequency": "weekly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "source_timezone": "America/New_York",
+      "options": {
+        "api_key_env": "NASS_API_KEY",
+        "required_env_vars": ["NASS_API_KEY"],
+        "timeout_seconds": 90,
+        "max_records": 50000,
+        "year_mode": "current",
+        "query": {
+          "source_desc": "SURVEY",
+          "sector_desc": "CROPS",
+          "commodity_desc": "COTTON",
+          "agg_level_desc": "STATE",
+          "freq_desc": "WEEKLY",
+          "domain_desc": "TOTAL"
+        }
+      },
+      "notes": "GATED. Official Quick Stats raw slice for current-year weekly state observations. Activate only after Secret Manager/runtime canary, row-count QA and promotion gate."
+    },
+    {
+      "source_id": "usda_nass_wheat_weekly_current",
+      "name": "USDA NASS Quick Stats - Wheat weekly state observations",
+      "group": "dados",
+      "method": "nass_quickstats",
+      "enabled": false,
+      "expected_frequency": "weekly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "source_timezone": "America/New_York",
+      "options": {
+        "api_key_env": "NASS_API_KEY",
+        "required_env_vars": ["NASS_API_KEY"],
+        "timeout_seconds": 90,
+        "max_records": 50000,
+        "year_mode": "current",
+        "query": {
+          "source_desc": "SURVEY",
+          "sector_desc": "CROPS",
+          "commodity_desc": "WHEAT",
+          "agg_level_desc": "STATE",
+          "freq_desc": "WEEKLY",
+          "domain_desc": "TOTAL"
+        }
+      },
+      "notes": "GATED. Official Quick Stats raw slice for current-year weekly state observations. Activate only after Secret Manager/runtime canary, row-count QA and promotion gate."
+    }
+  ]
+}

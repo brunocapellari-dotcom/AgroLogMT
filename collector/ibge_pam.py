@@ -2,26 +2,69 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from datetime import datetime, timezone
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
-from .ibge_sidra import fetch_sidra_path, parse_sidra_number
+from .transport_security import validate_https_url
 
 SOURCE_ID = "ibge_sidra_pam_1612"
 TABLE_ID = 1612
 MT_UF_CODE = 51
 YIELD_VARIABLE = 112
 SOY_CATEGORY = 2713
-SIDRA_PATH = f"t/{TABLE_ID}/n3/{MT_UF_CODE}/v/{YIELD_VARIABLE}/p/all/c81/{SOY_CATEGORY}?formato=json"
+PRIMARY_URL = "https://apisidra.ibge.gov.br/values/t/1612/n3/51/v/112/p/all/c81/2713?formato=json"
+FALLBACK_URL = "https://api.sidra.ibge.gov.br/values/t/1612/n3/51/v/112/p/all/c81/2713?formato=json"
+IBGE_SIDRA_ALLOWED_HOSTS = {"apisidra.ibge.gov.br", "api.sidra.ibge.gov.br"}
+MAX_RESPONSE_BYTES = 20 * 1024 * 1024
 
 
 def fetch_payload(*, timeout: int = 90) -> tuple[bytes, str]:
-    return fetch_sidra_path(
-        SIDRA_PATH,
-        timeout=timeout,
-        user_agent="AgroLogMT/0.1 (+ibge-pam)",
-        error_label="SIDRA PAM",
-    )
+    errors: list[str] = []
+    for url in (PRIMARY_URL, FALLBACK_URL):
+        validate_https_url(url, allowed_hosts=IBGE_SIDRA_ALLOWED_HOSTS)
+        request = Request(url, headers={"User-Agent": "AgroLogMT/0.1 (+ibge-pam)"})
+        try:
+            with urlopen(request, timeout=timeout) as response:  # nosec B310 - HTTPS and official IBGE hosts validated above.
+                observed = response.geturl()
+                validate_https_url(observed, allowed_hosts=IBGE_SIDRA_ALLOWED_HOSTS)
+                payload = response.read(MAX_RESPONSE_BYTES + 1)
+                if len(payload) > MAX_RESPONSE_BYTES:
+                    raise ValueError("SIDRA PAM excede limite de resposta")
+                return payload, observed
+        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+            errors.append(f"{url}: {type(exc).__name__}: {exc}")
+    raise RuntimeError("SIDRA PAM indisponivel: " + " | ".join(errors))
+
+
+def _number(value: object) -> float | None:
+    """Parse SIDRA numeric text for annual yield (kg/ha).
+
+    SIDRA normally returns this variable as an integer string, but exports may carry
+    pt-BR thousands separators (e.g. `3.750`). For this integer-like yield variable,
+    a single dot followed by exactly three digits is treated as a thousands separator.
+    """
+    text = str(value or "").strip()
+    if not text or text in {"-", "...", "..", "X"}:
+        return None
+    text = text.replace(" ", "")
+    if "," in text and "." in text:
+        text = text.replace(".", "").replace(",", ".")
+    elif "," in text:
+        text = text.replace(",", ".")
+    elif text.count(".") == 1:
+        left, right = text.split(".", 1)
+        if left.lstrip("+-").isdigit() and right.isdigit() and len(right) == 3:
+            text = left + right
+    elif text.count(".") > 1 and all(part.isdigit() for part in text.split(".")):
+        text = text.replace(".", "")
+    try:
+        parsed = float(text)
+    except ValueError:
+        return None
+    return parsed if math.isfinite(parsed) else None
 
 
 def parse_payload(payload: bytes) -> list[dict[str, Any]]:
@@ -34,7 +77,7 @@ def parse_payload(payload: bytes) -> list[dict[str, Any]]:
         variable = str(raw.get("D2N") or "").strip()
         period = str(raw.get("D3N") or raw.get("D3C") or "").strip()
         product = str(raw.get("D4N") or "").strip()
-        value = parse_sidra_number(raw.get("V"))
+        value = _number(raw.get("V"))
         if geo != "Mato Grosso" or "Rendimento" not in variable or "Soja" not in product or value is None:
             continue
         try:

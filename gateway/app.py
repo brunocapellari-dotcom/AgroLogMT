@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,6 +41,9 @@ MARITIME_DATASET_ID = safe_identifier(
     os.environ.get("AGROLOG_MARITIME_DATASET", "agrolog_models"), label="maritime_dataset"
 )
 BQ_LOCATION = os.environ.get("AGROLOG_BQ_LOCATION", "southamerica-east1")
+BQ_MAX_BYTES_BILLED = int(os.environ.get("AGROLOG_BQ_MAX_BYTES_BILLED", "1000000000"))
+BQ_QUERY_TIMEOUT_SECONDS = int(os.environ.get("AGROLOG_BQ_QUERY_TIMEOUT_SECONDS", "30"))
+ENABLE_DOCS = os.environ.get("AGROLOG_ENABLE_DOCS", "0") == "1"
 PILOT_PORTS = {
     "SANTOS": "Santos",
     "PARANAGUA": "Paranaguá",
@@ -46,40 +51,94 @@ PILOT_PORTS = {
     "SANTAREM": "Santarém",
     "ITAQUI": "Itaqui",
 }
+REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+SECURITY_HEADERS = {
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer",
+    "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    "cross-origin-opener-policy": "same-origin",
+    "cross-origin-resource-policy": "same-origin",
+    "content-security-policy": (
+        "default-src 'self'; "
+        "base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; "
+        "script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob: https:; font-src 'self' data: https:; "
+        "connect-src 'self' https:; worker-src 'self' blob:"
+    ),
+}
+
+if BQ_MAX_BYTES_BILLED <= 0:
+    raise RuntimeError("AGROLOG_BQ_MAX_BYTES_BILLED deve ser positivo")
+if not 1 <= BQ_QUERY_TIMEOUT_SECONDS <= 120:
+    raise RuntimeError("AGROLOG_BQ_QUERY_TIMEOUT_SECONDS deve estar entre 1 e 120")
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("agrolog.gateway")
 
-app = FastAPI(title="AgroLog Gateway", version="0.3.0")
+app = FastAPI(
+    title="AgroLog Gateway",
+    version="0.4.0",
+    docs_url="/docs" if ENABLE_DOCS else None,
+    redoc_url="/redoc" if ENABLE_DOCS else None,
+    openapi_url="/openapi.json" if ENABLE_DOCS else None,
+)
 
-cors_origins = [
-    value.strip()
-    for value in os.environ.get(
-        "AGROLOG_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
-    ).split(",")
-    if value.strip()
-]
+
+def _cors_origins() -> list[str]:
+    values = [
+        value.strip()
+        for value in os.environ.get(
+            "AGROLOG_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+        ).split(",")
+        if value.strip()
+    ]
+    for value in values:
+        if value == "*":
+            raise RuntimeError("CORS wildcard é proibido no AgroLog Gateway")
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+            raise RuntimeError(f"origem CORS inválida: {value}")
+        if parsed.scheme == "http" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+            raise RuntimeError("HTTP em CORS é permitido somente para desenvolvimento local")
+    return values
+
+
+cors_origins = _cors_origins()
 if cors_origins:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
         allow_credentials=False,
-        allow_methods=["GET"],
-        allow_headers=["*"],
+        allow_methods=["GET", "HEAD", "OPTIONS"],
+        allow_headers=["authorization", "content-type", "x-request-id"],
+        expose_headers=["x-request-id"],
+        max_age=600,
     )
 
 client = bigquery.Client(project=PROJECT_ID, location=BQ_LOCATION)
 
 
+def _request_id(value: str | None) -> str:
+    if value and REQUEST_ID_RE.fullmatch(value):
+        return value
+    return str(uuid.uuid4())
+
+
 @app.middleware("http")
 async def audit_request(request: Request, call_next):
-    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    request_id = _request_id(request.headers.get("x-request-id"))
     started = time.monotonic()
     status_code = 500
     try:
         response = await call_next(request)
         status_code = response.status_code
         response.headers["x-request-id"] = request_id
+        for name, value in SECURITY_HEADERS.items():
+            response.headers[name] = value
+        if request.url.path.startswith("/v1/") or request.url.path == "/healthz":
+            response.headers["cache-control"] = "no-store, max-age=0"
+            response.headers["pragma"] = "no-cache"
         return response
     finally:
         payload = {
@@ -115,8 +174,13 @@ def _params(uf: str | None, municipio: str | None, limit: int | None = None) -> 
 
 def _query(sql: str, parameters: list[bigquery.ScalarQueryParameter]) -> list[dict[str, Any]]:
     try:
-        config = bigquery.QueryJobConfig(query_parameters=parameters)
-        return [dict(row.items()) for row in client.query(sql, job_config=config).result()]
+        config = bigquery.QueryJobConfig(
+            query_parameters=parameters,
+            maximum_bytes_billed=BQ_MAX_BYTES_BILLED,
+            use_query_cache=True,
+        )
+        job = client.query(sql, job_config=config)
+        return [dict(row.items()) for row in job.result(timeout=BQ_QUERY_TIMEOUT_SECONDS)]
     except Exception as exc:
         logger.exception(json.dumps({
             "event": "bigquery_error",

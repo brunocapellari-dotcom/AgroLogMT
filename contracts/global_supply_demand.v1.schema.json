@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agrolog.local/contracts/global_supply_demand.v1.schema.json",
+  "title": "AgroLog Global Supply & Demand Balance v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "balance_id", "commodity", "country", "marketing_year", "unit",
+    "beginning_stocks", "production", "imports", "total_supply",
+    "domestic_consumption", "processing", "exports", "ending_stocks",
+    "stock_to_use", "source_id", "vintage_id", "data_referencia",
+    "data_publicacao", "data_coleta", "competencia", "evidence_class"
+  ],
+  "properties": {
+    "balance_id": {"type":"string","minLength":1},
+    "commodity": {"enum":["soybean","corn","cotton","wheat","rice","sugar","other"]},
+    "country": {"type":"string","minLength":2},
+    "marketing_year": {"type":"string","minLength":4},
+    "unit": {"type":"string","minLength":1},
+    "beginning_stocks": {"type":["number","null"]},
+    "production": {"type":["number","null"]},
+    "imports": {"type":["number","null"]},
+    "total_supply": {"type":["number","null"]},
+    "domestic_consumption": {"type":["number","null"]},
+    "processing": {"type":["number","null"]},
+    "exports": {"type":["number","null"]},
+    "ending_stocks": {"type":["number","null"]},
+    "stock_to_use": {"type":["number","null"]},
+    "source_id": {"type":"string","minLength":1},
+    "source_record_id": {"type":["string","null"]},
+    "vintage_id": {"type":"string","minLength":1},
+    "release_sequence": {"type":["integer","null"],"minimum":1},
+    "data_referencia": {"type":"string","minLength":1},
+    "data_publicacao": {"type":["string","null"]},
+    "data_coleta": {"type":"string","minLength":1},
+    "competencia": {"type":["string","null"]},
+    "evidence_class": {"enum":["observado","estimado","projetado","inferido"]},
+    "raw_artifact_ref": {"type":["string","null"]},
+    "raw_sha256": {"type":["string","null"],"pattern":"^[a-f0-9]{64}$"},
+    "normalization_version": {"type":"string","minLength":1},
+    "quality_status": {"enum":["PASS","WARN","BLOCKED"]}
+  }
+}

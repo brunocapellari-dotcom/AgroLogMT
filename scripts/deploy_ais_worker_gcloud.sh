@@ -17,10 +17,15 @@ RECON_JOB_NAME="${RECON_JOB_NAME:-agrolog-shipping-reconcile}"
 CAPTURE_SECONDS="${AIS_CAPTURE_SECONDS:-3540}"
 BATCH_SIZE="${AIS_BATCH_SIZE:-250}"
 SHIPPING_LOOKBACK_DAYS="${SHIPPING_LOOKBACK_DAYS:-30}"
+AIS_MEMORY="${AIS_MEMORY:-512Mi}"
+AIS_CPU="${AIS_CPU:-1}"
+RECON_MEMORY="${RECON_MEMORY:-512Mi}"
+RECON_CPU="${RECON_CPU:-1}"
 AIS_SUBSCRIPTION_CONFIG="${AIS_SUBSCRIPTION_CONFIG:-collector/config/maritime_ais_subscription.v1.json}"
 AIS_BOUNDING_BOXES_JSON="${AIS_BOUNDING_BOXES_JSON:-}"
-# Runtime geofences remain empty until GEOFENCE_VALIDATED.
+# Runtime geofences remain empty until GEOFENCE_VALIDATED=1.
 AIS_PORT_ZONES_JSON="${AIS_PORT_ZONES_JSON:-[]}"
+GEOFENCE_VALIDATED="${GEOFENCE_VALIDATED:-0}"
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "ERRO: projeto GCP não configurado" >&2
@@ -29,6 +34,17 @@ fi
 for cmd in gcloud bq python3; do
   command -v "$cmd" >/dev/null || { echo "ERRO: $cmd ausente" >&2; exit 2; }
 done
+for value in "$CAPTURE_SECONDS" "$BATCH_SIZE" "$SHIPPING_LOOKBACK_DAYS"; do
+  [[ "$value" =~ ^[0-9]+$ ]] || { echo "ERRO: parâmetro numérico inválido: $value" >&2; exit 2; }
+done
+[[ "$CAPTURE_SECONDS" -ge 60 && "$CAPTURE_SECONDS" -le 3600 ]] || { echo "ERRO: AIS_CAPTURE_SECONDS fora de 60..3600" >&2; exit 2; }
+[[ "$BATCH_SIZE" -ge 1 && "$BATCH_SIZE" -le 5000 ]] || { echo "ERRO: AIS_BATCH_SIZE fora de 1..5000" >&2; exit 2; }
+[[ "$SHIPPING_LOOKBACK_DAYS" -ge 1 && "$SHIPPING_LOOKBACK_DAYS" -le 365 ]] || { echo "ERRO: SHIPPING_LOOKBACK_DAYS fora de 1..365" >&2; exit 2; }
+[[ "$SECRET_NAME" =~ ^[A-Za-z0-9_-]{1,255}$ ]] || { echo "ERRO: SECRET_NAME inválido" >&2; exit 2; }
+if [[ "$AIS_PORT_ZONES_JSON" != "[]" && "$GEOFENCE_VALIDATED" != "1" ]]; then
+  echo "ERRO: geofences operacionais fornecidas sem GEOFENCE_VALIDATED=1" >&2
+  exit 4
+fi
 
 COLLECTOR_SERVICE_ACCOUNT="${COLLECTOR_SERVICE_ACCOUNT:-${COLLECTOR_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
 BUILD_SERVICE_ACCOUNT="${BUILD_SERVICE_ACCOUNT:-${BUILD_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
@@ -82,12 +98,31 @@ import sys
 from pathlib import Path
 payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 boxes = [area["bounding_box"] for area in payload["areas"]]
-if len(boxes) != 5:
-    raise SystemExit(f"expected 5 AIS pilot AOIs, got {len(boxes)}")
 print(json.dumps(boxes, separators=(",", ":")))
 PY
 )"
 fi
+
+python3 - "$AIS_BOUNDING_BOXES_JSON" "$AIS_PORT_ZONES_JSON" <<'PY'
+import json
+import sys
+boxes = json.loads(sys.argv[1])
+if not isinstance(boxes, list) or len(boxes) != 5:
+    raise SystemExit(f"expected exactly 5 AIS pilot AOIs, got {len(boxes) if isinstance(boxes, list) else 'non-list'}")
+for idx, box in enumerate(boxes):
+    if not (isinstance(box, list) and len(box) == 2 and all(isinstance(p, list) and len(p) == 2 for p in box)):
+        raise SystemExit(f"invalid AOI structure at index {idx}")
+    (lat1, lon1), (lat2, lon2) = box
+    if not all(isinstance(v, (int, float)) for v in (lat1, lon1, lat2, lon2)):
+        raise SystemExit(f"non-numeric AOI at index {idx}")
+    if not (-90 <= lat1 <= 90 and -90 <= lat2 <= 90 and -180 <= lon1 <= 180 and -180 <= lon2 <= 180):
+        raise SystemExit(f"AOI coordinate out of range at index {idx}")
+    if lat1 == lat2 or lon1 == lon2:
+        raise SystemExit(f"degenerate AOI at index {idx}")
+z = json.loads(sys.argv[2])
+if not isinstance(z, list):
+    raise SystemExit("AIS_PORT_ZONES_JSON must be a JSON list")
+PY
 
 # Build uses the dedicated builder and staging bucket. This script never mutates IAM/APIs/datasets.
 gcloud builds submit . \
@@ -107,6 +142,10 @@ gcloud run jobs deploy "$AIS_JOB_NAME" \
   --args=-m,collector.ais_worker \
   --set-env-vars "$AIS_ENV" \
   --set-secrets "AISSTREAM_API_KEY=${SECRET_NAME}:latest" \
+  --tasks 1 \
+  --parallelism 1 \
+  --cpu "$AIS_CPU" \
+  --memory "$AIS_MEMORY" \
   --max-retries 1 \
   --task-timeout 65m
 
@@ -119,6 +158,10 @@ gcloud run jobs deploy "$RECON_JOB_NAME" \
   --command python \
   --args=-m,collector.shipping_reconcile_worker \
   --set-env-vars "$RECON_ENV" \
+  --tasks 1 \
+  --parallelism 1 \
+  --cpu "$RECON_CPU" \
+  --memory "$RECON_MEMORY" \
   --max-retries 1 \
   --task-timeout 10m
 
@@ -132,8 +175,8 @@ Collector: ${COLLECTOR_SERVICE_ACCOUNT}
 AIS job: ${AIS_JOB_NAME} (${CAPTURE_SECONDS}s por execução)
 Reconciliation job: ${RECON_JOB_NAME}
 Dataset: ${PROJECT_ID}.${DATASET}
-AOIs: ${AIS_BOUNDING_BOXES_JSON}
-Geofences operacionais: ${AIS_PORT_ZONES_JSON}
+AOIs: 5 validados estruturalmente
+Geofences operacionais habilitadas: $([[ "$AIS_PORT_ZONES_JSON" == "[]" ]] && echo nao || echo sim)
 
 O agendamento é externo ao deploy. Durante o fechamento da Maritime V1, GitHub Actions dispara ${AIS_JOB_NAME} a cada hora.
 EOF

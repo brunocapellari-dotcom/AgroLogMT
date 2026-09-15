@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agrolog.local/contracts/source_promotion_gate.v1.schema.json",
+  "title": "AgroLog Source Promotion Gate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "source_id", "target_state", "checks"],
+  "properties": {
+    "version": {"const": "1.0.0"},
+    "source_id": {"type": "string", "minLength": 3},
+    "target_state": {"enum": ["GATED", "SHADOW", "PRODUCTION"]},
+    "evaluated_at": {"type": ["string", "null"], "format": "date-time"},
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source", "collector", "storage", "normalization", "validation",
+        "analysis", "knowledge", "report_or_alert", "tests", "freshness",
+        "security", "lineage", "observability", "backup_restore"
+      ],
+      "properties": {
+        "source": {"$ref": "#/$defs/check"},
+        "collector": {"$ref": "#/$defs/check"},
+        "storage": {"$ref": "#/$defs/check"},
+        "normalization": {"$ref": "#/$defs/check"},
+        "validation": {"$ref": "#/$defs/check"},
+        "analysis": {"$ref": "#/$defs/check"},
+        "knowledge": {"$ref": "#/$defs/check"},
+        "report_or_alert": {"$ref": "#/$defs/check"},
+        "tests": {"$ref": "#/$defs/check"},
+        "freshness": {"$ref": "#/$defs/check"},
+        "security": {"$ref": "#/$defs/check"},
+        "lineage": {"$ref": "#/$defs/check"},
+        "observability": {"$ref": "#/$defs/check"},
+        "backup_restore": {"$ref": "#/$defs/check"}
+      }
+    },
+    "notes": {"type": "string"}
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "evidence"],
+      "properties": {
+        "status": {"enum": ["PASS", "FAIL", "MISSING", "NOT_APPLICABLE"]},
+        "evidence": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "rationale": {"type": "string"}
+      }
+    }
+  }
+}

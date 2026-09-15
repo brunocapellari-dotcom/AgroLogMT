@@ -4,10 +4,16 @@ from dataclasses import dataclass
 from typing import Callable
 
 from .adapters import Adapter, get_adapter
+from .input_security import (
+    DEFAULT_MAX_PAYLOAD_BYTES,
+    enforce_payload_size,
+    redact_sensitive_text,
+    validate_zip_bytes,
+)
 from .models import RunManifest, SourceSpec, utc_now_iso
 from .storage import LocalStore, sha256_bytes
 
-COLLECTOR_VERSION = "0.2.0"
+COLLECTOR_VERSION = "0.3.0"
 
 
 @dataclass
@@ -25,11 +31,7 @@ class CollectorEngine:
         return self._run_source(spec, capture_payload=False).manifest
 
     def run_source_capture(self, spec: SourceSpec) -> CollectionOutcome:
-        """Executa a mesma coleta preservando o payload em memoria para parsing imediato.
-
-        O RAW continua sendo persistido pelo store configurado. Esta variante evita
-        reler o artefato por caminho local e permite stores como Drive/GCS.
-        """
+        """Execute the same collection while preserving parse payload in memory."""
         return self._run_source(spec, capture_payload=True)
 
     def _run_source(self, spec: SourceSpec, *, capture_payload: bool) -> CollectionOutcome:
@@ -55,10 +57,19 @@ class CollectorEngine:
             if capture_payload:
                 payload = result.payload
 
-            # Some official sources expose a machine-native artifact (CSV/XLSX/etc.)
-            # plus a normalized parse payload. Provenance, hashing and deduplication
-            # must follow the exact source bytes, not the derived parse envelope.
+            # Some sources expose machine-native bytes plus a derived parse payload.
+            # Provenance, hashing and input-security gates follow source bytes.
             raw_payload = result.raw_payload if result.raw_payload is not None else result.payload
+            max_payload_bytes = int(spec.options.get("max_payload_bytes", DEFAULT_MAX_PAYLOAD_BYTES))
+            enforce_payload_size(raw_payload, max_bytes=max_payload_bytes)
+            if (spec.file_extension or "").lower() == "zip":
+                validate_zip_bytes(
+                    raw_payload,
+                    max_files=int(spec.options.get("max_archive_files", 500)),
+                    max_uncompressed_bytes=int(spec.options.get("max_archive_uncompressed_bytes", 500 * 1024 * 1024)),
+                    max_compression_ratio=float(spec.options.get("max_archive_compression_ratio", 100.0)),
+                )
+
             digest = sha256_bytes(raw_payload)
             state = self.store.load_state(spec.source_id)
             changed = state.get("last_sha256") != digest
@@ -85,9 +96,9 @@ class CollectorEngine:
             self.store.save_state(spec.source_id, state)
             manifest.status = "updated" if changed else "unchanged"
             return CollectionOutcome(manifest=manifest, payload=payload)
-        except Exception as exc:  # noqa: BLE001 - manifesto precisa registrar falha operacional
+        except Exception as exc:  # noqa: BLE001 - operational failures belong in the manifest
             manifest.status = "error"
-            manifest.error = f"{type(exc).__name__}: {exc}"
+            manifest.error = f"{type(exc).__name__}: {redact_sensitive_text(str(exc))}"
             return CollectionOutcome(manifest=manifest, payload=payload)
         finally:
             manifest.finished_at = utc_now_iso()

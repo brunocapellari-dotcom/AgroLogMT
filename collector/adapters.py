@@ -5,14 +5,10 @@ import os
 import re
 from dataclasses import dataclass
 from html import unescape
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Protocol
 from urllib.error import HTTPError
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
-
-from ckan_connector.client import CkanClient
 
 from .comexstat_api import ComexStatApiClient
 from .input_security import redact_known_secret, sanitize_url_query_parameter
@@ -279,43 +275,47 @@ class EnvQueryHttpAdapter:
 
 
 class CkanResourceAdapter:
-    """Resolve um recurso CKAN com allowlist e baixa pelo conector canônico endurecido."""
+    """Resolve um recurso CKAN e baixa somente host de recurso explicitamente autorizado."""
 
     def fetch(self, spec: SourceSpec) -> AcquisitionResult:
         base_url = str(spec.options.get("base_url", "")).rstrip("/")
-        dataset_id = str(spec.options.get("dataset_id", "")).strip()
-        resource_id = str(spec.options.get("resource_id", "")).strip()
-        resource_name = str(spec.options.get("resource_name", "")).strip()
+        dataset_id = spec.options.get("dataset_id")
+        resource_id = spec.options.get("resource_id")
+        resource_name = spec.options.get("resource_name")
         if not base_url or not dataset_id:
             raise ValueError("CKAN exige options.base_url e options.dataset_id")
-        if not resource_id and not resource_name:
-            raise ValueError("CKAN exige options.resource_id ou options.resource_name")
-        if spec.options.get("headers"):
-            raise ValueError("CKAN canônico não aceita headers arbitrários; use adapter autenticado explícito")
 
         base_allowed = _allowed_hosts(base_url, spec.options)
-        validate_https_url(base_url, allowed_hosts=base_allowed)
-        timeout = float(spec.options.get("timeout_seconds", 60))
+        api_url = f"{base_url}/api/3/action/package_show?{urlencode({'id': dataset_id})}"
+        timeout = int(spec.options.get("timeout_seconds", 60))
         max_bytes = _max_response_bytes(spec.options)
-        client = CkanClient(
-            base_url=base_url,
+        response = _http_get(
+            api_url,
+            headers={"User-Agent": "AgroLogMT/0.1"},
             timeout=timeout,
-            max_retries=int(spec.options.get("max_retries", 3)),
-            max_download_bytes=max_bytes,
+            allowed_hosts=base_allowed,
+            max_bytes=max_bytes,
         )
-        resources = client.list_resources(dataset_id)
+        body = json.loads(response.payload.decode("utf-8"))
+        if not body.get("success"):
+            raise RuntimeError(f"CKAN package_show falhou para {dataset_id}")
+
+        resources = body["result"].get("resources", [])
         selected = None
         for resource in resources:
-            if resource_id and resource.resource_id == resource_id:
+            if resource_id and resource.get("id") == resource_id:
                 selected = resource
                 break
-            if resource_name and resource.name.strip().casefold() == resource_name.casefold():
+            if resource_name and str(resource.get("name", "")).strip().lower() == str(resource_name).strip().lower():
                 selected = resource
                 break
         if selected is None:
             raise RuntimeError(f"Recurso CKAN nao encontrado: {resource_id or resource_name}")
 
-        resource_host = (urlsplit(validate_https_url(selected.url)).hostname or "").lower().rstrip(".")
+        resource_url = selected.get("url")
+        if not resource_url:
+            raise RuntimeError("Recurso CKAN sem URL")
+        resource_host = (urlsplit(validate_https_url(resource_url)).hostname or "").lower().rstrip(".")
         resource_allowed = set(base_allowed)
         configured = spec.options.get("resource_allowed_hosts", [])
         if isinstance(configured, str):
@@ -328,22 +328,15 @@ class CkanResourceAdapter:
                 f"CKAN publicou recurso em host não autorizado: {resource_host}; "
                 "adicione-o explicitamente a resource_allowed_hosts após revisão"
             )
-        validate_https_url(selected.url, allowed_hosts=resource_allowed)
-
-        with TemporaryDirectory(prefix="agrolog-ckan-") as temp_dir:
-            record = client.download_resource(selected, Path(temp_dir))
-            payload = record.dest_path.read_bytes()
-        if len(payload) != record.size_bytes:
-            raise RuntimeError(
-                f"CKAN tamanho inconsistente após download: esperado={record.size_bytes} lido={len(payload)}"
-            )
-        return AcquisitionResult(
-            payload=payload,
-            raw_payload=payload,
-            observed_url=record.url,
-            content_type=record.content_type or selected.format or None,
-            last_modified=selected.last_modified,
+        result = _http_get(
+            resource_url,
+            headers=spec.options.get("headers", {}),
+            timeout=timeout,
+            allowed_hosts=resource_allowed,
+            max_bytes=max_bytes,
         )
+        result.content_type = result.content_type or selected.get("mimetype") or selected.get("format")
+        return result
 
 
 class GovBrLatestAttachmentAdapter:

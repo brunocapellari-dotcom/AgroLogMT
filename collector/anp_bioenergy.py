@@ -7,10 +7,13 @@ from dataclasses import dataclass, asdict
 from typing import Any
 from urllib.request import Request, urlopen
 
+from .transport_security import validate_https_url
+
 ETHANOL_URL = os.environ.get(
     "ANP_ETHANOL_URL",
     "https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/arquivos/arquivos-producao-de-biocombustiveis/producao-etanol-anidro-hidratado-m3-2012-2026.csv/@@download/file/producao-etanol-m3-2012-2026.csv",
 )
+ANP_ALLOWED_HOSTS = {"www.gov.br"}
 
 MONTHS = {"JAN":1,"FEV":2,"MAR":3,"ABR":4,"MAI":5,"JUN":6,"JUL":7,"AGO":8,"SET":9,"OUT":10,"NOV":11,"DEZ":12}
 
@@ -57,8 +60,10 @@ def parse_ethanol_csv(payload: bytes | str) -> list[EthanolProduction]:
 
 
 def fetch_ethanol(*, url: str = ETHANOL_URL, timeout: int = 90) -> tuple[bytes, list[EthanolProduction]]:
+    validate_https_url(url, allowed_hosts=ANP_ALLOWED_HOSTS)
     req = Request(url, headers={"User-Agent": "AgroLogMT/0.1", "Accept": "text/csv,*/*"})
-    with urlopen(req, timeout=timeout) as response:
+    with urlopen(req, timeout=timeout) as response:  # nosec B310 - HTTPS and official host validated above.
+        validate_https_url(response.geturl(), allowed_hosts=ANP_ALLOWED_HOSTS)
         payload = response.read()
     return payload, parse_ethanol_csv(payload)
 

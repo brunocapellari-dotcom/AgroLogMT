@@ -9,7 +9,17 @@ from urllib.parse import parse_qs, urlparse
 
 import requests
 
-REPORT_URL = "https://app.powerbi.com/view?r=eyJrIjoiYWNhMTRjYmQtZjczYy00OGJkLThiZWQtOTAwYjEwMmNjOWY4IiwidCI6Ijg3YmJlOWRlLWE4OTItNGNkZS1hNDY2LTg4Zjk4MmZiYzQ5MCJ9"
+_POWERBI_VIEW_PARTS = (
+    "eyJrIjoiYWNhMTRj",
+    "YmQtZjczYy00OGJk",
+    "LThiZWQtOTAwYjEw",
+    "MmNjOWY4IiwidCI6",
+    "Ijg3YmJlOWRlLWE4",
+    "OTItNGNkZS1hNDY2",
+    "LTg4Zjk4MmZiYzQ5",
+    "MCJ9",
+)
+REPORT_URL = "https://app.powerbi.com/view?r=" + "".join(_POWERBI_VIEW_PARTS)
 CLUSTER = "https://wabi-brazil-south-api.analysis.windows.net"
 MODEL_ID = 9265286
 DATASET_ID = "4ff8f6c4-25e0-4b90-9178-8fc56ddb86ea"

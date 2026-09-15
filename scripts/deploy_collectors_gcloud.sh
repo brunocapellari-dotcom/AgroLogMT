@@ -8,7 +8,6 @@ OPS_DATASET="${OPS_DATASET:-agrolog_ops}"
 LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
 TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
 AGRO_DATASET="${AGRO_DATASET:-agro}"
-PECUARIA_DATASET="${PECUARIA_DATASET:-pecuaria}"
 BQ_LOCATION="${BQ_LOCATION:-southamerica-east1}"
 AR_REPOSITORY="${AR_REPOSITORY:-agrolog}"
 BUILD_SOURCE_BUCKET="${BUILD_SOURCE_BUCKET:-${PROJECT_ID}-agrolog-build-source}"
@@ -17,16 +16,11 @@ IMAGE_TAG="${IMAGE_TAG:-$(date +%Y%m%d%H%M%S)}"
 COLLECTOR_SA_NAME="${COLLECTOR_SA_NAME:-agrolog-collector}"
 BUILD_SA_NAME="${BUILD_SA_NAME:-agrolog-builder}"
 MANAGE_SCHEDULER="${MANAGE_SCHEDULER:-0}"
-DEPLOY_SCOPE="${DEPLOY_SCOPE:-all}"
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "ERRO: projeto GCP não configurado" >&2
   exit 2
 fi
-case "$DEPLOY_SCOPE" in
-  all|core|pecuaria) ;;
-  *) echo "ERRO: DEPLOY_SCOPE deve ser all, core ou pecuaria" >&2; exit 2 ;;
-esac
 if [[ "$MANAGE_SCHEDULER" != "0" ]]; then
   echo "ERRO: deploy recorrente não gerencia Cloud Scheduler/IAM. Use bootstrap administrativo separado." >&2
   exit 2
@@ -77,20 +71,9 @@ for sa in "$COLLECTOR_SERVICE_ACCOUNT" "$BUILD_SERVICE_ACCOUNT"; do
     exit 3
   }
 done
-
-if [[ "$DEPLOY_SCOPE" == "pecuaria" ]]; then
-  for dataset in "$OPS_DATASET" "$TRADE_DATASET" "$PECUARIA_DATASET"; do
-    require_dataset "$dataset"
-  done
-else
-  for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET"; do
-    require_dataset "$dataset"
-  done
-  if [[ "$DEPLOY_SCOPE" == "all" ]]; then
-    require_dataset "$PECUARIA_DATASET"
-  fi
-fi
-
+for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET"; do
+  require_dataset "$dataset"
+done
 gcloud artifacts repositories describe "$AR_REPOSITORY" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1 || {
   echo "ERRO: Artifact Registry ${AR_REPOSITORY} ausente. Execute o bootstrap administrativo." >&2
   exit 3
@@ -100,6 +83,7 @@ gcloud storage buckets describe "gs://${BUILD_SOURCE_BUCKET}" --project "$PROJEC
   exit 3
 }
 
+# Build com identidade própria e staging exclusivo. Este script não cria IAM/APIs/datasets.
 gcloud builds submit . \
   --project "$PROJECT_ID" \
   --service-account "$BUILD_SERVICE_ACCOUNT" \
@@ -107,42 +91,38 @@ gcloud builds submit . \
   --config collector/cloudbuild.yaml \
   --substitutions "_IMAGE=${IMAGE}"
 
-common_env="AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_OPS_DATASET=${OPS_DATASET},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_TRADE_DATASET=${TRADE_DATASET},AGROLOG_AGRO_DATASET=${AGRO_DATASET},AGROLOG_PECUARIA_DATASET=${PECUARIA_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION},AGROLOG_DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID}"
+common_env="AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_OPS_DATASET=${OPS_DATASET},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_TRADE_DATASET=${TRADE_DATASET},AGROLOG_AGRO_DATASET=${AGRO_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION},AGROLOG_DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID},AGROLOG_CONFIG=/app/collector/config/sources.pilot.json"
 
-if [[ "$DEPLOY_SCOPE" == "all" || "$DEPLOY_SCOPE" == "core" ]]; then
-  for group in radar dados conhecimento; do
-    job="agrolog-${group}"
-    gcloud run jobs deploy "$job" \
-      --image "$IMAGE" \
-      --region "$REGION" \
-      --project "$PROJECT_ID" \
-      --service-account "$COLLECTOR_SERVICE_ACCOUNT" \
-      --set-env-vars "${common_env},AGROLOG_CONFIG=/app/collector/config/sources.pilot.json,AGROLOG_GROUP=${group}" \
-      --max-retries 1 \
-      --task-timeout 30m
-  done
-fi
-
-if [[ "$DEPLOY_SCOPE" == "all" || "$DEPLOY_SCOPE" == "pecuaria" ]]; then
-  gcloud run jobs deploy "agrolog-pecuaria" \
+for group in radar dados conhecimento; do
+  job="agrolog-${group}"
+  gcloud run jobs deploy "$job" \
     --image "$IMAGE" \
     --region "$REGION" \
     --project "$PROJECT_ID" \
     --service-account "$COLLECTOR_SERVICE_ACCOUNT" \
-    --set-env-vars "${common_env},AGROLOG_CONFIG=/app/collector/config/sources.pecuaria.json,AGROLOG_GROUP=pecuaria" \
-    --remove-env-vars "AGROLOG_SOURCE_ID" \
+    --set-env-vars "${common_env},AGROLOG_GROUP=${group}" \
     --max-retries 1 \
     --task-timeout 30m
-fi
+done
 
 cat <<EOF
 Collector atualizado sem mutação de IAM/APIs/datasets.
 Projeto: ${PROJECT_ID}
 Região: ${REGION}
-Escopo: ${DEPLOY_SCOPE}
 Imagem: ${IMAGE}
 Builder: ${BUILD_SERVICE_ACCOUNT}
 Build staging: gs://${BUILD_SOURCE_BUCKET}
 Collector: ${COLLECTOR_SERVICE_ACCOUNT}
+Datasets: ${OPS_DATASET}, ${LOGISTICA_DATASET}, ${TRADE_DATASET}, ${AGRO_DATASET}
 Pasta RAW/Drive: ${DRIVE_FOLDER_ID}
+
+Gate externo do Drive:
+- ${COLLECTOR_SERVICE_ACCOUNT} precisa ser Editor da pasta RAW.
+
+Homologação controlada CONAB:
+gcloud run jobs execute agrolog-dados --region ${REGION} --project ${PROJECT_ID} --wait --update-env-vars "AGROLOG_SOURCE_ID=conab_armazens_cadastrados"
+python scripts/validate_conab_n6.py --project ${PROJECT_ID}
+
+Homologação controlada ComexStat:
+gcloud run jobs execute agrolog-dados --region ${REGION} --project ${PROJECT_ID} --wait --update-env-vars "AGROLOG_CONFIG=/app/collector/config/sources.p0.json,AGROLOG_SOURCE_ID=mdic_comexstat_soja_mt_export_api,AGROLOG_TRADE_DATASET=${TRADE_DATASET}"
 EOF

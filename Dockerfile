@@ -5,9 +5,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 COPY requirements-collector.txt /app/requirements-collector.txt
-RUN pip install --no-cache-dir -r /app/requirements-collector.txt
-COPY collector /app/collector
-COPY models /app/models
-COPY ckan_connector /app/ckan_connector
+RUN pip install --no-cache-dir --disable-pip-version-check -r /app/requirements-collector.txt \
+    && groupadd --system agrolog \
+    && useradd --system --gid agrolog --home-dir /nonexistent --shell /usr/sbin/nologin agrolog
+COPY --chown=agrolog:agrolog collector /app/collector
+COPY --chown=agrolog:agrolog models /app/models
 
+USER agrolog
 ENTRYPOINT ["python", "-m", "collector.cloud_runner"]
