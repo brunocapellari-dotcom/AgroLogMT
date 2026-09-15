@@ -10,6 +10,7 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from .comexstat_api import ComexStatApiClient
+from .input_security import redact_known_secret, sanitize_url_query_parameter
 from .models import SourceSpec
 
 
@@ -107,11 +108,15 @@ class EnvHeaderHttpAdapter:
                 "headers": headers,
             },
         )
-        return HttpAdapter().fetch(child_spec)
+        try:
+            return HttpAdapter().fetch(child_spec)
+        except Exception as exc:  # secret-bearing header may be echoed by lower layers
+            safe = redact_known_secret(str(exc), secret)
+            raise RuntimeError(f"HTTP autenticado por header falhou: {safe}") from None
 
 
 class EnvQueryHttpAdapter:
-    """HTTP com um parametro de query carregado do ambiente sem versionar o valor."""
+    """HTTP com um parametro de query carregado do ambiente sem versionar/logar o valor."""
 
     def fetch(self, spec: SourceSpec) -> AcquisitionResult:
         if not spec.url:
@@ -129,14 +134,14 @@ class EnvQueryHttpAdapter:
         query = parse_qsl(parts.query, keep_blank_values=True)
         query = [(key, item) for key, item in query if key != param_name]
         query.append((param_name, value))
-        url = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+        request_url = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
         child_spec = SourceSpec(
             source_id=spec.source_id,
             name=spec.name,
             group=spec.group,
             method="http",
             enabled=spec.enabled,
-            url=url,
+            url=request_url,
             expected_frequency=spec.expected_frequency,
             file_extension=spec.file_extension,
             evidence_class=spec.evidence_class,
@@ -147,7 +152,14 @@ class EnvQueryHttpAdapter:
                 "headers": spec.options.get("headers", {}),
             },
         )
-        return HttpAdapter().fetch(child_spec)
+        try:
+            result = HttpAdapter().fetch(child_spec)
+        except Exception as exc:
+            safe = redact_known_secret(str(exc), value)
+            raise RuntimeError(f"HTTP autenticado por query falhou: {safe}") from None
+
+        result.observed_url = sanitize_url_query_parameter(result.observed_url, param_name)
+        return result
 
 
 class CkanResourceAdapter:
