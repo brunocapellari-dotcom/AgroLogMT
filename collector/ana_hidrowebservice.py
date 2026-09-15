@@ -172,7 +172,8 @@ class AnaHidroWebServiceClient:
         request_headers.update(headers or {})
         req = Request(url, headers=request_headers, method="GET")
         with urlopen(req, timeout=self.timeout) as response:  # nosec B310 - HTTPS and ANA host validated above.
-            validate_https_url(response.geturl(), allowed_hosts=ANA_ALLOWED_HOSTS)
+            observed_url = response.geturl() if hasattr(response, "geturl") else url
+            validate_https_url(observed_url, allowed_hosts=ANA_ALLOWED_HOSTS)
             return json.loads(response.read().decode("utf-8"))
 
     @staticmethod
