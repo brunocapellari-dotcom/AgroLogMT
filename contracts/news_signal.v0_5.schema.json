@@ -5,27 +5,11 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version",
-    "signal_id",
-    "idempotency_key",
-    "source_id",
-    "dataset_id",
-    "variable",
-    "scope",
-    "signal_class",
-    "evidence_class",
-    "data_referencia",
-    "data_coleta",
-    "rule_version",
-    "baseline_version",
-    "evidence_genealogy_key",
-    "transformation_type",
-    "materiality_score",
-    "upstream_evidence_ids",
-    "upstream_dataset_ids",
-    "transformation_chain",
-    "parent_signal_ids",
-    "extra"
+    "schema_version", "signal_id", "idempotency_key", "source_id", "dataset_id",
+    "variable", "scope", "signal_class", "evidence_class", "data_referencia",
+    "data_coleta", "rule_version", "baseline_version", "evidence_genealogy_key",
+    "transformation_type", "materiality_score", "upstream_evidence_ids",
+    "upstream_dataset_ids", "transformation_chain", "parent_signal_ids", "extra"
   ],
   "properties": {
     "schema_version": {"const": "0.5"},
@@ -35,11 +19,25 @@
     "dataset_id": {"type": "string", "minLength": 1},
     "variable": {"type": "string", "minLength": 1},
     "scope": {"type": "string", "minLength": 1},
-    "signal_class": {
-      "enum": ["RELEASE_CHANGE", "LEVEL_BREAK", "EXTREME", "MOMENTUM", "REVERSAL", "REGIME_SHIFT", "CROSS_SOURCE_CONFIRMATION", "DATA_RELATION"]
-    },
-    "evidence_class": {
-      "enum": ["observado", "inferido", "estimado", "projetado", "sinal_qualitativo", "negociado_autorizado"]
+    "event_scope": {"enum": ["LOCAL", "ESTADUAL", "NACIONAL", "GLOBAL", null]},
+    "commodities": {"type":"array","items":{"enum":["soybean","corn","cotton","sugar","beef","fertilizers","diesel","freight","other"]},"uniqueItems":true},
+    "signal_class": {"enum": ["RELEASE_CHANGE", "LEVEL_BREAK", "EXTREME", "MOMENTUM", "REVERSAL", "REGIME_SHIFT", "CROSS_SOURCE_CONFIRMATION", "DATA_RELATION"]},
+    "evidence_class": {"enum": ["observado", "inferido", "estimado", "projetado", "sinal_qualitativo", "negociado_autorizado"]},
+    "causal_class": {"enum": ["CORRELATION", "CAUSAL_HYPOTHESIS", "SUPPORTED_CAUSALITY", null]},
+    "causal_chain": {
+      "type": "array",
+      "items": {
+        "type":"object",
+        "additionalProperties":false,
+        "required":["stage","claim","confidence","evidence_ids"],
+        "properties": {
+          "stage":{"enum":["EVENT","MECHANISM","COMMODITY","WORLD","BRAZIL","MATO_GROSSO"]},
+          "claim":{"type":"string","minLength":1},
+          "confidence":{"type":"number","minimum":0,"maximum":1},
+          "evidence_ids":{"type":"array","items":{"type":"string"},"uniqueItems":true},
+          "alternative_explanations":{"type":"array","items":{"type":"string"}}
+        }
+      }
     },
     "data_referencia": {"type": "string", "minLength": 1},
     "data_coleta": {"type": "string", "minLength": 1},
@@ -50,9 +48,7 @@
     "upstream_evidence_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
     "upstream_dataset_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
     "transformation_chain": {"type": "array", "items": {"type": "string"}},
-    "transformation_type": {
-      "enum": ["RAW_OBSERVATION", "AGGREGATION", "DIFFERENCE", "RATIO", "PERCENTILE", "ZSCORE", "FORECAST", "OTHER"]
-    },
+    "transformation_type": {"enum": ["RAW_OBSERVATION", "AGGREGATION", "DIFFERENCE", "RATIO", "PERCENTILE", "ZSCORE", "FORECAST", "OTHER"]},
     "parent_signal_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
     "primary_observation_hash": {"type": ["string", "null"]},
     "rule_version": {"type": "string", "minLength": 1},
