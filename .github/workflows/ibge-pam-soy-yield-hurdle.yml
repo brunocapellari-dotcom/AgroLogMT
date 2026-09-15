@@ -1,13 +1,7 @@
-name: ibge-pam-soy-yield-hurdle
+name: ibge-pam-soy-yield-hurdle-diagnostic
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "scripts/build_ibge_pam_soy_yield_hurdle.py"
-      - "tests/test_ibge_pam_soy_yield_hurdle.py"
-      - ".github/workflows/ibge-pam-soy-yield-hurdle.yml"
-      - "models/backtest.py"
 
 permissions:
   contents: read
@@ -28,11 +22,7 @@ jobs:
       - name: Build live IBGE PAM Soja MT yield hurdle
         env:
           PYTHONPATH: ${{ github.workspace }}
-        run: |
-          python scripts/build_ibge_pam_soy_yield_hurdle.py \
-            --label-lag-years 2 \
-            --min-train 5 \
-            --out ibge_pam_soy_yield_hurdle.json
+        run: python scripts/build_ibge_pam_soy_yield_hurdle.py --label-lag-years 2 --min-train 5 --out ibge_pam_soy_yield_hurdle.json
       - name: Upload hurdle artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
