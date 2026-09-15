@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 from .cli import load_sources
 from .models import SourceSpec
-from .source_registry import CollectionDecision, DataSourceRegistry, RegistryEntry
+from .source_registry import DataSourceRegistry, RegistryEntry
 
 
 # Temporary bridge only for existing specialized pipelines whose registry source_id
@@ -141,6 +141,38 @@ class RegistryScheduler:
         elif "last_scheduler_error" in state:
             state.pop("last_scheduler_error", None)
         self.store.save_state(scheduled.execution_source_id, state)
+
+    def operational_view(
+        self,
+        scheduled: ScheduledSource,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Return registry metadata overlaid with the live state used by scheduling."""
+        state = (
+            self.store.load_state(scheduled.execution_source_id)
+            if scheduled.execution_source_id
+            else {}
+        )
+        return self.registry.operational_view(
+            scheduled.registry_source_id,
+            state=state,
+            now=now,
+        )
+
+    def alerting_view(
+        self,
+        *,
+        domain: str | None = None,
+        now: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return only sources whose health state requires operational attention."""
+        results: list[dict[str, Any]] = []
+        for item in self.plan(domain=domain, now=now):
+            view = self.operational_view(item, now=now)
+            if bool(view["health"]["alert"]):
+                results.append(view)
+        return results
 
     def fallback_candidates(self, scheduled: ScheduledSource) -> list[ScheduledSource]:
         """Return fallback collection plans without substituting their data.
