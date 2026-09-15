@@ -1,19 +1,42 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
+
+_IDENTIFIER = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _safe_identifier(value: str, label: str) -> str:
+    if not _IDENTIFIER.fullmatch(value):
+        raise ValueError(f"{label} inválido: {value!r}")
+    return value
+
+
+def _expected_group_records(rows: list[dict[str, Any]], snapshot_id: str) -> tuple[int, int]:
+    if not rows:
+        return 0, 0
+    record_ids: set[str] = set()
+    for index, row in enumerate(rows, start=1):
+        if row.get("snapshot_id") != snapshot_id:
+            raise ValueError(f"IMEA snapshot_id divergente na linha {index}")
+        record_id = row.get("record_id")
+        if not isinstance(record_id, str) or not record_id:
+            raise ValueError(f"IMEA record_id inválido na linha {index}")
+        record_ids.add(record_id)
+    return len(record_ids), len(rows) - len(record_ids)
 
 
 class ImeaOperationalBigQueryLoader:
     def __init__(self, *, project_id: str, location: str = "southamerica-east1", client: Any | None = None) -> None:
-        self.project_id = project_id
+        self.project_id = _safe_identifier(project_id, "project_id")
         self.location = location
         from google.cloud import bigquery
         self.bq = bigquery
-        self.client = client or bigquery.Client(project=project_id, location=location)
-        self.indicators = f"{project_id}.mercado.imea_indicadores_operacionais"
-        self.freight = f"{project_id}.logistica.imea_frete_referencia"
-        self.progress = f"{project_id}.agro.imea_progresso_cultura"
+        self.client = client or bigquery.Client(project=self.project_id, location=location)
+        self.indicators = f"{self.project_id}.mercado.imea_indicadores_operacionais"
+        self.freight = f"{self.project_id}.logistica.imea_frete_referencia"
+        self.progress = f"{self.project_id}.agro.imea_progresso_cultura"
 
     def ensure_objects(self) -> None:
         for dataset in ("mercado", "logistica", "agro"):
@@ -74,12 +97,29 @@ CREATE TABLE IF NOT EXISTS `{self.progress}` (
         rows = list(self.client.query(f"SELECT COUNT(*) n FROM `{table}` WHERE snapshot_id=@snapshot", job_config=cfg).result())
         return int(rows[0]["n"]) if rows else 0
 
+    @staticmethod
+    def _assert_group_count(expected: int, actual: int, *, table: str, snapshot_id: str) -> None:
+        if actual != expected:
+            raise RuntimeError(
+                "Tie-out IMEA falhou: "
+                f"table={table} snapshot={snapshot_id} esperado={expected} persistido={actual}"
+            )
+
     def _load_group(self, table: str, kind: str, rows: list[dict[str, Any]], snapshot_id: str) -> dict[str, Any]:
         if not rows:
-            return {"status": "empty", "records_inserted": 0}
+            return {"status": "empty", "records_inserted": 0, "records_expected": 0, "records_input": 0}
+        expected, duplicates_removed = _expected_group_records(rows, snapshot_id)
         existing = self._existing(table, snapshot_id)
         if existing:
-            return {"status": "already_loaded", "records_inserted": 0, "records_existing": existing}
+            self._assert_group_count(expected, existing, table=table, snapshot_id=snapshot_id)
+            return {
+                "status": "already_loaded",
+                "records_inserted": 0,
+                "records_existing": existing,
+                "records_expected": expected,
+                "records_input": len(rows),
+                "duplicates_removed": duplicates_removed,
+            }
         started = datetime.now(timezone.utc)
         stage = f"{table.rsplit('.',1)[0]}._stg_imea_{kind}_{snapshot_id[:10]}_{int(started.timestamp())}"
         obj = self.bq.Table(stage, schema=self._schema(kind)); obj.expires = started + timedelta(hours=2)
@@ -87,10 +127,29 @@ CREATE TABLE IF NOT EXISTS `{self.progress}` (
         try:
             cfg = self.bq.LoadJobConfig(schema=self._schema(kind), write_disposition="WRITE_TRUNCATE")
             self.client.load_table_from_json(rows, stage, job_config=cfg).result()
-            self.client.query(f"MERGE `{table}` T USING `{stage}` S ON T.snapshot_id=S.snapshot_id AND T.record_id=S.record_id WHEN NOT MATCHED THEN INSERT ROW").result()
+            self.client.query(f"""
+MERGE `{table}` T
+USING (
+  SELECT * EXCEPT(_rn) FROM (
+    SELECT S.*, ROW_NUMBER() OVER(PARTITION BY snapshot_id, record_id ORDER BY record_id) AS _rn
+    FROM `{stage}` S
+  ) WHERE _rn=1
+) S
+ON T.snapshot_id=S.snapshot_id AND T.record_id=S.record_id
+WHEN NOT MATCHED THEN INSERT ROW
+""").result()
         finally:
             self.client.delete_table(stage, not_found_ok=True)
-        return {"status": "loaded", "records_inserted": self._existing(table, snapshot_id)}
+        inserted = self._existing(table, snapshot_id)
+        self._assert_group_count(expected, inserted, table=table, snapshot_id=snapshot_id)
+        return {
+            "status": "loaded",
+            "records_inserted": inserted,
+            "records_existing": 0,
+            "records_expected": expected,
+            "records_input": len(rows),
+            "duplicates_removed": duplicates_removed,
+        }
 
     def load(self, parsed: dict[str, Any], *, snapshot_id: str, data_coleta: str, source_hash: str, raw_artifact_ref: str | None) -> dict[str, Any]:
         self.ensure_objects()

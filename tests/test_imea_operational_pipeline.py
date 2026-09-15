@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from collector.imea_operational_bigquery import ImeaOperationalBigQueryLoader, _expected_group_records
 from collector.imea_operational_pipeline import resolve_file_id, run_imea_operational_pipeline
 from collector.models import SourceSpec
 
@@ -60,6 +61,31 @@ class ImeaOperationalPipelineTests(unittest.TestCase):
         self.assertFalse(source["enabled"])
         self.assertEqual(source["options"]["file_id_env"], "AGROLOG_IMEA_FILE_ID")
         self.assertNotIn("file_id", source["options"])
+
+    def test_expected_group_records_counts_duplicate_record_ids(self) -> None:
+        rows = [
+            {"snapshot_id": "snap", "record_id": "a"},
+            {"snapshot_id": "snap", "record_id": "a"},
+            {"snapshot_id": "snap", "record_id": "b"},
+        ]
+        expected, duplicates = _expected_group_records(rows, "snap")
+        self.assertEqual(expected, 2)
+        self.assertEqual(duplicates, 1)
+
+    def test_expected_group_records_rejects_mixed_snapshot(self) -> None:
+        with self.assertRaises(ValueError):
+            _expected_group_records(
+                [
+                    {"snapshot_id": "snap", "record_id": "a"},
+                    {"snapshot_id": "other", "record_id": "b"},
+                ],
+                "snap",
+            )
+
+    def test_group_tie_out_fails_closed(self) -> None:
+        ImeaOperationalBigQueryLoader._assert_group_count(3, 3, table="x.mercado.imea", snapshot_id="snap")
+        with self.assertRaises(RuntimeError):
+            ImeaOperationalBigQueryLoader._assert_group_count(3, 2, table="x.mercado.imea", snapshot_id="snap")
 
 
 if __name__ == "__main__": unittest.main()
