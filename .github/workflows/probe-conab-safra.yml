@@ -1,15 +1,7 @@
-name: probe-conab-safra
+name: probe-conab-safra-diagnostic
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "collector/xlsx_reader.py"
-      - "collector/conab_safra.py"
-      - "collector/adapters.py"
-      - "collector/config/sources.pilot.json"
-      - "scripts/probe_conab_safra_live.py"
-      - ".github/workflows/probe-conab-safra.yml"
 
 permissions:
   contents: read
