@@ -10,6 +10,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Probe live IBGE SIDRA PPM cattle herd for Mato Grosso municipalities.")
     parser.add_argument("--period", default="2024", help="PPM year or 'all'.")
     parser.add_argument("--min-municipalities", type=int, default=100)
+    parser.add_argument("--min-year", type=int)
+    parser.add_argument("--max-year", type=int)
     args = parser.parse_args()
 
     payload, source_url = fetch_payload(period=args.period)
@@ -25,6 +27,14 @@ def main() -> int:
         observed_years = {int(row["year"]) for row in rows}
         if observed_years != {expected_year}:
             raise RuntimeError(f"PPM live probe year mismatch: {sorted(observed_years)}")
+    if args.min_year is not None and int(stats["year_min"]) > args.min_year:
+        raise RuntimeError(
+            f"PPM live probe starts at {stats['year_min']}; expected coverage from {args.min_year} or earlier"
+        )
+    if args.max_year is not None and int(stats["year_max"]) < args.max_year:
+        raise RuntimeError(
+            f"PPM live probe ends at {stats['year_max']}; expected coverage through {args.max_year} or later"
+        )
 
     print(
         json.dumps(
