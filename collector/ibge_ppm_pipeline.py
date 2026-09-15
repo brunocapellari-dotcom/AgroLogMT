@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from .cloud_store import DriveBigQueryStore
@@ -35,7 +36,7 @@ def run_ibge_ppm_pipeline(spec: SourceSpec, store: DriveBigQueryStore) -> tuple[
 
         loader = IbgePpmBigQueryLoader(
             project_id=store.project_id,
-            dataset_id="pecuaria",
+            dataset_id=os.environ.get("AGROLOG_PECUARIA_DATASET", "pecuaria"),
             ops_dataset_id=store.dataset_id,
             location=store.bq_location,
             client=store.bq,
