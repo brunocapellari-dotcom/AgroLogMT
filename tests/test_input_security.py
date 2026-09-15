@@ -9,7 +9,9 @@ from collector.input_security import (
     assess_untrusted_text,
     enforce_payload_size,
     neutralize_spreadsheet_cell,
+    redact_known_secret,
     redact_sensitive_text,
+    sanitize_url_query_parameter,
     untrusted_evidence_envelope,
     validate_source_url,
     validate_zip_bytes,
@@ -69,6 +71,23 @@ class InputSecurityTests(unittest.TestCase):
         self.assertNotIn("topsecret", redacted)
         self.assertNotIn("12345", redacted)
         self.assertIn("[REDACTED]", redacted)
+
+    def test_exact_runtime_secret_redaction_handles_generic_query_key(self) -> None:
+        secret = "nass-secret-value"
+        message = f"GET https://quickstats.nass.usda.gov/api/api_GET/?key={secret}&format=JSON failed"
+        redacted = redact_known_secret(message, secret)
+        self.assertNotIn(secret, redacted)
+        self.assertIn("[REDACTED]", redacted)
+
+    def test_query_parameter_is_masked_in_provenance_url(self) -> None:
+        safe = sanitize_url_query_parameter(
+            "https://example.org/data?commodity=CORN&key=supersecret&format=JSON",
+            "key",
+        )
+        self.assertNotIn("supersecret", safe)
+        self.assertIn("commodity=CORN", safe)
+        self.assertIn("format=JSON", safe)
+        self.assertIn("key=%5BREDACTED%5D", safe)
 
 
 if __name__ == "__main__":
