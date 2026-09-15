@@ -1,0 +1,38 @@
+name: comex-beef-ncm-history-probe
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "contracts/product_trade_codes.v1.json"
+      - "models/pecuaria_trade.py"
+      - "scripts/probe_comex_beef_ncm_history.py"
+      - "tests/test_product_trade_codes_contract.py"
+      - "tests/test_pecuaria_trade.py"
+      - ".github/workflows/comex-beef-ncm-history-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime dependency
+        run: python -m pip install "requests>=2.31,<3"
+      - name: Probe historical NCM codes used by Comex Stat
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/probe_comex_beef_ncm_history.py --year 1997 --year 2001 --year 2002 --year 2003 --year 2004 --out comex_beef_ncm_history_probe.json
+      - name: Upload probe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: comex-beef-ncm-history-${{ github.run_id }}
+          path: comex_beef_ncm_history_probe.json
+          if-no-files-found: error
+          retention-days: 30
