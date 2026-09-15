@@ -1,0 +1,36 @@
+name: ibge-slaughter-cattle-probe
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "collector/ibge_sidra.py"
+      - "collector/ibge_slaughter.py"
+      - "collector/ibge_slaughter_bigquery.py"
+      - "collector/ibge_slaughter_pipeline.py"
+      - "collector/config/sources.pecuaria.json"
+      - "scripts/probe_ibge_slaughter_cattle.py"
+      - "tests/test_ibge_slaughter_collector.py"
+      - "tests/test_ibge_slaughter_bigquery.py"
+      - ".github/workflows/ibge-slaughter-cattle-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run slaughter contract tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m unittest -v tests.test_ibge_slaughter_collector tests.test_ibge_slaughter_bigquery
+      - name: Probe published IBGE cattle slaughter quarter for Mato Grosso
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/probe_ibge_slaughter_cattle.py --period 202601
