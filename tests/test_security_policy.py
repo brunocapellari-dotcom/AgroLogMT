@@ -95,6 +95,31 @@ class SecurityPolicyTests(unittest.TestCase):
             text = path.read_text(encoding="utf-8")
             self.assertRegex(text, r"(?m)^permissions:\s*$", f"permissions explícitas ausentes em {path.name}")
 
+    def test_unit_gate_runs_on_every_pull_request_without_path_filter(self) -> None:
+        text = self.read(".github/workflows/unit-tests.yml")
+        trigger = text.split("permissions:", 1)[0]
+        self.assertIn("pull_request:", trigger)
+        self.assertNotIn("paths:", trigger)
+        self.assertIn("unittest:", text)
+
+    def test_github_hardening_script_enforces_main_ruleset(self) -> None:
+        text = self.read("scripts/harden_github_repository.sh")
+        for token in (
+            '"enforcement": "active"',
+            '"refs/heads/main"',
+            '"type": "deletion"',
+            '"type": "non_fast_forward"',
+            '"type": "pull_request"',
+            '"type": "required_status_checks"',
+            '"context": check',
+            '"strict_required_status_checks_policy": True',
+            '"required_review_thread_resolution": True',
+            '"bypass_actors": []',
+        ):
+            self.assertIn(token, text)
+        self.assertIn("gh api", text)
+        self.assertIn("PASS GitHub main hardening", text)
+
     def test_gitignore_and_dockerignore_cover_high_risk_secret_material(self) -> None:
         gitignore = self.read(".gitignore")
         dockerignore = self.read(".dockerignore")
