@@ -1,15 +1,6 @@
-name: probe-comexstat-api
+name: probe-comexstat-api-diagnostic
 
 on:
-  pull_request:
-    paths:
-      - "collector/comexstat_api.py"
-      - "collector/adapters.py"
-      - "collector/config/sources.p0.json"
-      - "scripts/probe_comex_api_live.py"
-      - "tests/test_comexstat_api.py"
-      - "tests/test_comexstat_api_adapter.py"
-      - ".github/workflows/probe-comexstat-api.yml"
   workflow_dispatch:
 
 permissions:
