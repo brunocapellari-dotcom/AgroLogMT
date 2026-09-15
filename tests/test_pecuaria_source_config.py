@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from collector.ibge_ppm import SOURCE_ID as PPM_SOURCE_ID
+from collector.ibge_slaughter import SOURCE_ID as SLAUGHTER_SOURCE_ID
 
 CONFIG = Path("collector/config/sources.pecuaria.json")
 EXPECTED_BEEF_NCM = {
@@ -25,6 +26,18 @@ class PecuariaSourceConfigTests(unittest.TestCase):
         self.assertEqual(source["method"], "http")
         self.assertIn("/t/3939/", source["url"])
         self.assertIn("/p/all/", source["url"])
+        self.assertEqual(source["evidence_class"], "observado")
+
+    def test_slaughter_source_locks_total_quarter_and_bovine_scope(self) -> None:
+        source = self.by_id[SLAUGHTER_SOURCE_ID]
+        self.assertTrue(source["enabled"])
+        self.assertEqual(source["method"], "http")
+        self.assertEqual(source["expected_frequency"], "quarterly")
+        self.assertIn("/t/1092/", source["url"])
+        self.assertIn("/v/284,285/", source["url"])
+        self.assertIn("/c12716/115236", source["url"])
+        self.assertIn("/c12529/118225", source["url"])
+        self.assertIn("/c18/992", source["url"])
         self.assertEqual(source["evidence_class"], "observado")
 
     def test_beef_current_source_matches_contract_scope(self) -> None:
