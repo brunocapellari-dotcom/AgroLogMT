@@ -12,9 +12,15 @@ on:
       - "collector/comexstat_pipeline.py"
       - "contracts/product_trade_codes.v1.json"
       - "models/pecuaria_trade.py"
+      - "gateway/pecuaria_queries.py"
+      - "gateway/pecuaria_routes.py"
+      - "gateway/production_app.py"
+      - "gateway/Dockerfile"
       - "scripts/deploy_collectors_gcloud.sh"
+      - "scripts/deploy_gateway_gcloud.sh"
       - "scripts/homologate_pecuaria_gcp.sh"
       - "scripts/validate_pecuaria_bigquery.py"
+      - "scripts/validate_pecuaria_gateway.py"
       - ".github/workflows/pecuaria-production.yml"
   schedule:
     - cron: "17 09 10 * *"
@@ -47,7 +53,7 @@ env:
 jobs:
   production:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -69,10 +75,12 @@ jobs:
         env:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
-          if ! bq show --project_id="$PROJECT_ID" "${PROJECT_ID}:${PECUARIA_DATASET}" >/dev/null 2>&1; then
-            echo "Dataset ${PECUARIA_DATASET} ausente. Execute scripts/bootstrap_pecuaria_gcp.sh uma vez com identidade administradora." >&2
-            exit 3
-          fi
+          for dataset in "$PECUARIA_DATASET" "$TRADE_DATASET"; do
+            if ! bq show --project_id="$PROJECT_ID" "${PROJECT_ID}:${dataset}" >/dev/null 2>&1; then
+              echo "Dataset ${dataset} ausente. Execute scripts/bootstrap_pecuaria_gcp.sh uma vez com identidade administradora." >&2
+              exit 3
+            fi
+          done
 
       - name: Deploy livestock collector
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy_homologate')
@@ -83,11 +91,27 @@ jobs:
           DEPLOY_SCOPE: pecuaria
         run: bash scripts/deploy_collectors_gcloud.sh
 
-      - name: Homologate full livestock pipeline
+      - name: Homologate full livestock data pipeline
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy_homologate')
         env:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: bash scripts/homologate_pecuaria_gcp.sh
+
+      - name: Deploy AgroLog Gateway with livestock routes
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy_homologate')
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          BUILD_SERVICE_ACCOUNT: ${{ secrets.GCP_BUILD_SERVICE_ACCOUNT }}
+          BUILD_SOURCE_BUCKET: ${{ secrets.GCP_BUILD_SOURCE_BUCKET }}
+          PECUARIA_DATASET: pecuaria
+          TRADE_DATASET: comercio_exterior
+        run: bash scripts/deploy_gateway_gcloud.sh
+
+      - name: Validate livestock Gateway end to end
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy_homologate')
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: python scripts/validate_pecuaria_gateway.py --project "$PROJECT_ID" --region "$REGION"
 
       - name: Run scheduled livestock collection
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'run')
@@ -103,3 +127,6 @@ jobs:
             --dataset "$PECUARIA_DATASET" \
             --ops-dataset "$OPS_DATASET" \
             --location "$BQ_LOCATION"
+          python scripts/validate_pecuaria_gateway.py \
+            --project "$PROJECT_ID" \
+            --region "$REGION"
