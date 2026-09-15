@@ -1,164 +1,274 @@
 # Segurança do AgroLog MT
 
-Este documento é a fonte canônica para segurança de informação, identidade, segredos, CI/CD, runtime e acesso a dados do AgroLog MT. Ele complementa `docs/ARCHITECTURE.md`, `docs/DATA_GOVERNANCE.md` e `docs/REPOSITORY_GOVERNANCE.md` sem substituir suas responsabilidades.
+Este documento é a fonte canônica para segurança de informação, identidade, segredos, CI/CD, runtime, acesso e ingestão de dados do AgroLog MT. Ele complementa `docs/ARCHITECTURE.md`, `docs/DATA_GOVERNANCE.md` e `docs/REPOSITORY_GOVERNANCE.md`.
 
 ## 1. Princípios obrigatórios
 
-1. **Least privilege**: cada identidade recebe somente as permissões necessárias ao seu runtime.
-2. **Fail closed**: ausência de autenticação, secret, hash, lineage ou gate obrigatório bloqueia a operação; não há fallback inseguro.
-3. **Sem credenciais de longa duração em código/CI**: GitHub Actions usa Workload Identity Federation/OIDC; chaves JSON de service account são proibidas.
-4. **Segredo com uma origem operacional**: credenciais de fonte pertencem ao Google Secret Manager quando consumidas pelo runtime GCP. Não duplicar em GitHub Secrets apenas para conveniência de teste.
-5. **Separação de deveres**: bootstrap administrativo pode criar IAM/APIs/datasets; deploy recorrente não amplia privilégio.
-6. **Imutabilidade e proveniência**: RAW relevante deve preservar conteúdo original, hash e metadados suficientes para auditoria.
-7. **Minimização**: coletar, persistir, logar e expor somente o necessário.
-8. **Supply chain controlada**: dependências e GitHub Actions devem ser reproduzíveis, revisáveis e com versões imutáveis quando tecnicamente possível.
-9. **Sem banco exposto diretamente**: BigQuery é acessado por identidades dedicadas; consumidores externos passam por interfaces controladas.
-10. **Mudança privilegiada é auditável**: IAM, secrets, WIF, exposição de serviço e políticas de retenção exigem evidência de mudança e revisão.
+1. **Least privilege** — cada identidade recebe somente permissões necessárias.
+2. **Fail closed** — ausência de autenticação, secret, hash, lineage ou gate obrigatório bloqueia a operação.
+3. **Zero long-lived credentials in code/CI** — GitHub Actions usa WIF/OIDC; chaves JSON de service account são proibidas.
+4. **Single operational secret origin** — credenciais de fonte ficam no Secret Manager quando consumidas pelo runtime GCP.
+5. **Segregation of duties** — bootstrap administrativo altera IAM/APIs/datasets; deploy recorrente não amplia privilégio.
+6. **Immutability/provenance** — RAW relevante preserva bytes originais, hash e metadados suficientes para auditoria.
+7. **Minimization** — coletar, persistir, logar e expor somente o necessário.
+8. **Controlled supply chain** — dependências/Actions reproduzíveis, revisáveis e imutáveis quando possível.
+9. **No direct database exposure** — consumidores usam identidades dedicadas e interfaces controladas.
+10. **Privileged changes are auditable** — IAM, secrets, WIF, exposição e retenção exigem evidência/readback.
+11. **External data is untrusted by default** — autenticidade da origem não implica integridade sem validação.
+12. **Recovery must be tested** — backup sem teste de restore não é controle operacional comprovado.
 
-## 2. Classificação de segurança da informação
+## 2. Classificação de segurança
 
-A classificação de segurança é independente da classe de evidência (`observado`, `estimado`, `projetado`, `inferido`, etc.).
+A classe de segurança é independente da classe epistemológica (`observado`, `estimado`, `projetado`, `inferido` etc.).
 
-- `PUBLIC`: publicação deliberadamente pública e sem restrição relevante.
-- `INTERNAL`: uso interno do AgroLog; divulgação externa não autorizada por padrão.
-- `CONFIDENTIAL`: informação comercial, operacional, contratual ou de parceiro cuja exposição possa causar dano.
-- `RESTRICTED`: credenciais, tokens, cookies, dados pessoais diretos, chaves, segredos, informação de cliente sensível ou material protegido por obrigação específica.
+- `PUBLIC`: publicação deliberadamente pública.
+- `INTERNAL`: uso interno; divulgação externa não autorizada por padrão.
+- `CONFIDENTIAL`: informação comercial/operacional/contratual cujo vazamento pode causar dano.
+- `RESTRICTED`: tokens, cookies, passwords, chaves, PII direta, segredo ou material protegido por obrigação específica.
 
-Regras:
-- `RESTRICTED` nunca entra no GitHub, logs, artifacts de CI, prompts reutilizáveis ou dashboards gerais.
-- dados pessoais devem ser minimizados/pseudonimizados quando identidade não for necessária;
-- a classe de segurança deve ser elevada quando houver dúvida razoável; redução exige revisão.
+`RESTRICTED` nunca entra no GitHub, logs, artifacts de CI, prompts reutilizáveis ou dashboards gerais. PII deve ser minimizada/pseudonimizada quando identidade não for necessária.
 
 ## 3. Identidades e IAM
 
 Identidades canônicas:
 
-- `agrolog-github-deployer`: CI/CD federado; deploy e impersonação estritamente necessárias.
-- `agrolog-builder`: Cloud Build; somente staging/build/log/artifact necessários.
-- `agrolog-collector`: runtime de coleta; escrita apenas nos datasets/RAW/secrets necessários.
-- `agrolog-gateway`: runtime de leitura; `jobUser` e `dataViewer` somente nos datasets expostos.
+- `agrolog-github-deployer` — CI/CD federado;
+- `agrolog-builder` — Cloud Build;
+- `agrolog-collector` — runtime de coleta;
+- `agrolog-gateway` — runtime de leitura.
 
 Regras:
-- não usar Compute Engine default service account para workloads do AgroLog;
-- não conceder `Owner`, `Editor` ou `bigquery.admin` ao runtime;
-- preferir grants no escopo de dataset/recurso;
-- remover bindings legados excessivos durante bootstrap controlado;
-- alterações de IAM ficam fora de deploy recorrente;
-- service account keys são proibidas salvo exceção formal, temporária e documentada.
 
-## 4. GitHub Actions e Workload Identity Federation
+- não usar default service account para workloads do AgroLog;
+- não conceder `Owner`, `Editor` ou `bigquery.admin` a runtimes;
+- preferir grants em dataset/recurso;
+- remover bindings legados excessivos;
+- IAM fica fora do deploy recorrente;
+- service-account key é proibida salvo exceção formal, temporária e auditada.
 
-- `permissions` deve ser explícito e mínimo em cada workflow.
-- `id-token: write` é permitido somente em workflows que autenticam no GCP.
-- ações de terceiros devem ser pinadas por SHA completo verificado; comentários podem registrar a tag humana correspondente.
-- workflows de `pull_request` não recebem secrets de produção.
-- WIF deve restringir GitHub por claims imutáveis/numeric IDs do repositório/proprietário e por `refs/heads/main` para credenciais de produção.
-- o provider existente deve ser reconciliado pelo bootstrap; não basta criar uma vez e deixar condição antiga.
-- nenhum workflow pode fazer fallback para chave JSON.
-- outputs/artifacts não devem conter tokens, cookies, senhas, headers de autorização ou payload `RESTRICTED`.
+## 4. GitHub Actions e WIF
+
+- `permissions` explícito e mínimo em todo workflow;
+- `id-token: write` somente em jobs que realmente autenticam no GCP;
+- Actions remotas pinadas por SHA completo;
+- PRs não recebem secrets de produção;
+- WIF restringe por `repository_id`, `repository_owner_id` e `refs/heads/main` para credencial de produção;
+- provider existente deve ser reconciliado, não apenas criado;
+- nenhum fallback para chave JSON;
+- artifact/output não contém token, cookie, password, authorization header ou payload `RESTRICTED`;
+- `main` deve exigir PR/checks, bloquear force-push/deleção e impedir bypass rotineiro.
 
 ## 5. Segredos
 
 Origem preferencial: Google Secret Manager.
 
-- credenciais ANA e futuras credenciais de fontes ficam no Secret Manager e são acessadas pela service account de runtime;
-- GitHub Secrets contém somente metadados/identidades necessários à federação/deploy quando inevitável, nunca duplicações desnecessárias de credenciais de fonte;
-- segredo nunca aparece em argumento de linha de comando que possa ser registrado quando houver alternativa por secret mount/env controlado;
-- código deve evitar `repr`, exception ou logging de objetos contendo secrets;
-- rotação é obrigatória após suspeita de exposição, mudança de operador ou incidente relevante;
-- versões antigas de secret devem ser desabilitadas/removidas após rotação validada, conforme política operacional.
+- ANA, AISStream e futuras credenciais operacionais ficam no Secret Manager;
+- GitHub Secrets guarda somente metadados inevitáveis de federação/deploy, não cópia conveniente de credencial de fonte;
+- secrets não são passados em command line quando houver secret mount/env seguro;
+- exception/log não deve serializar objeto contendo secret;
+- collectors aplicam redaction defensiva a mensagens de erro, sem substituir a proibição de logar segredo;
+- suspeita de exposição exige revogação/rotação e invalidação de versões antigas.
 
-## 6. Git e arquivos locais
+## 6. Git, arquivos locais e build context
 
-Proibido versionar:
+Proibido versionar ou copiar para imagem:
 
 - `.env*` reais;
 - `*.key`, `*.pem`, `*.p12`, `*.pfx`;
 - chaves SSH privadas;
-- arquivos de credencial Google/service account;
-- `.npmrc`, `.pypirc`, kubeconfigs ou configs contendo token;
-- RAW real, planilhas operacionais e artefatos de cliente;
-- dumps de banco e arquivos de estado Terraform com segredo.
+- credenciais Google/service account;
+- `.npmrc`, `.pypirc`, kubeconfig com token;
+- RAW real, planilhas operacionais/cliente;
+- dump de banco ou Terraform state com segredo.
 
-`.gitignore`, `.dockerignore` e CI devem atuar como camadas complementares, não como única proteção.
+`.gitignore`, `.dockerignore`, scanners e revisão são camadas complementares.
 
 ## 7. Containers e Cloud Run
 
-- containers de produção rodam como usuário não-root quando o runtime permitir;
-- imagem contém somente código/runtime necessários;
-- credenciais não são copiadas para a imagem;
-- Gateway deve permanecer autenticado por IAM; binding `allUsers` com `roles/run.invoker` é condição de falha;
-- o deploy deve verificar a postura de autenticação sem ampliar IAM;
+- containers rodam non-root quando suportado;
+- imagem contém somente runtime necessário;
+- credenciais nunca são copiadas para imagem;
+- Gateway exige IAM e não aceita `allUsers` ou `allAuthenticatedUsers` como invoker amplo;
 - cada serviço/job usa service account dedicada;
-- logs não devem registrar query strings sensíveis, headers de autorização ou corpo de requisição por padrão;
-- CORS deve permanecer restrito a origens explicitamente autorizadas em produção.
+- deploy verifica identidade e exposição após mudança;
+- logs não registram query sensível, auth header ou body por padrão;
+- CORS em produção usa allowlist explícita.
 
-## 8. BigQuery, RAW e Drive
+## 8. BigQuery, RAW, normalized e curated
+
+O fluxo padrão é:
+
+`UNTRUSTED EXTERNAL → RAW/QUARANTINE → VALIDATION/SANITIZATION → NORMALIZED → QUALITY GATE → CURATED`
+
+Regras:
 
 - BigQuery permanece fonte única de verdade analítica;
-- RAW deve manter hash e referência ao artefato original quando aplicável;
+- RAW preserva hash/referência ao original quando aplicável;
+- normalized preserva transformação e lineage;
+- curated recebe somente registros que passaram gate;
 - runtime escreve apenas nos datasets necessários;
-- Gateway tem leitura somente nos datasets explicitamente publicados;
-- dados `CONFIDENTIAL`/`RESTRICTED` exigem revisão de acesso antes da ingestão;
-- arquivos no Drive devem ser compartilhados somente com identidades necessárias e no menor nível de permissão suficiente;
-- não transformar programação, previsão ou ausência de fonte em fato observado.
+- Gateway lê somente datasets publicados;
+- `CONFIDENTIAL/RESTRICTED` exige revisão de acesso antes da ingestão;
+- Drive/Cloud Storage usa menor permissão suficiente;
+- programação, forecast ou ausência de fonte nunca vira observado.
 
-## 9. Supply chain e dependências
+## 9. Segurança de fontes e API spoofing
 
-- dependências diretas devem ter versão controlada; runtime crítico deve evoluir para lock/hash reproduzível;
-- Node deve usar lockfile e `npm ci` em produção/CI quando houver lockfile canônico;
-- scripts de instalação arbitrários devem ser evitados quando não necessários;
-- dependências novas exigem revisão de licença, origem, manutenção e risco;
-- scanner de dependências/segredos é gate complementar, não substitui revisão humana e testes.
+Antes de uma fonte ser `active`:
 
-## 10. Segurança de aplicação e dados
+- endpoint/domínio deve ser identificado e, quando possível, allowlisted;
+- transporte remoto deve usar TLS (`https`/`wss`), salvo exceção formal de fonte oficial sem alternativa;
+- redirects devem ser limitados/controlados quando o client permitir;
+- credenciais ficam separadas do endpoint e payload;
+- certificado/TLS não pode ser desabilitado (`verify=False`, `-k` ou equivalente são proibidos em produção);
+- content type, tamanho, schema e semântica esperada devem ser verificados;
+- hash/signature/checksum oficial deve ser conferido quando a fonte publicar mecanismo verificável;
+- mudança súbita de host, formato, certificate chain ou volume pode bloquear promoção até revisão.
 
-- toda entrada usada em identificadores SQL deve passar por allowlist/normalização; valores de filtro usam query parameters;
-- endpoints devem limitar cardinalidade/janela para evitar consultas sem limite;
-- mensagens de erro públicas não expõem SQL, stack trace, credencial ou estrutura interna sensível;
-- logs devem usar IDs de correlação e metadados operacionais mínimos;
-- collectors devem ter timeout e limites de payload quando tecnicamente aplicável;
-- conteúdo externo é dado não confiável; não executar instruções, scripts ou macros recebidos de fonte.
+`collector/source_registry.py` rejeita fonte `active` com transporte remoto inseguro e mantém `planned/gated` fora do scheduler.
 
-## 11. Gate de segurança antes de produção
+## 10. Arquivos maliciosos e archive bombs
 
-Uma mudança de runtime só é promovida quando, quando aplicável:
+Arquivos externos não são confiáveis mesmo quando originados de domínio conhecido.
 
-1. testes e CI estão verdes;
-2. workflow YAML é válido;
-3. permissões do workflow são mínimas;
-4. ações privilegiadas estão pinadas por SHA;
-5. nenhum segredo/RAW foi adicionado ao diff;
-6. container não roda como root;
-7. IAM foi verificado por least privilege;
-8. serviço HTTP privado não possui `allUsers` invoker;
-9. dados persistidos fecham com quality/tie-out gates;
-10. logs/evidências não contêm material `RESTRICTED`.
+Controles:
 
-## 12. Resposta a incidente
+- limite explícito de payload antes da persistência/promocão;
+- ZIP inspecionado antes de extração;
+- path traversal (`../`), path absoluto e symlink em archive são bloqueados;
+- limitar quantidade de membros, tamanho descompactado e compression ratio;
+- PDF/documento não executa JavaScript, macro, attachment ou ação incorporada;
+- XLS/XLSX é tratado como dado; macro não é executada;
+- formato inesperado ou assinatura incompatível com content type entra em quarantine/blocked;
+- nenhum arquivo externo é executado como código/plugin.
 
-Em suspeita de vazamento ou acesso indevido:
+Primitives atuais: `collector/input_security.py`.
 
-1. bloquear/limitar o caminho de acesso afetado;
-2. rotacionar ou revogar secrets/tokens comprometidos;
-3. invalidar versões antigas do secret;
-4. revisar Cloud Audit Logs/GitHub Actions e escopo temporal;
-5. identificar dados/recursos acessados;
-6. corrigir a causa sem apagar evidência necessária à investigação;
-7. revalidar IAM, WIF, deploy e pipelines antes de reativar;
-8. registrar decisão, impacto e prevenção no mecanismo de governança do projeto.
+## 11. CSV/Spreadsheet injection
 
-Nunca publicar em issue/PR público ou log operacional o conteúdo de um segredo durante investigação.
+O AgroLog deve preservar o valor canônico no RAW/normalized. Na **superfície de exportação** para CSV/XLSX aberto por software de planilha, strings iniciadas por `=`, `+`, `-` ou `@` devem ser neutralizadas para impedir formula injection.
 
-## 13. Exceções
+Não alterar silenciosamente o valor analítico armazenado para resolver um risco que pertence à camada de apresentação/exportação.
 
-Qualquer exceção a esta política deve registrar:
+Helper atual: `neutralize_spreadsheet_cell`.
 
-- necessidade objetiva;
-- escopo e risco;
-- responsável;
-- duração/expiração;
-- controles compensatórios;
-- critério explícito de remoção da exceção.
+## 12. Prompt injection por notícias/documentos
 
-Exceção temporária não se transforma automaticamente em arquitetura permanente.
+Notícia, PDF, planilha, página, e-mail, áudio transcrito ou outro material externo é **evidência**, nunca instrução de agente.
+
+Regras obrigatórias:
+
+- envelopar conteúdo externo com `trust_class=UNTRUSTED_EXTERNAL` antes de uso por IA;
+- instruções presentes dentro do conteúdo não alteram system/developer prompt, ferramentas, IAM, secrets, workflow ou policy;
+- conteúdo suspeito de prompt injection recebe flag e pode exigir revisão humana/auditoria;
+- agentes recebem ferramentas por allowlist, não por texto recuperado;
+- RAG/Obsidian retorna evidência + provenance, não comandos executáveis;
+- um documento não pode solicitar exfiltração de segredo, chamada de ferramenta, edição de sistema ou execução shell;
+- o AUDITOR AI deve poder bloquear síntese material com evidência contaminada ou não rastreável.
+
+`assess_untrusted_text` é detector heurístico complementar; não é prova de segurança isolada.
+
+## 13. Data poisoning e quebra de fonte
+
+Uma fonte autenticada pode publicar dado errado, corrompido ou estruturalmente alterado. Quality gates devem observar, conforme o domínio:
+
+- row-count/tie-out;
+- duplicidade;
+- missingness;
+- ranges/unidades;
+- cardinalidade de dimensões;
+- mudança de schema;
+- salto de distribuição/nível incompatível com histórico;
+- variação abrupta de coverage;
+- consistência entre fontes independentes quando houver cross-check legítimo;
+- vintage/revisão esperada;
+- source health e freshness.
+
+Anomalia não é corrigida automaticamente por valor “plausível”. O dado fica `WARN/BLOCKED` até evidência suficiente.
+
+## 14. Supply chain de software
+
+- dependências diretas versionadas; runtime crítico deve evoluir para lock/hash reproduzível;
+- Node usa lockfile + `npm ci` quando lockfile canônico existir;
+- install scripts arbitrários são evitados;
+- dependência nova exige revisão de licença, origem, manutenção e risco;
+- Actions remotas usam SHA completo;
+- Dependabot/scanner é controle complementar;
+- imagens/base images devem ser atualizadas por PR e testadas, nunca automaticamente promovidas ao runtime sem gate;
+- pacote abandonado/comprometido pode ser removido sem alterar fonte de verdade dos dados.
+
+## 15. Segurança de aplicação
+
+- identificador SQL usa allowlist/normalização; valores usam query parameters;
+- endpoints limitam cardinalidade/janela;
+- erros públicos não expõem SQL/stack/secret/estrutura sensível;
+- logs usam correlation/request IDs e metadados mínimos;
+- collectors têm timeout e limites de payload;
+- Gateway permanece read-only por padrão;
+- tool/action de agente deve ter input schema, escopo e autorização explícitos.
+
+## 16. Backup, restore e retenção
+
+Antes de declarar recuperação operacional:
+
+- BigQuery datasets/tabelas críticas devem ter estratégia documentada de recuperação/snapshot/export quando aplicável;
+- RAW imutável deve ter política de retenção adequada à licença e necessidade de auditoria;
+- configuração GitHub permanece versionada e protegida;
+- secrets têm rotação/recuperação administrativa sem armazenar plaintext fora do vault;
+- Obsidian/Segundo Cérebro deve possuir backup versionado/replicado compatível com sua classificação de segurança;
+- restore deve ser testado em ambiente isolado e registrar data, escopo, RPO/RTO observado e resultado;
+- backup que nunca foi restaurado permanece `UNVERIFIED`.
+
+## 17. Audit logs e observabilidade
+
+Registrar sem segredo:
+
+- run/source/status/freshness;
+- hash e lineage;
+- row counts/gates;
+- identidade de runtime/deploy;
+- mudança de IAM/WIF/secret policy via mecanismos cloud/GitHub;
+- request IDs do Gateway;
+- falhas de autenticação, schema drift e security gate;
+- decisão de promoção/bloqueio.
+
+Cloud Audit Logs/GitHub logs complementam os manifests e tabelas `agrolog_ops`; nenhum deles sozinho substitui lineage analítico.
+
+## 18. Gate antes de produção
+
+Uma mudança só é promovida quando aplicável:
+
+1. CI executou e está verde;
+2. workflow YAML válido e permissions mínimas;
+3. Actions pinadas por SHA;
+4. nenhum secret/RAW no diff;
+5. container non-root;
+6. IAM least privilege verificado;
+7. serviço privado sem invoker amplo;
+8. source transport/auth verificados;
+9. hostile-input gates aplicáveis passaram;
+10. persistência fecha schema/row-count/tie-out/freshness;
+11. logs/evidências não contêm `RESTRICTED`;
+12. backup/restore tem status explícito quando o módulo exigir recuperação operacional.
+
+Se o CI nem recebe runner, o estado é `CI_EXECUTION_BLOCKER`, não “teste verde” nem “falha funcional”.
+
+## 19. Resposta a incidente
+
+Em suspeita de vazamento, poisoning ou acesso indevido:
+
+1. bloquear/limitar caminho afetado;
+2. preservar evidência necessária à investigação;
+3. revogar/rotacionar secrets/tokens quando aplicável;
+4. revisar Cloud Audit Logs/GitHub/manifestos/source health;
+5. identificar dados/recursos e intervalo afetados;
+6. quarentenar vintages/curated contaminados sem apagar RAW necessário à auditoria;
+7. corrigir a causa;
+8. revalidar IAM/WIF/source/runtime/pipeline antes de reativar;
+9. registrar impacto, decisão e prevenção.
+
+Nunca publicar segredo em issue/PR/log durante investigação.
+
+## 20. Exceções
+
+Toda exceção registra necessidade, escopo, risco, responsável, expiração, controles compensatórios e critério de remoção. Exceção temporária nunca vira arquitetura permanente automaticamente.
