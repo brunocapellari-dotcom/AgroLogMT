@@ -8,6 +8,7 @@ OPS_DATASET="${OPS_DATASET:-agrolog_ops}"
 LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
 TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
 AGRO_DATASET="${AGRO_DATASET:-agro}"
+PECUARIA_DATASET="${PECUARIA_DATASET:-pecuaria}"
 MARITIME_DATASET="${MARITIME_DATASET:-agrolog_models}"
 MERCADO_DATASET="${MERCADO_DATASET:-mercado}"
 HIDRO_DATASET="${HIDRO_DATASET:-hidrologia}"
@@ -51,7 +52,7 @@ for api in \
   fi
 done
 
-for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"; do
+for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$PECUARIA_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"; do
   tmp="/tmp/agrolog-dataset-${dataset}.json"
   if bq show --project_id="$PROJECT_ID" --format=prettyjson "${PROJECT_ID}:${dataset}" >"$tmp" 2>/dev/null; then
     actual_location="$(python - "$tmp" <<'PY'
@@ -153,7 +154,7 @@ else
   fail "Build staging bucket ausente: gs://${BUILD_SOURCE_BUCKET}"
 fi
 
-for job in agrolog-dados agrolog-radar agrolog-conhecimento; do
+for job in agrolog-dados agrolog-radar agrolog-conhecimento agrolog-pecuaria; do
   if gcloud run jobs describe "$job" --region "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
     ok "Cloud Run Job existente: $job"
   else
