@@ -74,6 +74,7 @@ class RegistryScheduler:
         *,
         now: datetime | None = None,
         wake: bool = False,
+        allow_gated_canary: bool = False,
     ) -> ScheduledSource:
         entry = self.registry.get(registry_source_id)
         spec = self.resolve_spec(entry)
@@ -84,6 +85,30 @@ class RegistryScheduler:
             if decision.due:
                 return ScheduledSource(entry.source_id, None, False, "execution_not_implemented", None, entry.fallback)
             return ScheduledSource(entry.source_id, None, False, decision.reason, None, entry.fallback)
+
+        # GATED means the source cannot participate in normal scheduling. A bounded
+        # homologation canary may execute it only when the caller explicitly names
+        # the source and opts into this flag. The registry file remains GATED until
+        # independent promotion evidence is reviewed; canary execution never
+        # mutates or silently promotes source state.
+        if allow_gated_canary and entry.status == "gated":
+            if not spec.enabled:
+                return ScheduledSource(
+                    entry.source_id,
+                    spec.source_id,
+                    False,
+                    "execution_spec_disabled",
+                    spec,
+                    entry.fallback,
+                )
+            return ScheduledSource(
+                entry.source_id,
+                spec.source_id,
+                True,
+                "gated_canary",
+                spec,
+                entry.fallback,
+            )
 
         state = self.store.load_state(spec.source_id)
         decision = self.registry.decision(entry.source_id, state=state, now=now, wake=wake)
@@ -98,8 +123,11 @@ class RegistryScheduler:
         domain: str | None = None,
         now: datetime | None = None,
         wake_sources: set[str] | None = None,
+        allow_gated_canary: bool = False,
     ) -> list[ScheduledSource]:
         wake_sources = wake_sources or set()
+        if allow_gated_canary and not source_id:
+            raise ValueError("gated canary requires an explicit source_id")
         if source_id:
             ids = [source_id]
         else:
@@ -109,7 +137,12 @@ class RegistryScheduler:
                 if domain is None or entry.domain == domain
             ]
         return [
-            self.plan_source(item, now=now, wake=item in wake_sources)
+            self.plan_source(
+                item,
+                now=now,
+                wake=item in wake_sources,
+                allow_gated_canary=allow_gated_canary,
+            )
             for item in ids
         ]
 
