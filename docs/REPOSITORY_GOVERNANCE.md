@@ -7,6 +7,7 @@ Este documento é a fonte canônica para organização, criação, alteração e
 - ChatGPT/OpenAI atua como mantenedor principal da estrutura do repositório e responsável por criar, consolidar, revisar e organizar os arquivos do projeto.
 - Claude/Claude Code consome o repositório, analisa, testa, revisa e pode propor alterações, mas não deve criar uma segunda fonte de verdade concorrente para a mesma função.
 - BigQuery continua sendo a fonte única de verdade analítica dos dados operacionais e históricos. GitHub é a fonte oficial de código, configuração, SQL, documentação e contratos do projeto.
+- `docs/SECURITY.md` é a fonte canônica para segurança de informação, identidade, segredos, CI/CD, runtime e acesso a dados.
 
 ## 2. Regra de não duplicação
 
@@ -53,6 +54,7 @@ Não manter duas implementações ativas para a mesma função sem motivo técni
 - `README.md`: visão geral, arquitetura resumida e prioridade atual.
 - `docs/ARCHITECTURE.md`: arquitetura técnica canônica.
 - `docs/DATA_GOVERNANCE.md`: governança e classificação de dados/evidências.
+- `docs/SECURITY.md`: segurança de informação, identidades, segredos, CI/CD, runtime e acesso.
 - `docs/REPOSITORY_GOVERNANCE.md`: governança estrutural do GitHub e colaboração entre agentes.
 - `docs/BACKLOG.md`: prioridades executáveis e critérios de pronto.
 
@@ -61,11 +63,11 @@ Novos documentos devem complementar essas fontes, não reescrevê-las.
 ## 6. Fluxo obrigatório antes de qualquer mudança
 
 1. Ler a árvore relevante do repositório.
-2. Ler os arquivos canônicos relacionados.
+2. Ler os arquivos canônicos relacionados, incluindo `docs/SECURITY.md` para qualquer mudança de runtime, acesso ou dados.
 3. Pesquisar nomes, funções, tabelas, schemas e regras semelhantes.
 4. Classificar a mudança como atualização, extensão, refatoração, migração ou novo componente.
 5. Preferir atualização/refatoração a novo arquivo quando a responsabilidade já existir.
-6. Validar que não surgiram duas fontes de verdade.
+6. Validar que não surgiram duas fontes de verdade nem ampliação desnecessária de privilégio/superfície de ataque.
 7. Registrar a mudança de forma clara no commit ou pull request.
 
 ## 7. Claude e outros agentes
@@ -79,7 +81,9 @@ Ao propor alterações, devem:
 - evitar redefinir schemas, contratos ou regras já canônicas;
 - apontar conflitos antes de implementar;
 - preferir alterações pequenas, rastreáveis e testáveis;
-- preservar compatibilidade quando tecnicamente apropriado.
+- preservar compatibilidade quando tecnicamente apropriado;
+- nunca copiar credenciais, segredos ou dados `RESTRICTED` para GitHub, logs, artifacts ou prompts reutilizáveis;
+- revisar autenticação, autorização, secrets, inputs e exposição de rede em mudanças materiais.
 
 ## 8. Conflitos de informação
 
@@ -101,6 +105,19 @@ O GitHub não deve virar depósito de bases históricas, planilhas de operação
 - armazenamento apropriado/Drive quando necessário: documentos-fonte e artefatos pesados.
 - GitHub: código, configuração, schemas, SQL, documentação, testes, metadados e pequenos fixtures necessários ao desenvolvimento.
 
-## 10. Princípio final
+## 10. Proteção do branch principal
 
-Uma função, um contrato, um schema ou uma regra deve possuir uma única fonte canônica no repositório. Todo novo conteúdo deve melhorar, complementar ou referenciar o que já existe — nunca criar uma segunda verdade concorrente.
+`main` deve operar como branch protegido antes de o repositório ser considerado em postura de produção:
+
+- impedir force-push;
+- impedir deleção;
+- exigir CI relevante verde antes de merge;
+- preferir mudanças por pull request para alterações não triviais;
+- impedir bypass rotineiro das regras de segurança;
+- manter permissões administrativas limitadas aos responsáveis necessários.
+
+Se a integração automatizada não tiver permissão administrativa para configurar essas regras, o estado deve permanecer explicitamente `SECURITY_GATED`; não declarar proteção concluída por documentação apenas.
+
+## 11. Princípio final
+
+Uma função, um contrato, um schema ou uma regra deve possuir uma única fonte canônica no repositório. Todo novo conteúdo deve melhorar, complementar ou referenciar o que já existe — nunca criar uma segunda verdade concorrente. Segurança não é exceção a essa regra: controles devem ser executáveis/testáveis quando possível e documentação nunca substitui o gate real.
