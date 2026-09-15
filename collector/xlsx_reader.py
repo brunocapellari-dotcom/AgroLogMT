@@ -5,12 +5,18 @@ import re
 import zipfile
 from dataclasses import dataclass
 from typing import Any
-from xml.etree import ElementTree as ET
+
+from defusedxml import ElementTree as ET
 
 _NS_MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 _NS_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 _NS_PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 _CELL_REF = re.compile(r"^([A-Z]+)([0-9]+)$")
+_MAX_XLSX_BYTES = 50 * 1024 * 1024
+_MAX_ZIP_ENTRIES = 5000
+_MAX_MEMBER_BYTES = 64 * 1024 * 1024
+_MAX_TOTAL_UNCOMPRESSED_BYTES = 256 * 1024 * 1024
+_MAX_COMPRESSION_RATIO = 250
 
 
 @dataclass(frozen=True)
@@ -28,6 +34,25 @@ def _column_index(reference: str) -> int:
     for char in letters:
         value = value * 26 + (ord(char) - ord("A") + 1)
     return value - 1
+
+
+def _validate_archive(archive: zipfile.ZipFile) -> None:
+    infos = archive.infolist()
+    if len(infos) > _MAX_ZIP_ENTRIES:
+        raise ValueError(f"XLSX excede limite de {_MAX_ZIP_ENTRIES} entradas")
+    total = 0
+    for info in infos:
+        if info.flag_bits & 0x1:
+            raise ValueError("XLSX criptografado não é aceito")
+        if info.file_size > _MAX_MEMBER_BYTES:
+            raise ValueError(f"entrada XLSX excessiva: {info.filename}")
+        total += info.file_size
+        if total > _MAX_TOTAL_UNCOMPRESSED_BYTES:
+            raise ValueError("XLSX excede limite total descompactado")
+        if info.compress_size > 0 and info.file_size >= 1024 * 1024:
+            ratio = info.file_size / info.compress_size
+            if ratio > _MAX_COMPRESSION_RATIO:
+                raise ValueError(f"XLSX com taxa de compressão suspeita: {info.filename}")
 
 
 def _shared_strings(archive: zipfile.ZipFile) -> list[str]:
@@ -61,11 +86,15 @@ def _sheet_targets(archive: zipfile.ZipFile) -> list[tuple[str, str]]:
             path = target.lstrip("/")
         else:
             path = "xl/" + target.lstrip("./")
+        # XLSX relationship targets must remain inside the archive's xl/ tree.
+        parts = path.replace("\\", "/").split("/")
+        if ".." in parts or not path.startswith("xl/"):
+            raise ValueError(f"relationship XLSX inseguro: {target}")
         out.append((sheet.attrib.get("name", "Sheet"), path))
     return out
 
 
-def _parse_cell(cell: ET.Element, shared: list[str]) -> Any:
+def _parse_cell(cell: Any, shared: list[str]) -> Any:
     cell_type = cell.attrib.get("t")
     if cell_type == "inlineStr":
         text = cell.find(f"{{{_NS_MAIN}}}is")
@@ -122,13 +151,20 @@ def read_xlsx(payload: bytes) -> list[XlsxSheet]:
 
     O leitor preserva valores armazenados no arquivo. Datas formatadas permanecem
     como numeros seriais; a interpretacao semantica fica a cargo do parser de dominio.
-    Isso evita inferir unidade/data a partir apenas de estilo visual.
+    Arquivos são limitados e XML é processado com defusedxml para reduzir risco de
+    entidades externas, expansão XML e ZIP bombs vindos de fontes externas.
     """
-    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
-        shared = _shared_strings(archive)
-        sheets: list[XlsxSheet] = []
-        for name, path in _sheet_targets(archive):
-            if path not in archive.namelist():
-                raise ValueError(f"worksheet ausente no XLSX: {path}")
-            sheets.append(XlsxSheet(name=name, rows=_parse_sheet(archive.read(path), shared)))
-        return sheets
+    if len(payload) > _MAX_XLSX_BYTES:
+        raise ValueError(f"XLSX excede limite de {_MAX_XLSX_BYTES} bytes")
+    try:
+        with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+            _validate_archive(archive)
+            shared = _shared_strings(archive)
+            sheets: list[XlsxSheet] = []
+            for name, path in _sheet_targets(archive):
+                if path not in archive.namelist():
+                    raise ValueError(f"worksheet ausente no XLSX: {path}")
+                sheets.append(XlsxSheet(name=name, rows=_parse_sheet(archive.read(path), shared)))
+            return sheets
+    except zipfile.BadZipFile as exc:
+        raise ValueError("payload não é XLSX/ZIP válido") from exc

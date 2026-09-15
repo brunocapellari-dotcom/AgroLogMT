@@ -5,7 +5,7 @@ import re
 from .storage_queries import safe_identifier
 
 _PORT_ID = re.compile(r"^[A-Z0-9_]{2,64}$")
-_MMSI = re.compile(r"^[0-9]{6,12}$")
+_MMSI = re.compile(r"^[0-9]{9}$")
 
 
 def normalize_port_id(value: str | None) -> str | None:
@@ -19,18 +19,13 @@ def normalize_port_id(value: str | None) -> str | None:
 
 def normalize_mmsi(value: str) -> str:
     normalized = value.strip()
-    if not _MMSI.fullmatch(normalized):
+    if not _MMSI.fullmatch(normalized) or normalized == "000000000":
         raise ValueError("MMSI invalido")
     return normalized
 
 
 def _port_filter_sql(column: str = "port_id") -> str:
-    """Canonical filter plus the only safe legacy alias in Maritime V1.
-
-    `PARANAGUA_ANTONINA` can be read under the canonical `PARANAGUA` filter.
-    `ARCO_NORTE_CDP` is intentionally not aliased because it cannot be split safely
-    between Vila do Conde and Santarem without source-specific evidence.
-    """
+    """Canonical filter plus the only safe legacy alias in Maritime V1."""
     if column not in {"port_id", "l.port_id"}:
         raise ValueError("coluna de porto nao autorizada")
     return (
@@ -39,16 +34,23 @@ def _port_filter_sql(column: str = "port_id") -> str:
     )
 
 
+def _trusted_ais_sql() -> str:
+    return "quality_status = 'CONFIRMED_SEQUENCE' AND corroborated IS TRUE AND COALESCE(spoofing_suspected, FALSE) IS FALSE"
+
+
 def build_live_vessels_sql(project: str, dataset: str) -> str:
     project = safe_identifier(project, label="project")
     dataset = safe_identifier(dataset, label="dataset")
     port_filter = _port_filter_sql()
+    trusted = _trusted_ais_sql()
     return f"""
 WITH ranked AS (
   SELECT
     observation_id, mmsi, imo, vessel_name, observed_at,
+    source_timestamp_raw, received_at, timestamp_basis,
     latitude, longitude, sog_kn, cog_deg, navigation_status, destination,
     port_id, terminal_id, zone, source_id, collected_at,
+    quality_status, quality_flags_json, corroborated, spoofing_suspected, calculated_speed_kn,
     ROW_NUMBER() OVER (
       PARTITION BY COALESCE(NULLIF(mmsi, ''), NULLIF(imo, ''), NULLIF(vessel_name, ''), observation_id)
       ORDER BY observed_at DESC, collected_at DESC
@@ -56,13 +58,16 @@ WITH ranked AS (
   FROM `{project}.{dataset}.shipping_ais_positions`
   WHERE latitude BETWEEN -90 AND 90
     AND longitude BETWEEN -180 AND 180
+    AND {trusted}
     AND TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), observed_at, HOUR) BETWEEN 0 AND @hours
     AND {port_filter}
 )
 SELECT
   observation_id, mmsi, imo, vessel_name, observed_at,
+  source_timestamp_raw, received_at, timestamp_basis,
   latitude, longitude, sog_kn, cog_deg, navigation_status, destination,
-  port_id, terminal_id, zone, source_id, collected_at
+  port_id, terminal_id, zone, source_id, collected_at,
+  quality_status, quality_flags_json, corroborated, spoofing_suspected, calculated_speed_kn
 FROM ranked
 WHERE rn = 1
 ORDER BY observed_at DESC
@@ -71,17 +76,18 @@ LIMIT @limit
 
 
 def build_vessel_replay_sql(project: str, dataset: str) -> str:
+    """Replay keeps quarantined/unconfirmed records visible for forensic audit."""
     project = safe_identifier(project, label="project")
     dataset = safe_identifier(dataset, label="dataset")
     return f"""
 SELECT
   observation_id, mmsi, imo, vessel_name, observed_at,
+  source_timestamp_raw, received_at, timestamp_basis,
   latitude, longitude, sog_kn, cog_deg, navigation_status,
-  destination, port_id, terminal_id, zone, source_id
+  destination, port_id, terminal_id, zone, source_id,
+  quality_status, quality_flags_json, corroborated, spoofing_suspected, calculated_speed_kn
 FROM `{project}.{dataset}.shipping_ais_positions`
 WHERE mmsi = @mmsi
-  AND latitude BETWEEN -90 AND 90
-  AND longitude BETWEEN -180 AND 180
   AND TIMESTAMP_DIFF(COALESCE(@end_at, CURRENT_TIMESTAMP()), observed_at, HOUR) BETWEEN 0 AND @hours
 ORDER BY observed_at ASC
 LIMIT @limit
@@ -146,18 +152,21 @@ def build_port_summary_sql(project: str, dataset: str) -> str:
     project = safe_identifier(project, label="project")
     dataset = safe_identifier(dataset, label="dataset")
     port_filter = _port_filter_sql()
+    trusted = _trusted_ais_sql()
     return f"""
 WITH latest_positions AS (
   SELECT * EXCEPT(rn)
   FROM (
     SELECT
       observation_id, mmsi, imo, vessel_name, observed_at, port_id, terminal_id, zone,
+      quality_status, corroborated, spoofing_suspected,
       ROW_NUMBER() OVER (
         PARTITION BY COALESCE(NULLIF(mmsi, ''), NULLIF(imo, ''), NULLIF(vessel_name, ''), observation_id)
         ORDER BY observed_at DESC, collected_at DESC
       ) AS rn
     FROM `{project}.{dataset}.shipping_ais_positions`
-    WHERE TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), observed_at, HOUR) BETWEEN 0 AND @hours
+    WHERE {trusted}
+      AND TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), observed_at, HOUR) BETWEEN 0 AND @hours
       AND {port_filter}
   )
   WHERE rn = 1

@@ -46,12 +46,13 @@ class AisHistoryCaptureTests(unittest.TestCase):
         self.assertIn('--task-timeout 65m', script)
         self.assertNotIn('gcloud scheduler jobs', script)
 
-    def test_hourly_workflow_owns_temporary_schedule(self) -> None:
+    def test_github_workflow_is_control_plane_not_recurring_scheduler(self) -> None:
         workflow = Path(".github/workflows/maritime-ais-hourly.yml").read_text(encoding="utf-8")
-        self.assertIn('cron: "5 * * * *"', workflow)
-        self.assertIn('cron: "4 * * * *"', workflow)
-        self.assertIn('duplicate trigger skipped', workflow)
+        self.assertIn("workflow_dispatch", workflow)
+        self.assertNotIn("schedule:", workflow)
+        self.assertIn("duplicate trigger skipped", workflow)
         self.assertIn('gcloud run jobs execute "$AIS_JOB_NAME"', workflow)
+        self.assertIn("Cloud Scheduler", workflow)
 
 
 if __name__ == "__main__":

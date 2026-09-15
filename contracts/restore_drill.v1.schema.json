@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agrolog.local/contracts/restore_drill.v1.schema.json",
+  "title": "AgroLog Restore Drill v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version", "drill_id", "environment", "started_at", "finished_at", "backup_type",
+    "source_ref", "restore_target", "status", "rpo_minutes", "rto_minutes", "validation",
+    "evidence"
+  ],
+  "properties": {
+    "version": {"const": "1.0.0"},
+    "drill_id": {"type": "string", "minLength": 3},
+    "environment": {"enum": ["dev", "staging", "production_recovery_sandbox"]},
+    "started_at": {"type": "string", "format": "date-time"},
+    "finished_at": {"type": ["string", "null"], "format": "date-time"},
+    "backup_type": {"enum": ["BIGQUERY_SNAPSHOT", "BIGQUERY_COPY", "RAW_OBJECT", "DRIVE_FILE", "CONFIG_EXPORT", "OTHER"]},
+    "source_ref": {"type": "string", "minLength": 1},
+    "restore_target": {"type": "string", "minLength": 1},
+    "status": {"enum": ["PLANNED", "RUNNING", "PASS", "FAIL"]},
+    "rpo_minutes": {"type": "integer", "minimum": 0},
+    "rto_minutes": {"type": "integer", "minimum": 0},
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_count", "row_count", "hash_or_checksum", "permissions", "secrets_not_exported"],
+      "properties": {
+        "object_count": {"enum": ["PASS", "FAIL", "NOT_APPLICABLE"]},
+        "row_count": {"enum": ["PASS", "FAIL", "NOT_APPLICABLE"]},
+        "hash_or_checksum": {"enum": ["PASS", "FAIL", "NOT_APPLICABLE"]},
+        "permissions": {"enum": ["PASS", "FAIL"]},
+        "secrets_not_exported": {"type": "boolean"}
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "notes": {"type": "string"}
+  }
+}

@@ -10,8 +10,10 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 from .adapters import extract_html_links, select_first_matching_link
+from .transport_security import validate_https_url
 
 DEFAULT_LISTING = "https://www.gov.br/conab/pt-br/atuacao/informacoes-agropecuarias/safras/safra-de-graos/boletim-da-safra-de-graos"
+CONAB_ALLOWED_HOSTS = {"www.gov.br"}
 GOVBR_PUBLICATION_TZ = ZoneInfo("America/Sao_Paulo")
 
 
@@ -29,9 +31,12 @@ class SafraPublication:
 
 
 def _get_text(url: str, timeout: int = 60) -> tuple[str, str]:
+    validate_https_url(url, allowed_hosts=CONAB_ALLOWED_HOSTS)
     req = Request(url, headers={"User-Agent": "AgroLogMT/0.1 (+historical-discovery)"})
-    with urlopen(req, timeout=timeout) as resp:
-        return resp.read().decode("utf-8", errors="replace"), resp.geturl()
+    with urlopen(req, timeout=timeout) as resp:  # nosec B310 - HTTPS and official GOV.BR host validated above.
+        observed = resp.geturl()
+        validate_https_url(observed, allowed_hosts=CONAB_ALLOWED_HOSTS)
+        return resp.read().decode("utf-8", errors="replace"), observed
 
 
 def _parse_identity(url: str) -> tuple[str | None, int | None]:
@@ -114,6 +119,7 @@ def publication_plausible_for_safra(safra: str | None, data_publicacao: str | No
 
 def _nested_canonical_candidates(html: str, observed_url: str) -> list[str]:
     """Find GOV.BR child pages that repeat the levantamento slug and may preserve original metadata."""
+    validate_https_url(observed_url, allowed_hosts=CONAB_ALLOWED_HOSTS)
     base_path = urlsplit(observed_url).path.rstrip("/")
     slug = base_path.rsplit("/", 1)[-1]
     host = urlsplit(observed_url).hostname
@@ -162,6 +168,7 @@ def _publication_from_item(item_url: str) -> SafraPublication | None:
         attachment = attachment[:-5] + "/@@download/file"
     elif re.search(r"\.xlsx(?:$|[?#])", attachment, flags=re.IGNORECASE):
         attachment = attachment.split("#", 1)[0].split("?", 1)[0].rstrip("/") + "/@@download/file"
+    validate_https_url(attachment, allowed_hosts=CONAB_ALLOWED_HOSTS)
     safra, levantamento = _parse_identity(item_observed)
     publication_time, basis, canonical_url = _resolve_publication_time(item_html, item_observed, safra)
     return SafraPublication(

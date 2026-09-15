@@ -4,8 +4,22 @@
 !.env.example
 *.key
 *.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+*_rsa
+*_ed25519
 credentials*.json
 service-account*.json
+application_default_credentials.json
+gcloud-service-key*.json
+.npmrc
+.pypirc
+kubeconfig*
+.terraform/
+*.tfstate
+*.tfstate.*
 
 # Python
 __pycache__/
@@ -15,6 +29,10 @@ venv/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Node
+node_modules/
+maritime_ui/dist/
 
 # Local source data and generated artifacts
 # Real datasets live outside GitHub. Source names such as CONAB/IMEA in code
@@ -30,6 +48,9 @@ htmlcov/
 /current/
 /core/
 /historical/core/
+*.sqlite
+*.sqlite3
+*.db
 
 # Known real-source artifacts
 ArmazensCadastrados*.txt
@@ -39,10 +60,6 @@ ArmazensCadastrados*.txt
 *.xls
 *.zip
 *.7z
-
-# Local Google Cloud credentials/config exports
-application_default_credentials.json
-gcloud-service-key*.json
 
 # IDE/OS
 .DS_Store
