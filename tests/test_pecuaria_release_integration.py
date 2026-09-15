@@ -51,6 +51,16 @@ class PecuariaReleaseIntegrationTests(unittest.TestCase):
         self.assertIn("AGROLOG_PECUARIA_DATASET", deploy)
         self.assertIn("AGROLOG_TRADE_DATASET", deploy)
 
+    def test_single_bootstrap_owns_livestock_dataset_and_release_query_iam(self) -> None:
+        bootstrap = _text("scripts/setup_github_gcp_wif.sh")
+        self.assertFalse((ROOT / "scripts/bootstrap_pecuaria_gcp.sh").exists())
+        self.assertIn('PECUARIA_DATASET="${PECUARIA_DATASET:-pecuaria}"', bootstrap)
+        self.assertIn('ensure_dataset_role "$dataset" "$COLLECTOR_SA_EMAIL" roles/bigquery.dataEditor', bootstrap)
+        self.assertIn('ensure_dataset_role "$dataset" "$GATEWAY_SA_EMAIL" roles/bigquery.dataViewer', bootstrap)
+        self.assertIn("roles/bigquery.jobUser", bootstrap)
+        self.assertIn('ensure_dataset_role "$TRADE_DATASET" "$DEPLOYER_SA_EMAIL" roles/bigquery.dataEditor', bootstrap)
+        self.assertNotIn('ensure_project_role "$DEPLOYER_SA_EMAIL" roles/bigquery.admin', bootstrap)
+
     def test_gateway_image_contains_contract_and_composes_livestock_router(self) -> None:
         dockerfile = _text("gateway/Dockerfile")
         production_app = _text("gateway/production_app.py")
