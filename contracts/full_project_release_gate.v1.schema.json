@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agrolog.local/contracts/full_project_release_gate.v1.schema.json",
+  "title": "AgroLog MT Full Project Release Gate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "release_id", "commit_sha", "generated_at", "status", "stages"],
+  "properties": {
+    "version": {"const": "1.0.0"},
+    "release_id": {"type": "string", "minLength": 1},
+    "commit_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "status": {"enum": ["PASS", "FAIL", "BLOCKED"]},
+    "stages": {
+      "type": "array",
+      "minItems": 18,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status", "evidence"],
+        "properties": {
+          "name": {
+            "enum": [
+              "repository_integrity",
+              "python_compile_all",
+              "tests_deterministic_all",
+              "tests_live_all",
+              "contracts_and_configs",
+              "workflow_and_shell_syntax",
+              "source_registry",
+              "frontend_reproducible_build",
+              "containers_build",
+              "secret_scan",
+              "vulnerability_scan",
+              "sbom",
+              "runtime_security",
+              "data_quality_and_freshness",
+              "backup_restore",
+              "gcp_preflight",
+              "gcp_core_homologation",
+              "final_auditor"
+            ]
+          },
+          "status": {"enum": ["PASS", "FAIL", "BLOCKED"]},
+          "evidence": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "details": {"type": "object"}
+        }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}
