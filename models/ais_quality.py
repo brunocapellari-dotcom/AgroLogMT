@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 
 _MMSI_RE = re.compile(r"^[0-9]{9}$")
 _IMO_RE = re.compile(r"^[0-9]{7}$")
+_POSITION_MESSAGE_TYPES = {
+    "POSITIONREPORT",
+    "STANDARDCLASSBCSPositionReport".upper(),
+    "EXTENDEDCLASSBEQUIPMENTPOSITIONREPORT",
+}
 
 
 @dataclass(frozen=True)
@@ -23,15 +28,22 @@ class AisQualityAssessment:
         return asdict(self)
 
 
+def normalize_imo(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    text = str(value).strip().upper().removeprefix("IMO").strip()
+    return text or None
+
+
 def valid_mmsi(value: Any) -> bool:
     text = str(value or "").strip()
     return bool(_MMSI_RE.fullmatch(text)) and text != "000000000"
 
 
 def valid_imo(value: Any) -> bool:
-    if value in (None, ""):
+    text = normalize_imo(value)
+    if text is None:
         return True
-    text = str(value).strip().upper().removeprefix("IMO").strip()
     if not _IMO_RE.fullmatch(text):
         return False
     digits = [int(char) for char in text]
@@ -61,6 +73,15 @@ def valid_position(latitude: Any, longitude: Any) -> bool:
     return math.isfinite(lat) and math.isfinite(lon) and -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0
 
 
+def _requires_position(current: dict[str, Any]) -> bool:
+    message_type = str(current.get("message_type") or "").strip().upper().replace("_", "")
+    if message_type in _POSITION_MESSAGE_TYPES:
+        return True
+    # AISStream's canonical position payload uses PositionReport. Unknown message
+    # types are not trusted as positional merely because coordinates are present.
+    return message_type.endswith("POSITIONREPORT")
+
+
 def _haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     radius_nm = 3440.065
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
@@ -83,8 +104,10 @@ def implied_speed_kn(previous: dict[str, Any], current: dict[str, Any]) -> float
     if hours <= 0:
         return None
     distance_nm = _haversine_nm(
-        float(previous["latitude"]), float(previous["longitude"]),
-        float(current["latitude"]), float(current["longitude"]),
+        float(previous["latitude"]),
+        float(previous["longitude"]),
+        float(current["latitude"]),
+        float(current["longitude"]),
     )
     return distance_nm / hours
 
@@ -101,12 +124,13 @@ def assess_ais_record(
 ) -> AisQualityAssessment:
     flags: list[str] = []
     now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    positional = _requires_position(current)
 
     if not valid_mmsi(current.get("mmsi")):
         flags.append("invalid_mmsi")
     if not valid_imo(current.get("imo")):
         flags.append("invalid_imo")
-    if not valid_position(current.get("latitude"), current.get("longitude")):
+    if positional and not valid_position(current.get("latitude"), current.get("longitude")):
         flags.append("invalid_position")
 
     observed_at = _parse_timestamp(current.get("observed_at"))
@@ -115,6 +139,34 @@ def assess_ais_record(
     elif observed_at > now_utc + timedelta(seconds=future_skew_seconds):
         flags.append("clock_anomaly_future")
 
+    source_timestamp_raw = current.get("source_timestamp_raw")
+    if source_timestamp_raw not in (None, "") and _parse_timestamp(source_timestamp_raw) is None:
+        flags.append("invalid_source_timestamp")
+    if str(current.get("timestamp_basis") or "").upper() == "RECEIVED":
+        flags.append("timestamp_received_fallback")
+
+    reported_sog = current.get("sog_kn")
+    if reported_sog not in (None, ""):
+        try:
+            reported_speed = float(reported_sog)
+        except (TypeError, ValueError):
+            flags.append("invalid_reported_speed")
+        else:
+            if not math.isfinite(reported_speed) or reported_speed < 0:
+                flags.append("invalid_reported_speed")
+            elif reported_speed > impossible_speed_kn:
+                flags.append("reported_impossible_speed")
+
+    reported_cog = current.get("cog_deg")
+    if reported_cog not in (None, ""):
+        try:
+            course = float(reported_cog)
+        except (TypeError, ValueError):
+            flags.append("invalid_course")
+        else:
+            if not math.isfinite(course) or course < 0 or course > 360:
+                flags.append("invalid_course")
+
     calculated_speed = None
     if previous is not None:
         previous_at = _parse_timestamp(previous.get("observed_at"))
@@ -122,36 +174,53 @@ def assess_ais_record(
             flags.append("clock_anomaly_non_monotonic")
 
         if str(previous.get("mmsi") or "") == str(current.get("mmsi") or ""):
-            previous_imo = str(previous.get("imo") or "").strip()
-            current_imo = str(current.get("imo") or "").strip()
+            previous_imo = normalize_imo(previous.get("imo"))
+            current_imo = normalize_imo(current.get("imo"))
             if previous_imo and current_imo and previous_imo != current_imo:
                 flags.append("identity_conflict_mmsi_to_imo")
 
-        calculated_speed = implied_speed_kn(previous, current)
-        if calculated_speed is not None and calculated_speed > impossible_speed_kn:
-            flags.append("impossible_speed")
+        if positional:
+            calculated_speed = implied_speed_kn(previous, current)
+            if calculated_speed is not None and calculated_speed > impossible_speed_kn:
+                flags.append("impossible_speed")
 
-        if valid_position(previous.get("latitude"), previous.get("longitude")) and valid_position(current.get("latitude"), current.get("longitude")):
-            before = _parse_timestamp(previous.get("observed_at"))
-            after = _parse_timestamp(current.get("observed_at"))
-            if before is not None and after is not None and after > before:
-                distance_nm = _haversine_nm(
-                    float(previous["latitude"]), float(previous["longitude"]),
-                    float(current["latitude"]), float(current["longitude"]),
-                )
-                if distance_nm >= position_jump_nm and (after - before) <= timedelta(minutes=15):
-                    flags.append("teleport")
+            if valid_position(previous.get("latitude"), previous.get("longitude")) and valid_position(
+                current.get("latitude"), current.get("longitude")
+            ):
+                before = _parse_timestamp(previous.get("observed_at"))
+                after = _parse_timestamp(current.get("observed_at"))
+                if before is not None and after is not None and after > before:
+                    distance_nm = _haversine_nm(
+                        float(previous["latitude"]),
+                        float(previous["longitude"]),
+                        float(current["latitude"]),
+                        float(current["longitude"]),
+                    )
+                    if distance_nm >= position_jump_nm and (after - before) <= timedelta(minutes=15):
+                        flags.append("teleport")
 
-    corroborated = same_identity_message_count >= 2 and not any(
-        flag in flags for flag in (
-            "invalid_mmsi", "invalid_position", "invalid_timestamp",
-            "clock_anomaly_future", "clock_anomaly_non_monotonic", "impossible_speed", "teleport",
-        )
-    )
+    blocking = {
+        "invalid_mmsi",
+        "invalid_imo",
+        "invalid_position",
+        "invalid_timestamp",
+        "invalid_source_timestamp",
+        "invalid_reported_speed",
+        "reported_impossible_speed",
+        "invalid_course",
+        "clock_anomaly_future",
+        "clock_anomaly_non_monotonic",
+        "impossible_speed",
+        "teleport",
+        "identity_conflict_mmsi_to_imo",
+    }
+    has_blocking = any(flag in blocking for flag in flags)
+    corroborated = same_identity_message_count >= 2 and not has_blocking
 
     anomaly_flags = {
         "teleport",
         "impossible_speed",
+        "reported_impossible_speed",
         "clock_anomaly_future",
         "clock_anomaly_non_monotonic",
         "identity_conflict_mmsi_to_imo",
@@ -159,12 +228,7 @@ def assess_ais_record(
     anomaly_count = sum(flag in anomaly_flags for flag in flags)
     spoofing_suspected = anomaly_count >= 2 and same_identity_message_count >= 2
 
-    blocking = {
-        "invalid_mmsi", "invalid_imo", "invalid_position", "invalid_timestamp",
-        "clock_anomaly_future", "clock_anomaly_non_monotonic", "impossible_speed", "teleport",
-        "identity_conflict_mmsi_to_imo",
-    }
-    if any(flag in blocking for flag in flags):
+    if has_blocking:
         status = "QUARANTINE"
     elif not corroborated:
         status = "UNCONFIRMED_SINGLE"
