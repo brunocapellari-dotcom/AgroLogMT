@@ -5,11 +5,13 @@ import hashlib
 import json
 import os
 import uuid
+from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Any
 
 from collector.ais_stream_client import run_forever
 from collector.shipping_bigquery import ShippingBigQueryStore
+from models.ais_quality import assess_ais_record
 from models.port_geofence import PortZone, classify_position
 
 
@@ -50,24 +52,85 @@ def _observation_id(row: dict[str, Any]) -> str:
 
 
 class AisBatchSink:
-    def __init__(self, *, store: ShippingBigQueryStore, zones: list[PortZone], batch_size: int = 250) -> None:
+    def __init__(
+        self,
+        *,
+        store: ShippingBigQueryStore,
+        zones: list[PortZone],
+        run_id: str,
+        batch_size: int = 250,
+        dedup_window_size: int = 100_000,
+    ) -> None:
         self.store = store
         self.zones = zones
+        self.run_id = run_id
         self.batch_size = max(1, int(batch_size))
+        self.dedup_window_size = max(1_000, int(dedup_window_size))
         self.buffer: list[dict[str, Any]] = []
+        self._seen_ids: OrderedDict[str, None] = OrderedDict()
+        self._last_by_mmsi: dict[str, dict[str, Any]] = {}
+        self._message_count_by_mmsi: dict[str, int] = {}
+        self.records_received = 0
+        self.records_persisted = 0
+        self.duplicates_suppressed = 0
+        self.quarantined = 0
+        self.last_observation_id: str | None = None
+        self.last_observed_at: str | None = None
         atexit.register(self.flush)
 
-    def _normalize(self, row: dict[str, Any]) -> dict[str, Any]:
+    def _remember_id(self, observation_id: str) -> bool:
+        if observation_id in self._seen_ids:
+            self._seen_ids.move_to_end(observation_id)
+            return False
+        self._seen_ids[observation_id] = None
+        while len(self._seen_ids) > self.dedup_window_size:
+            self._seen_ids.popitem(last=False)
+        return True
+
+    def _normalize(self, row: dict[str, Any]) -> dict[str, Any] | None:
+        self.records_received += 1
+        observation_id = _observation_id(row)
+        if not self._remember_id(observation_id):
+            self.duplicates_suppressed += 1
+            return None
+
+        mmsi = str(row.get("mmsi") or "")
+        previous = self._last_by_mmsi.get(mmsi)
+        message_count = self._message_count_by_mmsi.get(mmsi, 0) + 1
+        quality = assess_ais_record(
+            row,
+            previous=previous,
+            same_identity_message_count=message_count,
+        )
+        self._message_count_by_mmsi[mmsi] = message_count
+        if quality.quality_status == "QUARANTINE":
+            self.quarantined += 1
+        else:
+            self._last_by_mmsi[mmsi] = {
+                "mmsi": row.get("mmsi"),
+                "imo": row.get("imo"),
+                "observed_at": row.get("observed_at"),
+                "latitude": row.get("latitude"),
+                "longitude": row.get("longitude"),
+            }
+
         lat, lon = row.get("latitude"), row.get("longitude")
         geofence = {
             "zone": "SEA", "port_id": None, "terminal_id": None,
             "zone_id": None, "geofence_version": None, "source_id": None,
         }
-        if lat is not None and lon is not None and self.zones:
+        # Operational geofence classification is only applied to quality-valid,
+        # corroborated position sequences. A single AIS message never confirms state.
+        if (
+            quality.corroborated
+            and quality.quality_status != "QUARANTINE"
+            and lat is not None and lon is not None and self.zones
+        ):
             geofence = classify_position(float(lat), float(lon), self.zones)
+
         raw_message = row.get("_raw_message")
-        return {
-            "observation_id": _observation_id(row),
+        normalized = {
+            "observation_id": observation_id,
             "mmsi": row.get("mmsi"),
             "imo": row.get("imo"),
             "vessel_name": row.get("vessel_name"),
@@ -85,19 +148,57 @@ class AisBatchSink:
             "collected_at": datetime.now(timezone.utc).isoformat(),
             "raw_artifact_ref": None,
             "raw_message_json": json.dumps(raw_message, ensure_ascii=False, separators=(",", ":")) if raw_message else None,
+            "quality_status": quality.quality_status,
+            "quality_flags_json": json.dumps(list(quality.flags), ensure_ascii=False, separators=(",", ":")),
+            "corroborated": quality.corroborated,
+            "spoofing_suspected": quality.spoofing_suspected,
+            "calculated_speed_kn": quality.calculated_speed_kn,
         }
+        self.last_observation_id = observation_id
+        self.last_observed_at = row.get("observed_at")
+        return normalized
 
     def __call__(self, row: dict[str, Any]) -> None:
-        self.buffer.append(self._normalize(row))
+        normalized = self._normalize(row)
+        if normalized is None:
+            return
+        self.buffer.append(normalized)
         if len(self.buffer) >= self.batch_size:
             self.flush()
+
+    def _write_checkpoint(self) -> None:
+        if not self.last_observation_id:
+            return
+        checkpoint_at = datetime.now(timezone.utc).isoformat()
+        self.store.load_stream_checkpoint({
+            "checkpoint_id": self.store.stable_id(
+                self.run_id, self.last_observation_id, self.records_persisted
+            ),
+            "run_id": self.run_id,
+            "source_id": "aisstream",
+            "checkpoint_at": checkpoint_at,
+            "last_observed_at": self.last_observed_at,
+            "last_observation_id": self.last_observation_id,
+            "records_delivered": self.records_received,
+            "records_persisted": self.records_persisted,
+            "upstream_offset": None,
+            "replay_capable": False,
+            "details": {
+                "checkpoint_semantics": "LOGICAL_ONLY_NO_UPSTREAM_REPLAY",
+                "duplicates_suppressed": self.duplicates_suppressed,
+                "quarantined": self.quarantined,
+            },
+        })
 
     def flush(self) -> int:
         if not self.buffer:
             return 0
         rows = self.buffer
         self.buffer = []
-        return self.store.load_ais(rows)
+        inserted = self.store.load_ais(rows)
+        self.records_persisted += inserted
+        self._write_checkpoint()
+        return inserted
 
 
 def _capture_event(
@@ -111,11 +212,12 @@ def _capture_event(
     error_type: str | None = None,
     details: dict[str, Any] | None = None,
 ) -> None:
+    event_at = datetime.now(timezone.utc).isoformat()
     store.load_ais_capture_event({
-        "event_id": store.stable_id(run_id, event_type),
+        "event_id": store.stable_id(run_id, event_type, event_at),
         "run_id": run_id,
         "event_type": event_type,
-        "event_at": datetime.now(timezone.utc).isoformat(),
+        "event_at": event_at,
         "source_id": "aisstream",
         "records": records,
         "aoi_count": aoi_count,
@@ -133,13 +235,21 @@ def main() -> int:
     mmsi_filter = _json_env("AIS_MMSI_FILTER_JSON", default=None)
     zones = _zones_from_env()
     batch_size = int(os.environ.get("AIS_BATCH_SIZE", "250"))
+    dedup_window_size = int(os.environ.get("AIS_DEDUP_WINDOW_SIZE", "100000"))
+    heartbeat_seconds = float(os.environ.get("AIS_HEARTBEAT_SECONDS", "30"))
     max_records_raw = os.environ.get("AIS_MAX_RECORDS")
     max_records = int(max_records_raw) if max_records_raw else None
     capture_seconds = float(os.environ.get("AIS_CAPTURE_SECONDS", "3540"))
 
     store = ShippingBigQueryStore()
-    sink = AisBatchSink(store=store, zones=zones, batch_size=batch_size)
     run_id = str(uuid.uuid4())
+    sink = AisBatchSink(
+        store=store,
+        zones=zones,
+        run_id=run_id,
+        batch_size=batch_size,
+        dedup_window_size=dedup_window_size,
+    )
     aoi_count = len(bounding_boxes or [])
     _capture_event(
         store,
@@ -150,6 +260,34 @@ def main() -> int:
         details={"zone_count": len(zones), "mmsi_filter_enabled": bool(mmsi_filter)},
     )
 
+    def on_heartbeat(payload: dict[str, Any]) -> None:
+        _capture_event(
+            store,
+            run_id=run_id,
+            event_type="HEARTBEAT",
+            aoi_count=aoi_count,
+            capture_seconds=capture_seconds,
+            records=sink.records_received,
+            details={
+                **payload,
+                "records_persisted": sink.records_persisted,
+                "duplicates_suppressed": sink.duplicates_suppressed,
+                "quarantined": sink.quarantined,
+            },
+        )
+
+    def on_reconnect(payload: dict[str, Any]) -> None:
+        _capture_event(
+            store,
+            run_id=run_id,
+            event_type="RECONNECT",
+            aoi_count=aoi_count,
+            capture_seconds=capture_seconds,
+            records=sink.records_received,
+            error_type=str(payload.get("error_type") or "ConnectionError"),
+            details=payload,
+        )
+
     try:
         delivered = run_forever(
             api_key=api_key,
@@ -158,6 +296,9 @@ def main() -> int:
             on_record=sink,
             stop_after_records=max_records,
             stop_after_seconds=capture_seconds,
+            heartbeat_seconds=heartbeat_seconds,
+            on_heartbeat=on_heartbeat,
+            on_reconnect=on_reconnect,
         )
         sink.flush()
     except Exception as exc:
@@ -167,8 +308,14 @@ def main() -> int:
             event_type="ERROR",
             aoi_count=aoi_count,
             capture_seconds=capture_seconds,
+            records=sink.records_received,
             error_type=type(exc).__name__,
-            details={"zone_count": len(zones)},
+            details={
+                "zone_count": len(zones),
+                "records_persisted": sink.records_persisted,
+                "duplicates_suppressed": sink.duplicates_suppressed,
+                "quarantined": sink.quarantined,
+            },
         )
         raise
 
@@ -179,12 +326,21 @@ def main() -> int:
         aoi_count=aoi_count,
         capture_seconds=capture_seconds,
         records=delivered,
-        details={"zone_count": len(zones)},
+        details={
+            "zone_count": len(zones),
+            "records_persisted": sink.records_persisted,
+            "duplicates_suppressed": sink.duplicates_suppressed,
+            "quarantined": sink.quarantined,
+        },
     )
     print(json.dumps({
         "status": "ok",
         "run_id": run_id,
-        "records": delivered,
+        "records_delivered": delivered,
+        "records_received": sink.records_received,
+        "records_persisted": sink.records_persisted,
+        "duplicates_suppressed": sink.duplicates_suppressed,
+        "quarantined": sink.quarantined,
         "zones": len(zones),
         "aoi_count": aoi_count,
         "capture_seconds": capture_seconds,
