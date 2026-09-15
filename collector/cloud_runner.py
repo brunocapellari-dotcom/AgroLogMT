@@ -14,6 +14,8 @@ from .conab_safra_pipeline import run_conab_safra_pipeline
 from .ibge_pipeline import SOURCE_ID as IBGE_SOURCE_ID, run_ibge_pipeline
 from .ibge_ppm import SOURCE_ID as IBGE_PPM_SOURCE_ID
 from .ibge_ppm_pipeline import run_ibge_ppm_pipeline
+from .ibge_slaughter import SOURCE_ID as IBGE_SLAUGHTER_SOURCE_ID
+from .ibge_slaughter_pipeline import run_ibge_slaughter_pipeline
 from .imea_operational_pipeline import SOURCE_ID as IMEA_OPERATIONAL_SOURCE_ID, run_imea_operational_pipeline
 from .nasa_power_pipeline import SOURCE_ID as NASA_POWER_SOURCE_ID, run_nasa_power_pipeline
 from .orchestrator import CollectorEngine
@@ -61,6 +63,8 @@ def main() -> int:
             code, payload = run_ibge_pipeline(spec, store)
         elif spec.source_id == IBGE_PPM_SOURCE_ID:
             code, payload = run_ibge_ppm_pipeline(spec, store)
+        elif spec.source_id == IBGE_SLAUGHTER_SOURCE_ID:
+            code, payload = run_ibge_slaughter_pipeline(spec, store)
         elif spec.source_id == NASA_POWER_SOURCE_ID:
             code, payload = run_nasa_power_pipeline(spec, store)
         elif spec.source_id == IMEA_OPERATIONAL_SOURCE_ID:
