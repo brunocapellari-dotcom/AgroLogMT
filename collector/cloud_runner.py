@@ -66,6 +66,15 @@ def _blocked_env_payload(spec: SourceSpec, missing_env: list[str]) -> dict[str, 
     }
 
 
+def _with_health(
+    payload: dict[str, Any],
+    item: ScheduledSource,
+    scheduler: RegistryScheduler,
+) -> dict[str, Any]:
+    view = scheduler.operational_view(item)
+    return {**payload, "source_health": view["health"]}
+
+
 def _run_scheduled_item(
     item: ScheduledSource,
     scheduler: RegistryScheduler,
@@ -73,13 +82,15 @@ def _run_scheduled_item(
     engine: CollectorEngine,
 ) -> tuple[int, dict[str, Any]]:
     if not item.due or item.spec is None:
-        return 0, {"scheduler": scheduler_payload(item), "status": "skipped"}
+        payload = {"scheduler": scheduler_payload(item), "status": "skipped"}
+        return 0, _with_health(payload, item, scheduler)
 
     missing_env = _missing_required_env(item.spec)
     if missing_env:
         payload = _blocked_env_payload(item.spec, missing_env)
         scheduler.record_result(item, status="blocked_missing_secure_env", error="missing secure environment")
-        return 1, {"scheduler": scheduler_payload(item), "result": payload}
+        result = {"scheduler": scheduler_payload(item), "result": payload}
+        return 1, _with_health(result, item, scheduler)
 
     code, payload = _execute_spec(item.spec, store, engine)
     status = str(payload.get("status") or ("error" if code else "ok"))
@@ -88,7 +99,8 @@ def _run_scheduled_item(
         status="error" if code else status,
         error=str(payload.get("error") or "") if code else None,
     )
-    return code, {"scheduler": scheduler_payload(item), "result": payload}
+    result = {"scheduler": scheduler_payload(item), "result": payload}
+    return code, _with_health(result, item, scheduler)
 
 
 def _run_registry_mode(store: DriveBigQueryStore, engine: CollectorEngine) -> int:
@@ -118,9 +130,18 @@ def _run_registry_mode(store: DriveBigQueryStore, engine: CollectorEngine) -> in
 
     failed = 0
     executed = 0
+    alert_sources: set[str] = set()
+
     for item in plan:
         if not item.due:
-            print(json.dumps({"scheduler": scheduler_payload(item), "status": "skipped"}, ensure_ascii=False, sort_keys=True), flush=True)
+            result = _with_health(
+                {"scheduler": scheduler_payload(item), "status": "skipped"},
+                item,
+                scheduler,
+            )
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)
+            if bool(result["source_health"]["alert"]):
+                alert_sources.add(item.registry_source_id)
             if item.reason == "execution_not_implemented":
                 failed += 1
             continue
@@ -128,23 +149,28 @@ def _run_registry_mode(store: DriveBigQueryStore, engine: CollectorEngine) -> in
         executed += 1
         code, result = _run_scheduled_item(item, scheduler, store, engine)
         print(json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)
+        if bool(result["source_health"]["alert"]):
+            alert_sources.add(item.registry_source_id)
         if code:
             failed += 1
             # Fallback is collected as independent evidence. It never overwrites
             # or relabels the failed primary source.
             for fallback in scheduler.fallback_candidates(item):
                 if not fallback.due:
-                    print(json.dumps({
+                    fb_result = _with_health({
                         "fallback_for": item.registry_source_id,
                         "scheduler": scheduler_payload(fallback),
                         "status": "fallback_not_runnable",
-                    }, ensure_ascii=False, sort_keys=True), flush=True)
+                    }, fallback, scheduler)
+                    print(json.dumps(fb_result, ensure_ascii=False, sort_keys=True), flush=True)
+                    if bool(fb_result["source_health"]["alert"]):
+                        alert_sources.add(fallback.registry_source_id)
                     continue
                 fb_code, fb_result = _run_scheduled_item(fallback, scheduler, store, engine)
-                print(json.dumps({
-                    "fallback_for": item.registry_source_id,
-                    **fb_result,
-                }, ensure_ascii=False, sort_keys=True), flush=True)
+                wrapped = {"fallback_for": item.registry_source_id, **fb_result}
+                print(json.dumps(wrapped, ensure_ascii=False, sort_keys=True), flush=True)
+                if bool(fb_result["source_health"]["alert"]):
+                    alert_sources.add(fallback.registry_source_id)
                 # Primary remains failed even when fallback evidence succeeds.
                 if fb_code:
                     failed += 1
@@ -156,6 +182,8 @@ def _run_registry_mode(store: DriveBigQueryStore, engine: CollectorEngine) -> in
             "failed": failed,
             "source_id": registry_source_id,
             "domain": domain,
+            "source_health_alert_count": len(alert_sources),
+            "source_health_alert_sources": sorted(alert_sources),
         }
     }, ensure_ascii=False, sort_keys=True), flush=True)
     return 1 if failed else 0
