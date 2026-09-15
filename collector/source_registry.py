@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
-from urllib.parse import urlparse
 
+from .input_security import validate_source_url
 from .models import SourceSpec
 
 
@@ -62,10 +62,11 @@ class RegistryEntry:
             if not endpoint and not data.get("execution_ref"):
                 raise ValueError(f"active source {source_id} requires endpoint or execution_ref")
             if endpoint:
-                scheme = urlparse(str(endpoint)).scheme.lower()
-                if scheme in {"http", "ws"}:
-                    raise ValueError(f"active source {source_id} cannot use insecure transport: {scheme}")
-                if scheme in {"https", "wss"} and not trusted_transport:
+                try:
+                    validate_source_url(str(endpoint))
+                except ValueError as exc:
+                    raise ValueError(f"active source {source_id} has unsafe endpoint: {exc}") from exc
+                if not trusted_transport:
                     raise ValueError(f"active source {source_id} must explicitly mark trusted_transport")
         schedule = dict(data.get("schedule") or {})
         retries = schedule.get("retry_minutes") or [120, 240, 480, 720]
@@ -120,6 +121,17 @@ class CollectionDecision:
     due: bool
     reason: str
     fallback: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class SourceHealth:
+    source_id: str
+    status: str
+    last_collection_at: str | None
+    consecutive_failures: int
+    age_minutes: float | None
+    alert: bool
+    reason: str
 
 
 def _parse_time(value: str | None) -> datetime | None:
@@ -191,6 +203,61 @@ class DataSourceRegistry:
             return CollectionDecision(source_id, False, "fresh_enough", entry.fallback)
 
         return CollectionDecision(source_id, True, "due", entry.fallback)
+
+    def health(
+        self,
+        source_id: str,
+        *,
+        state: dict[str, Any] | None = None,
+        now: datetime | None = None,
+    ) -> SourceHealth:
+        entry = self.get(source_id)
+        state = state or {}
+        now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        last = _parse_time(state.get("last_checked_at") or entry.last_collection_at)
+        failures = int(state.get("consecutive_failures") or 0)
+        last_iso = last.isoformat() if last else None
+
+        if entry.status != "active":
+            return SourceHealth(source_id, entry.status.upper(), last_iso, failures, None, False, f"registry:{entry.status}")
+        if last is None:
+            return SourceHealth(source_id, "NEVER_COLLECTED", None, failures, None, True, "no_collection_evidence")
+
+        age_minutes = max(0.0, (now - last).total_seconds() / 60.0)
+        if failures > 0:
+            max_failures = int(entry.schedule.get("max_consecutive_failures") or 6)
+            if failures >= max_failures:
+                return SourceHealth(source_id, "FAILED", last_iso, failures, age_minutes, True, "failure_threshold")
+            return SourceHealth(source_id, "DEGRADED", last_iso, failures, age_minutes, True, "consecutive_failures")
+
+        interval_minutes = int(entry.schedule.get("min_interval_minutes") or 1440)
+        stale_after = max(interval_minutes * 2, max(entry.schedule["retry_minutes"]))
+        if age_minutes > stale_after:
+            return SourceHealth(source_id, "STALE", last_iso, failures, age_minutes, True, "freshness_threshold")
+        return SourceHealth(source_id, "HEALTHY", last_iso, failures, age_minutes, False, "within_freshness_window")
+
+    def operational_view(
+        self,
+        source_id: str,
+        *,
+        state: dict[str, Any] | None = None,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Overlay runtime collection state without rewriting the versioned registry file."""
+        entry = self.get(source_id)
+        health = self.health(source_id, state=state, now=now)
+        source = dict(entry.raw)
+        source["last_collection_at"] = health.last_collection_at
+        return {
+            "source": source,
+            "health": {
+                "status": health.status,
+                "consecutive_failures": health.consecutive_failures,
+                "age_minutes": health.age_minutes,
+                "alert": health.alert,
+                "reason": health.reason,
+            },
+        }
 
     def due(
         self,
