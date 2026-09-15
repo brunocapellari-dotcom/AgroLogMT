@@ -16,6 +16,7 @@ from .ibge_pipeline import SOURCE_ID as IBGE_SOURCE_ID, run_ibge_pipeline
 from .imea_operational_pipeline import SOURCE_ID as IMEA_OPERATIONAL_SOURCE_ID, run_imea_operational_pipeline
 from .models import SourceSpec
 from .nasa_power_pipeline import SOURCE_ID as NASA_POWER_SOURCE_ID, run_nasa_power_pipeline
+from .nass_quickstats_pipeline import run_nass_quickstats_pipeline
 from .orchestrator import CollectorEngine
 from .p0_pipeline import (
     ANA_SOURCE_ID,
@@ -53,6 +54,8 @@ def _execute_spec(
         return run_ana_hydro_pipeline(spec, store)
     if spec.method == "comexstat_api":
         return run_comexstat_pipeline(spec, store)
+    if spec.method == "nass_quickstats":
+        return run_nass_quickstats_pipeline(spec, store)
 
     manifest = engine.run_source(spec)
     return (1 if manifest.status == "error" else 0), manifest.to_dict()
