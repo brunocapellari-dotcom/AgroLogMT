@@ -17,6 +17,19 @@ class SecurityPolicyTests(unittest.TestCase):
     def workflows(self) -> list[Path]:
         return sorted((ROOT / ".github" / "workflows").glob("*.y*ml"))
 
+    def text_files(self):
+        ignored_dirs = {".git", ".venv", "venv", "node_modules", "dist", "outputs", "artifacts"}
+        binary_suffixes = {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".7z", ".xlsx", ".xls", ".parquet"}
+        for path in ROOT.rglob("*"):
+            if not path.is_file() or any(part in ignored_dirs for part in path.parts):
+                continue
+            if path.suffix.lower() in binary_suffixes:
+                continue
+            try:
+                yield path, path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+
     def test_canonical_security_policy_defines_independent_confidentiality_classes(self) -> None:
         text = self.read("docs/SECURITY.md")
         for token in ("PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED"):
@@ -142,24 +155,31 @@ class SecurityPolicyTests(unittest.TestCase):
         self.assertIn("roles/editor", text)
 
     def test_repository_does_not_contain_obvious_private_key_or_google_key_payload(self) -> None:
-        ignored_dirs = {".git", ".venv", "venv", "node_modules", "dist", "outputs"}
         private_key = "-----BEGIN " + "PRIVATE KEY-----"
         rsa_private_key = "-----BEGIN RSA " + "PRIVATE KEY-----"
         google_private_key = '"private_key": "' + private_key
         signatures = (private_key, rsa_private_key, google_private_key)
-        offenders: list[str] = []
-        for path in ROOT.rglob("*"):
-            if not path.is_file() or any(part in ignored_dirs for part in path.parts):
-                continue
-            if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".7z", ".xlsx", ".xls"}:
-                continue
-            try:
-                text = path.read_text(encoding="utf-8")
-            except (UnicodeDecodeError, OSError):
-                continue
-            if any(signature in text for signature in signatures):
-                offenders.append(str(path.relative_to(ROOT)))
+        offenders = [
+            str(path.relative_to(ROOT))
+            for path, text in self.text_files()
+            if any(signature in text for signature in signatures)
+        ]
         self.assertEqual(offenders, [], f"possível material de chave privada versionado: {offenders}")
+
+    def test_repository_does_not_contain_common_live_secret_formats(self) -> None:
+        patterns = {
+            "github_token": re.compile("gh" + r"[pousr]_[A-Za-z0-9]{30,255}"),
+            "aws_access_key": re.compile("AK" + r"IA[0-9A-Z]{16}"),
+            "google_api_key": re.compile("AI" + r"za[0-9A-Za-z_-]{35}"),
+            "slack_token": re.compile("xo" + r"x[baprs]-[A-Za-z0-9-]{20,}"),
+            "stripe_live_key": re.compile("sk_" + r"live_[A-Za-z0-9]{16,}"),
+        }
+        offenders: list[str] = []
+        for path, text in self.text_files():
+            for label, pattern in patterns.items():
+                if pattern.search(text):
+                    offenders.append(f"{path.relative_to(ROOT)}:{label}")
+        self.assertEqual(offenders, [], f"possível segredo versionado: {offenders}")
 
 
 if __name__ == "__main__":
