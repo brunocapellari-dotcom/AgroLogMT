@@ -1,6 +1,6 @@
 {
-  "contract_version": "1.2",
-  "source_basis": "Catálogo de filtros NCM da API oficial Comex Stat/MDIC, validado ao vivo em 2026-08-26; descrições do próprio catálogo da API. Escopo atual de carne bovina in natura validado em fontes oficiais MAPA/Receita/Siscomex em 2026-09-15; histórico continua sujeito ao mapping NCM válido por competência.",
+  "contract_version": "1.3",
+  "source_basis": "Catálogo de filtros NCM da API oficial Comex Stat/MDIC, validado ao vivo em 2026-08-26; descrições do próprio catálogo da API. Escopo corrente de carne bovina in natura validado em fontes oficiais MAPA/Receita/Siscomex em 2026-09-15. Para o agregado histórico, usar os headings HS4 0201 e 0202; análises históricas em NCM8 continuam sujeitas a correlação temporal.",
   "products": {
     "soja_grao": {
       "ncm8": ["12011000", "12019000"],
@@ -66,10 +66,24 @@
         "02023000": "Carnes de bovino, desossadas, congeladas"
       },
       "catalog_validated_current": true,
-      "historical_mapping_required": true,
       "flow": "export",
       "offal_excluded": true,
-      "note": "Escopo carne bovina in natura dos capítulos 0201 e 0202. Miudezas e demais produtos bovinos permanecem fora deste agregado. Antes de backfill 1997-presente, validar vigência histórica da NCM por competência."
+      "historical_aggregate": {
+        "basis": "hs4_heading",
+        "valid_from": 1997,
+        "headings": {
+          "0201": "Carnes de animais da espécie bovina, frescas ou refrigeradas",
+          "0202": "Carnes de animais da espécie bovina, congeladas"
+        },
+        "segment_by_heading": {
+          "0201": "fresca_refrigerada",
+          "0202": "congelada"
+        },
+        "ncm8_temporal_mapping_required": true,
+        "observed_ncm_audit_required": true,
+        "note": "O agregado histórico usa HS4 para permanecer completo diante de mudanças nos subcódigos NCM8. Qualquer análise histórica por NCM8 específico exige tabela de correlação válida para a competência."
+      },
+      "note": "Coleta operacional corrente usa os NCM8 vigentes listados acima. Série histórica agregada deve filtrar headings 0201/0202, o que exclui miudezas 0206 e evita aplicar uma cesta NCM8 atual retroativamente."
     },
     "fertilizante_ureia": {
       "ncm8": ["31021010", "31021090"],
@@ -114,9 +128,9 @@
   "rules": [
     "grao, semente, farelo, oleo e demais derivados permanecem fluxos separados",
     "carne bovina in natura, miudezas e demais produtos bovinos permanecem fluxos separados",
-    "mudanca futura de NCM exige nova versao do mapping",
-    "historico anterior a mudancas de nomenclatura deve usar mapping valido para a competencia",
-    "codigos marcados temporal_mapping_required ou historical_mapping_required nao podem ser agregados automaticamente entre vintages sem regra de vigencia",
+    "mudanca futura de NCM exige nova versao do mapping corrente",
+    "agregado historico de carne bovina in natura usa HS4 0201 e 0202; detalhe historico NCM8 exige mapping temporal valido para a competencia",
+    "codigos marcados temporal_mapping_required nao podem ser agregados automaticamente entre vintages sem regra de vigencia",
     "NCM nao identifica porto nem empresa exportadora por si so",
     "URF e via podem descrever corredor aduaneiro, mas URF nao e sinonimo automatico de terminal portuario",
     "municipio do modulo cities representa a geografia declarada pelo modulo e nao deve ser convertido em origem fisica da carga"
