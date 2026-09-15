@@ -40,26 +40,44 @@ class SecurityPolicyTests(unittest.TestCase):
         self.assertNotIn("gh secret set ANA_IDENTIFICADOR", text)
         self.assertNotIn("gh secret set ANA_SENHA", text)
 
-    def test_gateway_deploy_fails_closed_on_public_invoker_or_wrong_identity(self) -> None:
+    def test_gateway_deploy_fails_closed_on_broad_invoker_or_wrong_identity(self) -> None:
         text = self.read("scripts/deploy_gateway_gcloud.sh")
         self.assertIn("assert_private_gateway", text)
         self.assertIn("allUsers", text)
+        self.assertIn("allAuthenticatedUsers", text)
         self.assertIn("roles/run.invoker", text)
         self.assertIn("serviceAccountName", text)
         self.assertIn("GATEWAY_SERVICE_ACCOUNT", text)
 
-    def test_p0_ci_never_receives_ana_production_credentials(self) -> None:
-        text = self.read(".github/workflows/p0-connectors-ci.yml")
-        self.assertNotIn("secrets.ANA_IDENTIFICADOR", text)
-        self.assertNotIn("secrets.ANA_SENHA", text)
-        self.assertNotIn("ANA_IDENTIFICADOR:", text)
-        self.assertNotIn("ANA_SENHA:", text)
+    def test_ci_never_receives_ana_production_credentials(self) -> None:
+        for path in (
+            ".github/workflows/p0-connectors-ci.yml",
+            ".github/workflows/operational-models-readiness.yml",
+        ):
+            text = self.read(path)
+            for forbidden in (
+                "secrets.ANA_IDENTIFICADOR", "secrets.ANA_SENHA",
+                "secrets.ANA_HIDRO_IDENTIFICADOR", "secrets.ANA_HIDRO_SENHA",
+                "ANA_IDENTIFICADOR:", "ANA_SENHA:",
+                "ANA_HIDRO_IDENTIFICADOR:", "ANA_HIDRO_SENHA:",
+            ):
+                self.assertNotIn(forbidden, text, f"credencial ANA de produção em {path}")
+
+    def test_pr_validation_job_does_not_receive_oidc_permission(self) -> None:
+        text = self.read(".github/workflows/operational-models-readiness.yml")
+        top = text.split("jobs:", 1)[0]
+        self.assertNotIn("id-token: write", top)
+        validate = text.split("validate:", 1)[1].split("cloud-readiness:", 1)[0]
+        self.assertNotIn("id-token: write", validate)
+        cloud = text.split("cloud-readiness:", 1)[1]
+        self.assertIn("id-token: write", cloud)
 
     def test_privileged_and_core_workflows_pin_remote_actions_by_full_sha(self) -> None:
         paths = (
             ".github/workflows/gcp-core-homologation.yml",
             ".github/workflows/maritime-ais-deploy.yml",
             ".github/workflows/maritime-ais-hourly.yml",
+            ".github/workflows/operational-models-readiness.yml",
             ".github/workflows/p0-connectors-ci.yml",
             ".github/workflows/unit-tests.yml",
         )
@@ -83,6 +101,16 @@ class SecurityPolicyTests(unittest.TestCase):
         for pattern in required:
             self.assertIn(pattern, gitignore)
             self.assertIn(pattern, dockerignore)
+
+    def test_gcp_preflight_checks_keys_wif_and_gateway_exposure(self) -> None:
+        text = self.read("scripts/preflight_n6_gcp.sh")
+        self.assertIn("--managed-by=user", text)
+        self.assertIn("assertion.repository_id", text)
+        self.assertIn("assertion.repository_owner_id", text)
+        self.assertIn("allUsers", text)
+        self.assertIn("allAuthenticatedUsers", text)
+        self.assertIn("roles/owner", text)
+        self.assertIn("roles/editor", text)
 
     def test_repository_does_not_contain_obvious_private_key_or_google_key_payload(self) -> None:
         ignored_dirs = {".git", ".venv", "venv", "node_modules", "dist", "outputs"}
