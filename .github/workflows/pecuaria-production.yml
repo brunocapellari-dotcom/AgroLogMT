@@ -1,0 +1,202 @@
+name: pecuaria-production
+
+on:
+  pull_request:
+    paths:
+      - "collector/ibge_ppm.py"
+      - "collector/ibge_ppm_bigquery.py"
+      - "collector/ibge_ppm_pipeline.py"
+      - "collector/ibge_sidra.py"
+      - "collector/ibge_slaughter.py"
+      - "collector/ibge_slaughter_bigquery.py"
+      - "collector/ibge_slaughter_pipeline.py"
+      - "collector/mapa_sigsif.py"
+      - "collector/mapa_sigsif_bigquery.py"
+      - "collector/mapa_sigsif_pipeline.py"
+      - "collector/snapshot_bigquery.py"
+      - "collector/cloud_runner.py"
+      - "collector/registry_scheduler.py"
+      - "collector/config/data_source_registry.v1.json"
+      - "collector/config/sources.pecuaria.json"
+      - "contracts/product_trade_codes.v1.json"
+      - "models/pecuaria_trade.py"
+      - "gateway/pecuaria_queries.py"
+      - "gateway/pecuaria_routes.py"
+      - "gateway/production_app.py"
+      - "gateway/Dockerfile"
+      - "scripts/bootstrap_pecuaria_gcp.sh"
+      - "scripts/deploy_collectors_gcloud.sh"
+      - "scripts/deploy_gateway_gcloud.sh"
+      - "scripts/deploy_pecuaria_views.py"
+      - "scripts/homologate_pecuaria_gcp.sh"
+      - "scripts/probe_comex_beef_ncm_history.py"
+      - "scripts/probe_ibge_ppm_cattle.py"
+      - "scripts/probe_ibge_slaughter_cattle.py"
+      - "scripts/probe_mapa_sigsif.py"
+      - "scripts/validate_pecuaria_bigquery.py"
+      - "scripts/validate_pecuaria_gateway.py"
+      - "scripts/validate_pecuaria_trade_history.py"
+      - "tests/test_ibge_ppm_bigquery.py"
+      - "tests/test_ibge_ppm_collector.py"
+      - "tests/test_ibge_sidra.py"
+      - "tests/test_ibge_slaughter_bigquery.py"
+      - "tests/test_ibge_slaughter_collector.py"
+      - "tests/test_mapa_sigsif.py"
+      - "tests/test_pecuaria_gateway_queries.py"
+      - "tests/test_pecuaria_source_config.py"
+      - "tests/test_pecuaria_trade.py"
+      - "tests/test_product_trade_codes_contract.py"
+      - "tests/test_registry_scheduler.py"
+      - ".github/workflows/pecuaria-production.yml"
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Operation to run after the whole-project gate is green"
+        required: true
+        default: "probe"
+        type: choice
+        options:
+          - probe
+          - deploy_homologate
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pecuaria-production-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGION: southamerica-east1
+  BQ_LOCATION: southamerica-east1
+  PECUARIA_DATASET: pecuaria
+  TRADE_DATASET: comercio_exterior
+  OPS_DATASET: agrolog_ops
+
+jobs:
+  public-live-probes:
+    name: Livestock public-source live probes
+    if: github.event_name == 'pull_request' || inputs.operation == 'probe' || inputs.operation == 'deploy_homologate'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 pinned
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0 pinned
+        with:
+          python-version: "3.12"
+
+      - name: Install minimal live-probe dependency
+        run: python -m pip install --disable-pip-version-check 'requests>=2.32,<3'
+
+      - name: Probe IBGE PPM cattle current coverage
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/probe_ibge_ppm_cattle.py --period 2024 --min-municipalities 100
+
+      - name: Probe IBGE PPM cattle full historical coverage
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/probe_ibge_ppm_cattle.py --period all --min-municipalities 100 --min-year 1974 --max-year 2024
+
+      - name: Probe IBGE quarterly cattle slaughter
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/probe_ibge_slaughter_cattle.py --period 202601
+
+      - name: Probe MAPA PGA SIGSIF current snapshot
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/probe_mapa_sigsif.py
+
+      - name: Probe representative official Comex beef classification
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/probe_comex_beef_ncm_history.py --from-year 2025 --to-year 2026 --inter-year-delay 0 --out /tmp/comex-beef-probe.json
+
+  gcp-homologation:
+    name: GCP livestock deploy and full homologation
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy_homologate'
+    needs: public-live-probes
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      WIF_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      BUILD_SERVICE_ACCOUNT: ${{ secrets.GCP_BUILD_SERVICE_ACCOUNT }}
+      BUILD_SOURCE_BUCKET: ${{ secrets.GCP_BUILD_SOURCE_BUCKET }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 pinned
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Fail closed if GCP bootstrap inputs are incomplete
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in PROJECT_ID WIF_PROVIDER GCP_SERVICE_ACCOUNT BUILD_SERVICE_ACCOUNT BUILD_SOURCE_BUCKET; do
+            test -n "${!key}" || { echo "MISSING ${key}" >&2; exit 2; }
+          done
+
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3 pinned
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3 pinned
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0 pinned
+        with:
+          python-version: "3.12"
+
+      - name: Install BigQuery validation runtime
+        run: python -m pip install --disable-pip-version-check 'google-cloud-bigquery>=3.35,<4'
+
+      - name: Verify production prerequisites without mutating IAM
+        shell: bash
+        run: |
+          set -euo pipefail
+          active="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -n1)"
+          test "$active" = "$GCP_SERVICE_ACCOUNT"
+          for dataset in "$OPS_DATASET" "$PECUARIA_DATASET" "$TRADE_DATASET"; do
+            bq show --project_id="$PROJECT_ID" "${PROJECT_ID}:${dataset}" >/dev/null 2>&1 || {
+              echo "Dataset ${dataset} ausente; execute o bootstrap administrativo antes desta homologação." >&2
+              exit 3
+            }
+          done
+
+      - name: Deploy collector image and registry-driven livestock job
+        env:
+          DEPLOY_SCOPE: pecuaria
+        run: bash scripts/deploy_collectors_gcloud.sh
+
+      - name: Homologate all four gated livestock feeds twice
+        run: bash scripts/homologate_pecuaria_gcp.sh
+
+      - name: Deploy and validate historical beef view
+        run: |
+          python scripts/deploy_pecuaria_views.py \
+            --project "$PROJECT_ID" \
+            --trade-dataset "$TRADE_DATASET" \
+            --location "$BQ_LOCATION"
+          python scripts/validate_pecuaria_trade_history.py \
+            --project "$PROJECT_ID" \
+            --dataset "$TRADE_DATASET" \
+            --location "$BQ_LOCATION"
+
+      - name: Deploy hardened AgroLog Gateway with livestock routes
+        run: bash scripts/deploy_gateway_gcloud.sh
+
+      - name: Validate livestock Gateway end to end
+        run: python scripts/validate_pecuaria_gateway.py --project "$PROJECT_ID" --region "$REGION"
