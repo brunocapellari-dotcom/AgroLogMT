@@ -60,11 +60,12 @@ jobs:
           python -m py_compile
           scripts/validate_conab_n6.py scripts/validate_gateway_n6.py scripts/validate_comexstat_bigquery.py
           scripts/run_n6_synthetic_backtest.py scripts/inspect_n6_bigquery_readiness.py scripts/probe_news_signal_writer.py
+          scripts/maritime_final_acceptance.py
           models/point_in_time.py models/readiness.py models/baselines.py models/feature_matrix.py models/training_dataset.py
           models/evaluation.py models/promotion.py models/shipping_reconciliation.py models/shipping_pipeline.py
           models/port_geofence.py models/ais_quality.py models/maritime_port_state.py models/vessel_identity.py
           models/maritime_eta.py models/maritime_source_health.py models/maritime_anomaly.py models/maritime_queue.py
-          models/port_call_engine.py gateway/maritime_queries.py collector/transport_security.py
+          models/port_call_engine.py models/maritime_final_readiness.py gateway/maritime_queries.py collector/transport_security.py
           collector/comexstat_pipeline.py collector/ais_stream.py collector/ais_stream_client.py collector/ais_worker.py
           collector/lineup_normalizer.py collector/official_lineup_html.py collector/official_lineup_pdf.py
           collector/shipping_lineup_worker.py collector/shipping_bigquery.py collector/shipping_reconcile_worker.py
@@ -91,6 +92,7 @@ jobs:
               'contracts/soy_mt_datamart.v1.json',
               'contracts/shipping_reconciliation.v1.json',
               'contracts/maritime_geofences.v1.json',
+              'contracts/maritime_final_acceptance.v1.json',
               'models/registry.json',
               'models/feature_contracts.json',
           ]
