@@ -34,7 +34,11 @@ class SecurityPolicyTests(unittest.TestCase):
         text = self.read("docs/SECURITY.md")
         for token in ("PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED"):
             self.assertIn(f"`{token}`", text)
-        self.assertIn("independente da classe de evidência", text)
+        # Security/confidentiality and epistemic evidence are orthogonal axes.
+        # Keep the test semantic rather than binding policy to one synonym.
+        self.assertIn("A classe de segurança é independente da classe epistemológica", text)
+        for evidence_class in ("observado", "estimado", "projetado", "inferido"):
+            self.assertIn(evidence_class, text)
         self.assertIn("Fail closed", text)
 
     def test_runtime_images_drop_root_before_entrypoint(self) -> None:
@@ -108,12 +112,19 @@ class SecurityPolicyTests(unittest.TestCase):
             text = path.read_text(encoding="utf-8")
             self.assertRegex(text, r"(?m)^permissions:\s*$", f"permissions explícitas ausentes em {path.name}")
 
-    def test_unit_gate_runs_on_every_pull_request_without_path_filter(self) -> None:
-        text = self.read(".github/workflows/unit-tests.yml")
-        trigger = text.split("permissions:", 1)[0]
+    def test_whole_project_gate_runs_on_every_pull_request_and_unit_gate_is_manual(self) -> None:
+        final_gate = self.read(".github/workflows/full-project-final-gate.yml")
+        trigger = final_gate.split("permissions:", 1)[0]
         self.assertIn("pull_request:", trigger)
         self.assertNotIn("paths:", trigger)
-        self.assertIn("unittest:", text)
+        self.assertIn("whole-project-ci:", final_gate)
+        self.assertIn("Run whole-project deterministic validator", final_gate)
+
+        diagnostic = self.read(".github/workflows/unit-tests.yml")
+        diagnostic_trigger = diagnostic.split("permissions:", 1)[0]
+        self.assertIn("workflow_dispatch:", diagnostic_trigger)
+        self.assertNotIn("pull_request:", diagnostic_trigger)
+        self.assertIn("unittest:", diagnostic)
 
     def test_github_hardening_script_enforces_main_ruleset(self) -> None:
         text = self.read("scripts/harden_github_repository.sh")
