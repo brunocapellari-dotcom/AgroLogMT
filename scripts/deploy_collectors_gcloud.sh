@@ -31,6 +31,7 @@ done
 
 COLLECTOR_SERVICE_ACCOUNT="${COLLECTOR_SERVICE_ACCOUNT:-${COLLECTOR_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
 BUILD_SERVICE_ACCOUNT="${BUILD_SERVICE_ACCOUNT:-${BUILD_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
+BUILD_SERVICE_ACCOUNT_RESOURCE="${BUILD_SERVICE_ACCOUNT_RESOURCE:-projects/${PROJECT_ID}/serviceAccounts/${BUILD_SERVICE_ACCOUNT}}"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}"
 
 gcloud config set project "$PROJECT_ID" >/dev/null
@@ -83,10 +84,12 @@ gcloud storage buckets describe "gs://${BUILD_SOURCE_BUCKET}" --project "$PROJEC
   exit 3
 }
 
-# Build com identidade própria e staging exclusivo. Este script não cria IAM/APIs/datasets.
+# Cloud Build API exige o nome canônico do recurso da service account.
+# Mantemos BUILD_SERVICE_ACCOUNT como e-mail para IAM/gcloud describe e derivamos
+# o resource name somente para o campo serviceAccount do build.
 gcloud builds submit . \
   --project "$PROJECT_ID" \
-  --service-account "$BUILD_SERVICE_ACCOUNT" \
+  --service-account "$BUILD_SERVICE_ACCOUNT_RESOURCE" \
   --gcs-source-staging-dir "gs://${BUILD_SOURCE_BUCKET}/source" \
   --config collector/cloudbuild.yaml \
   --substitutions "_IMAGE=${IMAGE}"
