@@ -31,6 +31,23 @@
       "notes": "Série oficial revisionável de bovinos abatidos e peso total de carcaças em Mato Grosso, total do trimestre, total de inspeção e total do rebanho bovino. Snapshots são preservados; publicação histórica não é inferida e o histórico não é feature point-in-time até reconstrução de vintages."
     },
     {
+      "source_id": "mapa_sigsif_slaughter_snapshot",
+      "name": "MAPA PGA/SIGSIF - abate bovino por sexo e UF de procedência",
+      "group": "pecuaria",
+      "method": "ckan_resource",
+      "enabled": true,
+      "expected_frequency": "monthly",
+      "file_extension": "csv",
+      "evidence_class": "observado",
+      "options": {
+        "base_url": "https://dados.agricultura.gov.br",
+        "dataset_id": "062166e3-b515-4274-8e7d-68aadd64b820",
+        "resource_id": "341dc717-4716-42ab-b189-c8d7a9d2a1ba",
+        "timeout_seconds": 120
+      },
+      "notes": "Snapshot oficial SIF atualizado mensalmente, com UF de procedência, categoria, macho e fêmea. O CSV não possui competência/período interno no dicionário oficial; por isso serve como cross-check atual e composição por sexo, nunca como substituto da série histórica IBGE nem como fluxo mensal retroativo."
+    },
+    {
       "source_id": "mdic_comexstat_beef_mt_export_api",
       "name": "MDIC/SECEX ComexStat API - exportação carne bovina in natura MT",
       "group": "pecuaria",
