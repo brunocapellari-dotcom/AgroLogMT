@@ -1,15 +1,7 @@
-name: probe-climate-grid
+name: probe-climate-grid-diagnostic
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "collector/ibge_malhas.py"
-      - "collector/climate_grid.py"
-      - "collector/nasa_power.py"
-      - "scripts/probe_climate_grid_live.py"
-      - "tests/test_climate_grid.py"
-      - ".github/workflows/probe-climate-grid.yml"
 
 permissions:
   contents: read
