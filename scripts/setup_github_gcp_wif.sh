@@ -16,6 +16,7 @@ OPS_DATASET="${OPS_DATASET:-agrolog_ops}"
 LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
 TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
 AGRO_DATASET="${AGRO_DATASET:-agro}"
+PECUARIA_DATASET="${PECUARIA_DATASET:-pecuaria}"
 MARITIME_DATASET="${MARITIME_DATASET:-agrolog_models}"
 MERCADO_DATASET="${MERCADO_DATASET:-mercado}"
 HIDRO_DATASET="${HIDRO_DATASET:-hidrologia}"
@@ -133,7 +134,7 @@ for role in \
   remove_legacy_project_role "$DEPLOYER_SA_EMAIL" "$role"
 done
 
-for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"; do
+for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$PECUARIA_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"; do
   ensure_dataset "$dataset"
 done
 if ! gcloud artifacts repositories describe "$AR_REPOSITORY" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
@@ -150,13 +151,14 @@ JSON
 gcloud storage buckets update "gs://${BUILD_SOURCE_BUCKET}" --lifecycle-file=/tmp/agrolog-build-lifecycle.json >/dev/null
 
 ensure_project_role "$COLLECTOR_SA_EMAIL" roles/bigquery.user
-for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"; do
+for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$PECUARIA_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"; do
   ensure_dataset_role "$dataset" "$COLLECTOR_SA_EMAIL" roles/bigquery.dataEditor
 done
 
 ensure_project_role "$GATEWAY_SA_EMAIL" roles/bigquery.jobUser
-ensure_dataset_role "$LOGISTICA_DATASET" "$GATEWAY_SA_EMAIL" roles/bigquery.dataViewer
-ensure_dataset_role "$MARITIME_DATASET" "$GATEWAY_SA_EMAIL" roles/bigquery.dataViewer
+for dataset in "$LOGISTICA_DATASET" "$MARITIME_DATASET" "$PECUARIA_DATASET" "$TRADE_DATASET"; do
+  ensure_dataset_role "$dataset" "$GATEWAY_SA_EMAIL" roles/bigquery.dataViewer
+done
 
 ensure_project_role "$BUILD_SA_EMAIL" roles/logging.logWriter
 gcloud artifacts repositories add-iam-policy-binding "$AR_REPOSITORY" \
@@ -172,9 +174,16 @@ gcloud iam service-accounts add-iam-policy-binding "$BUILD_SA_EMAIL" \
   --member="serviceAccount:${BUILD_SERVICE_AGENT}" \
   --role=roles/iam.serviceAccountTokenCreator --quiet >/dev/null
 
-for role in roles/serviceusage.serviceUsageConsumer roles/cloudbuild.builds.editor roles/run.developer; do
+for role in roles/serviceusage.serviceUsageConsumer roles/cloudbuild.builds.editor roles/run.developer roles/bigquery.jobUser; do
   ensure_project_role "$DEPLOYER_SA_EMAIL" "$role"
 done
+# O deployer audita datasets no release final, mas só pode escrever no dataset de
+# comércio exterior onde cria/substitui a view derivada bovina versionada no GitHub.
+for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$AGRO_DATASET" "$PECUARIA_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"; do
+  ensure_dataset_role "$dataset" "$DEPLOYER_SA_EMAIL" roles/bigquery.dataViewer
+done
+ensure_dataset_role "$TRADE_DATASET" "$DEPLOYER_SA_EMAIL" roles/bigquery.dataEditor
+
 gcloud artifacts repositories add-iam-policy-binding "$AR_REPOSITORY" \
   --location "$REGION" --project "$PROJECT_ID" \
   --member="serviceAccount:${DEPLOYER_SA_EMAIL}" --role=roles/artifactregistry.reader --quiet >/dev/null
@@ -273,7 +282,7 @@ printf 'Gateway:            %s\n' "$GATEWAY_SA_EMAIL"
 printf 'Build staging:      gs://%s\n' "$BUILD_SOURCE_BUCKET"
 printf 'WIF repository_id:  %s\n' "$REPO_NUMERIC_ID"
 printf 'WIF owner_id:       %s\n' "$REPO_OWNER_NUMERIC_ID"
-printf 'Datasets:           %s, %s, %s, %s, %s, %s, %s\n' "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"
+printf 'Datasets:           %s, %s, %s, %s, %s, %s, %s, %s\n' "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$PECUARIA_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"
 printf 'IMPORTANTE: compartilhe a pasta RAW do Drive como Editor somente com %s.\n' "$COLLECTOR_SA_EMAIL"
 printf 'Credenciais ANA ficam somente no Secret Manager; não em GitHub Secrets.\n'
 printf 'Deploy/homologação recorrente não deve alterar IAM, APIs ou criar datasets.\n'
