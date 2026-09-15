@@ -1,20 +1,7 @@
-name: soy-mt-readiness-pam
+name: soy-mt-readiness-pam-diagnostic
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "contracts/soy_mt_datamart_v01.json"
-      - "contracts/soy_mt_readiness_evidence_2026-08-24.json"
-      - "scripts/build_soy_mt_readiness_manifest.py"
-      - "scripts/probe_ibge_pam_pipeline.py"
-      - "collector/ibge_pam.py"
-      - "collector/ibge_pam_bigquery.py"
-      - "models/intermediate_marts.py"
-      - "tests/test_soy_mt_readiness_manifest.py"
-      - "tests/test_ibge_pam_collector.py"
-      - "tests/test_intermediate_marts.py"
-      - ".github/workflows/soy-mt-readiness-pam.yml"
 
 permissions:
   contents: read
