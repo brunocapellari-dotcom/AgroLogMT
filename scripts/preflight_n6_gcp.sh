@@ -70,10 +70,13 @@ PY
   fi
 done
 
-SA_EMAILS=()
-for name in "$DEPLOYER_SA_NAME" "$BUILD_SA_NAME" "$COLLECTOR_SA_NAME" "$GATEWAY_SA_NAME"; do
-  sa="${name}@${PROJECT_ID}.iam.gserviceaccount.com"
-  SA_EMAILS+=("$sa")
+DEPLOYER_SA_EMAIL="${DEPLOYER_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+BUILD_SA_EMAIL="${BUILD_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+COLLECTOR_SA_EMAIL="${COLLECTOR_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+GATEWAY_SA_EMAIL="${GATEWAY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+SA_EMAILS=("$DEPLOYER_SA_EMAIL" "$BUILD_SA_EMAIL" "$COLLECTOR_SA_EMAIL" "$GATEWAY_SA_EMAIL")
+
+for sa in "${SA_EMAILS[@]}"; do
   if gcloud iam service-accounts describe "$sa" --project "$PROJECT_ID" >/dev/null 2>&1; then
     ok "service account existe: $sa"
     if user_keys="$(gcloud iam service-accounts keys list \
@@ -91,31 +94,47 @@ for name in "$DEPLOYER_SA_NAME" "$BUILD_SA_NAME" "$COLLECTOR_SA_NAME" "$GATEWAY_
   fi
 done
 
-# Runtime identities não podem carregar papéis administrativos genéricos no projeto.
+# Runtime identities não podem carregar papéis administrativos genéricos e as
+# identidades que executam BigQuery precisam dos papéis mínimos esperados.
 policy_file="/tmp/agrolog-project-iam.json"
 gcloud projects get-iam-policy "$PROJECT_ID" --format=json >"$policy_file"
-python - "$policy_file" "$PROJECT_ID" "${SA_EMAILS[@]}" <<'PY' || failures=$((failures+1))
+python - "$policy_file" "$PROJECT_ID" "$DEPLOYER_SA_EMAIL" "$BUILD_SA_EMAIL" "$COLLECTOR_SA_EMAIL" "$GATEWAY_SA_EMAIL" <<'PY' || failures=$((failures+1))
 import json,sys
 policy=json.load(open(sys.argv[1], encoding='utf-8'))
 project=sys.argv[2]
-services=set(sys.argv[3:])
+deployer, builder, collector, gateway = sys.argv[3:7]
+services={deployer, builder, collector, gateway}
 forbidden={
     'roles/owner','roles/editor','roles/bigquery.admin','roles/resourcemanager.projectIamAdmin',
     'roles/iam.serviceAccountAdmin','roles/serviceusage.serviceUsageAdmin','roles/run.admin',
 }
+roles_by_member={service:set() for service in services}
 hits=[]
 for binding in policy.get('bindings', []):
     role=binding.get('role')
-    if role not in forbidden:
-        continue
     for member in binding.get('members', []):
-        if member.startswith('serviceAccount:') and member.split(':',1)[1] in services:
-            hits.append((member, role))
+        if not member.startswith('serviceAccount:'):
+            continue
+        email=member.split(':',1)[1]
+        if email in services:
+            roles_by_member[email].add(role)
+            if role in forbidden:
+                hits.append((member, role))
 if hits:
     for member,role in hits:
         print(f'FAIL privilégio administrativo excessivo no projeto {project}: {member} -> {role}')
     raise SystemExit(1)
-print('OK   nenhuma service account AgroLog possui papel administrativo genérico proibido no projeto')
+required={
+    deployer:'roles/bigquery.jobUser',
+    collector:'roles/bigquery.user',
+    gateway:'roles/bigquery.jobUser',
+}
+missing=[(member,role) for member,role in required.items() if role not in roles_by_member.get(member,set())]
+if missing:
+    for member,role in missing:
+        print(f'FAIL papel BigQuery mínimo ausente no projeto {project}: serviceAccount:{member} -> {role}')
+    raise SystemExit(1)
+print('OK   IAM do projeto sem papéis administrativos proibidos e com papéis BigQuery mínimos esperados')
 PY
 
 if gcloud iam workload-identity-pools providers describe "$PROVIDER_ID" \
@@ -162,7 +181,6 @@ for job in agrolog-dados agrolog-radar agrolog-conhecimento agrolog-pecuaria; do
   fi
 done
 
-GATEWAY_SA_EMAIL="${GATEWAY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 if gcloud run services describe "$GATEWAY_SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
   ok "Cloud Run service existente: $GATEWAY_SERVICE_NAME"
   gateway_sa="$(gcloud run services describe "$GATEWAY_SERVICE_NAME" \
