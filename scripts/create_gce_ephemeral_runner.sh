@@ -39,19 +39,19 @@ gcloud services enable compute.googleapis.com --project "$PROJECT_ID" >/dev/null
 # Resolve the official runner release and require a published SHA-256 digest.
 release_json="$(gh api repos/actions/runner/releases/latest)"
 read -r runner_version asset_name asset_url asset_digest < <(
-  python3 - <<'PY' <<<"$release_json"
+  python3 -c '
 import json,sys
 obj=json.load(sys.stdin)
-version=str(obj['tag_name']).removeprefix('v')
-name=f'actions-runner-linux-x64-{version}.tar.gz'
-asset=next((a for a in obj.get('assets',[]) if a.get('name')==name), None)
+version=str(obj["tag_name"]).removeprefix("v")
+name=f"actions-runner-linux-x64-{version}.tar.gz"
+asset=next((a for a in obj.get("assets",[]) if a.get("name")==name), None)
 if not asset:
-    raise SystemExit(f'asset oficial não encontrado: {name}')
-digest=str(asset.get('digest') or '')
-if not digest.startswith('sha256:'):
-    raise SystemExit('release asset sem digest SHA-256 publicado; fail closed')
-print(version, name, asset['browser_download_url'], digest.split(':',1)[1])
-PY
+    raise SystemExit(f"asset oficial não encontrado: {name}")
+digest=str(asset.get("digest") or "")
+if not digest.startswith("sha256:"):
+    raise SystemExit("release asset sem digest SHA-256 publicado; fail closed")
+print(version, name, asset["browser_download_url"], digest.split(":",1)[1])
+' <<<"$release_json"
 )
 
 echo "GitHub Actions runner: v${runner_version}"
@@ -96,8 +96,6 @@ sudo -u agrologrunner bash -lc "cd /opt/actions-runner && ./config.sh \\
   --labels '${RUNNER_LABEL},gcp-ephemeral' \\
   --work '_work'"
 
-# Registration token is short lived and the runner accepts exactly one job.
-unset registration_token
 set +e
 sudo -u agrologrunner bash -lc 'cd /opt/actions-runner && ./run.sh'
 runner_exit=\$?
