@@ -22,6 +22,10 @@ _PROMPT_INJECTION_PATTERNS = (
     re.compile(r"\b(reveal|print|show|exfiltrate)\b.{0,40}\b(secret|token|password|credential|api[_ -]?key)\b", re.I),
     re.compile(r"\b(call|use|invoke|execute)\b.{0,30}\b(tool|function|shell|terminal|command)\b", re.I),
 )
+_SENSITIVE_ASSIGNMENT = re.compile(
+    r"(?i)\b(password|senha|token|secret|api[_ -]?key|authorization)\b(\s*[:=]\s*)([^\s,;]+)"
+)
+_BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
 
 
 class InputSecurityError(ValueError):
@@ -33,6 +37,14 @@ class UntrustedTextAssessment:
     trust_class: str
     suspicious_prompt_injection: bool
     matched_rules: tuple[str, ...]
+
+
+def redact_sensitive_text(value: str, *, max_chars: int = 2_000) -> str:
+    """Best-effort log redaction; secrets still must never be passed to logs intentionally."""
+    text = str(value)[:max_chars]
+    text = _BEARER.sub("Bearer [REDACTED]", text)
+    text = _SENSITIVE_ASSIGNMENT.sub(lambda m: f"{m.group(1)}{m.group(2)}[REDACTED]", text)
+    return text
 
 
 def enforce_payload_size(payload: bytes, *, max_bytes: int = DEFAULT_MAX_PAYLOAD_BYTES) -> None:
@@ -96,7 +108,6 @@ def validate_zip_bytes(
         path = PurePosixPath(info.filename.replace("\\", "/"))
         if path.is_absolute() or ".." in path.parts:
             raise InputSecurityError(f"archive path traversal detected: {info.filename}")
-        # UNIX symlink mode in upper 16 bits.
         mode = (info.external_attr >> 16) & 0o170000
         if mode == 0o120000:
             raise InputSecurityError(f"archive symlink is prohibited: {info.filename}")
@@ -117,7 +128,7 @@ def validate_zip_bytes(
 def neutralize_spreadsheet_cell(value: object) -> object:
     """Neutralize formulas only for spreadsheet/CSV export surfaces.
 
-    Canonical RAW/normalized values must remain unchanged. This helper is for a
+    Canonical RAW/normalized values remain unchanged. This helper is for a
     generated CSV/XLSX intended to be opened by spreadsheet software.
     """
     if not isinstance(value, str):
