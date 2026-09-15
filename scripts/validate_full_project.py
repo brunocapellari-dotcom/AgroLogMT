@@ -15,6 +15,10 @@ from pathlib import Path
 from shutil import which
 from typing import Any, Iterable
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from models.project_release_gate import ReleaseStage, evaluate_release
 
 
@@ -93,8 +97,6 @@ def load_test_suite(paths: list[Path], repo: Path) -> tuple[unittest.TestSuite, 
             if spec is None or spec.loader is None:
                 raise RuntimeError("unable to create import spec")
             module = importlib.util.module_from_spec(spec)
-            # dataclasses, typing helpers and relative introspection may resolve
-            # the importing module through sys.modules while exec_module runs.
             sys.modules[module_name] = module
             spec.loader.exec_module(module)
             suite.addTests(loader.loadTestsFromModule(module))
@@ -116,20 +118,22 @@ def run_tests(repo: Path, *, live: bool) -> dict[str, Any]:
         stream.seek(0)
         output = stream.read()[-20000:]
 
+    skipped_count = len(result.skipped)
     failure_count = (
         len(result.failures)
         + len(result.errors)
         + len(result.unexpectedSuccesses)
         + len(import_failures)
+        + skipped_count
     )
     status = "FAIL" if failure_count else "PASS"
     return stage(
         name,
         status,
-        [] if failure_count else [f"test_files:{len(selected)}", f"tests_run:{result.testsRun}"],
+        [] if failure_count else [f"test_files:{len(selected)}", f"tests_run:{result.testsRun}", "skipped:0"],
         test_files=len(selected),
         tests_run=result.testsRun,
-        skipped=len(result.skipped),
+        skipped=skipped_count,
         import_failures=import_failures,
         failures=len(result.failures),
         errors=len(result.errors),
