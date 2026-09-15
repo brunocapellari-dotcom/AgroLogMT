@@ -1,18 +1,21 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
-_IDENTIFIER = re.compile(r"^[A-Za-z0-9_-]+$")
+from .snapshot_bigquery import (
+    ensure_dataset,
+    ensure_domain_audit_table,
+    merge_snapshot_rows,
+    safe_identifier,
+    snapshot_count,
+    write_domain_audit,
+)
 
-
-def _safe_identifier(value: str, label: str) -> str:
-    if not _IDENTIFIER.fullmatch(value):
-        raise ValueError(f"{label} invalido: {value!r}")
-    return value
+# Backward-compatible private name used by existing tests/callers.
+_safe_identifier = safe_identifier
 
 
 @dataclass(frozen=True)
@@ -45,9 +48,9 @@ class IbgePpmBigQueryLoader:
         location: str = "southamerica-east1",
         client: Any | None = None,
     ) -> None:
-        self.project_id = _safe_identifier(project_id, "project_id")
-        self.dataset_id = _safe_identifier(dataset_id, "dataset_id")
-        self.ops_dataset_id = _safe_identifier(ops_dataset_id, "ops_dataset_id")
+        self.project_id = safe_identifier(project_id, "project_id")
+        self.dataset_id = safe_identifier(dataset_id, "dataset_id")
+        self.ops_dataset_id = safe_identifier(ops_dataset_id, "ops_dataset_id")
         self.location = location
         from google.cloud import bigquery
 
@@ -93,13 +96,18 @@ class IbgePpmBigQueryLoader:
         ]
 
     def ensure_objects(self) -> None:
-        location = self.location.replace("'", "")
-        self.client.query(
-            f"CREATE SCHEMA IF NOT EXISTS `{self.project_id}.{self.dataset_id}` OPTIONS(location='{location}')"
-        ).result()
-        self.client.query(
-            f"CREATE SCHEMA IF NOT EXISTS `{self.project_id}.{self.ops_dataset_id}` OPTIONS(location='{location}')"
-        ).result()
+        ensure_dataset(
+            self.client,
+            project_id=self.project_id,
+            dataset_id=self.dataset_id,
+            location=self.location,
+        )
+        self.audit_table = ensure_domain_audit_table(
+            self.client,
+            project_id=self.project_id,
+            ops_dataset_id=self.ops_dataset_id,
+            location=self.location,
+        )
         self.client.query(
             f"""
 CREATE TABLE IF NOT EXISTS `{self.target_table}` (
@@ -139,28 +147,6 @@ CLUSTER BY geo_code_ibge, year, snapshot_id
         ).result()
         self.client.query(
             f"""
-CREATE TABLE IF NOT EXISTS `{self.audit_table}` (
-  run_id STRING NOT NULL,
-  source_id STRING NOT NULL,
-  domain STRING NOT NULL,
-  target_table STRING NOT NULL,
-  snapshot_id STRING,
-  status STRING NOT NULL,
-  records_read INT64,
-  records_accepted INT64,
-  records_rejected INT64,
-  duplicates_removed INT64,
-  records_inserted INT64,
-  started_at TIMESTAMP NOT NULL,
-  finished_at TIMESTAMP NOT NULL,
-  details_json STRING
-)
-PARTITION BY DATE(finished_at)
-CLUSTER BY source_id, domain, status
-"""
-        ).result()
-        self.client.query(
-            f"""
 CREATE OR REPLACE VIEW `{self.latest_view}` AS
 SELECT * EXCEPT(rn)
 FROM (
@@ -190,21 +176,20 @@ GROUP BY year
         ).result()
 
     def _snapshot_count(self, snapshot_id: str) -> int:
-        cfg = self._bigquery.QueryJobConfig(
-            query_parameters=[self._bigquery.ScalarQueryParameter("snapshot_id", "STRING", snapshot_id)]
+        return snapshot_count(
+            self.client,
+            self._bigquery,
+            target_table=self.target_table,
+            snapshot_id=snapshot_id,
         )
-        rows = list(
-            self.client.query(
-                f"SELECT COUNT(*) AS n FROM `{self.target_table}` WHERE snapshot_id=@snapshot_id",
-                job_config=cfg,
-            ).result()
-        )
-        return int(rows[0]["n"]) if rows else 0
 
     def _write_audit(self, row: dict[str, Any]) -> None:
-        errors = self.client.insert_rows_json(self.audit_table, [row])
-        if errors:
-            raise RuntimeError(f"Falha ao gravar auditoria IBGE PPM: {errors}")
+        write_domain_audit(
+            self.client,
+            audit_table=self.audit_table,
+            row=row,
+            error_label="IBGE PPM",
+        )
 
     @staticmethod
     def _validate_rows(rows: list[dict[str, Any]], snapshot_id: str) -> None:
@@ -225,81 +210,42 @@ GROUP BY year
         self._validate_rows(rows, snapshot_id)
         started = datetime.now(timezone.utc)
         self.ensure_objects()
-        existing = self._snapshot_count(snapshot_id)
-        run_id = f"ibge_ppm:{snapshot_id}:{started.isoformat()}"
-        if existing:
-            if existing != len(rows):
-                raise RuntimeError(
-                    f"IBGE PPM snapshot parcial/inconsistente: esperado={len(rows)} persistido={existing}"
-                )
-            finished = datetime.now(timezone.utc)
-            result = PpmLoadResult(
-                "already_loaded", snapshot_id, len(rows), existing, existing,
-                self.target_table, self.latest_view, self.state_view, self.audit_table,
-                started.isoformat(), finished.isoformat(),
-            )
-            self._write_audit({
-                "run_id": run_id,
-                "source_id": "ibge_sidra_ppm_3939",
-                "domain": "pecuaria.herd_stock",
-                "target_table": self.target_table,
-                "snapshot_id": snapshot_id,
-                "status": result.status,
-                "records_read": parse_stats.get("records_read"),
-                "records_accepted": parse_stats.get("records_accepted"),
-                "records_rejected": parse_stats.get("records_rejected", 0),
-                "duplicates_removed": 0,
-                "records_inserted": 0,
-                "started_at": started.isoformat(),
-                "finished_at": finished.isoformat(),
-                "details_json": json.dumps(parse_stats, ensure_ascii=False, sort_keys=True),
-            })
-            return result
-
-        stage_ref = (
-            f"{self.project_id}.{self.dataset_id}._stg_ibge_ppm_"
-            f"{snapshot_id[:12]}_{int(started.timestamp())}"
+        status, persisted, existing = merge_snapshot_rows(
+            self.client,
+            self._bigquery,
+            target_table=self.target_table,
+            schema=self._schema(),
+            rows=rows,
+            snapshot_id=snapshot_id,
+            stage_prefix="ibge_ppm",
+            started_at=started,
         )
-        table = self._bigquery.Table(stage_ref, schema=self._schema())
-        table.expires = started + timedelta(hours=2)
-        self.client.create_table(table)
-        try:
-            cfg = self._bigquery.LoadJobConfig(schema=self._schema(), write_disposition="WRITE_TRUNCATE")
-            self.client.load_table_from_json(rows, stage_ref, job_config=cfg).result()
-            self.client.query(
-                f"""
-MERGE `{self.target_table}` T
-USING `{stage_ref}` S
-ON T.snapshot_id=S.snapshot_id AND T.record_id=S.record_id
-WHEN NOT MATCHED THEN INSERT ROW
-"""
-            ).result()
-        finally:
-            self.client.delete_table(stage_ref, not_found_ok=True)
-
-        persisted = self._snapshot_count(snapshot_id)
-        if persisted != len(rows):
-            raise RuntimeError(
-                f"Tie-out IBGE PPM falhou: esperado={len(rows)} persistido={persisted}"
-            )
         finished = datetime.now(timezone.utc)
         result = PpmLoadResult(
-            "loaded", snapshot_id, len(rows), persisted, 0,
-            self.target_table, self.latest_view, self.state_view, self.audit_table,
-            started.isoformat(), finished.isoformat(),
+            status,
+            snapshot_id,
+            len(rows),
+            persisted,
+            existing,
+            self.target_table,
+            self.latest_view,
+            self.state_view,
+            self.audit_table,
+            started.isoformat(),
+            finished.isoformat(),
         )
         self._write_audit({
-            "run_id": run_id,
+            "run_id": f"ibge_ppm:{snapshot_id}:{started.isoformat()}",
             "source_id": "ibge_sidra_ppm_3939",
             "domain": "pecuaria.herd_stock",
             "target_table": self.target_table,
             "snapshot_id": snapshot_id,
-            "status": result.status,
+            "status": status,
             "records_read": parse_stats.get("records_read"),
             "records_accepted": parse_stats.get("records_accepted"),
             "records_rejected": parse_stats.get("records_rejected", 0),
             "duplicates_removed": 0,
-            "records_inserted": persisted,
+            "records_inserted": 0 if status == "already_loaded" else persisted,
             "started_at": started.isoformat(),
             "finished_at": finished.isoformat(),
             "details_json": json.dumps(parse_stats, ensure_ascii=False, sort_keys=True),
