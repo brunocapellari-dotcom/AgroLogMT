@@ -190,7 +190,15 @@ class DataSourceRegistry:
 
         state = state or {}
         now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-        last_attempt = _parse_time(state.get("last_checked_at") or entry.last_collection_at)
+        # Retry/backoff is anchored to the most recent execution attempt, while
+        # collection freshness continues to use last_checked_at/last_collection_at.
+        # This prevents a failed job from becoming immediately due again merely
+        # because it did not produce a successful collection timestamp.
+        last_attempt = _parse_time(
+            state.get("last_scheduler_at")
+            or state.get("last_checked_at")
+            or entry.last_collection_at
+        )
         failures = int(state.get("consecutive_failures") or 0)
 
         if failures > 0 and last_attempt is not None:
@@ -198,8 +206,9 @@ class DataSourceRegistry:
             if now < retry_at:
                 return CollectionDecision(source_id, False, "retry_backoff", entry.fallback)
 
+        last_collection = _parse_time(state.get("last_checked_at") or entry.last_collection_at)
         interval = entry.min_interval
-        if interval is not None and last_attempt is not None and now < last_attempt + interval:
+        if interval is not None and last_collection is not None and now < last_collection + interval:
             return CollectionDecision(source_id, False, "fresh_enough", entry.fallback)
 
         return CollectionDecision(source_id, True, "due", entry.fallback)
@@ -259,39 +268,17 @@ class DataSourceRegistry:
             },
         }
 
-    def due(
-        self,
-        *,
-        state_by_source: dict[str, dict[str, Any]] | None = None,
-        now: datetime | None = None,
-        wake_sources: set[str] | None = None,
-    ) -> list[CollectionDecision]:
-        state_by_source = state_by_source or {}
-        wake_sources = wake_sources or set()
-        decisions = [
-            self.decision(
-                source_id,
-                state=state_by_source.get(source_id),
-                now=now,
-                wake=source_id in wake_sources,
-            )
-            for source_id in sorted(self.entries)
-        ]
-        return [decision for decision in decisions if decision.due]
-
-    def resolve_source_spec(self, source_id: str, *, repo_root: str | Path = ".") -> SourceSpec:
-        """Resolve an existing SourceSpec without duplicating collector configuration.
-
-        Generic scheduling is supported when execution_ref uses `path.json#source_id`.
-        Module-only references remain explicit gaps until they expose a SourceSpec.
-        """
+    def resolve_source_spec(self, source_id: str, *, repo_root: str | Path = ".") -> SourceSpec | None:
         entry = self.get(source_id)
-        ref = entry.execution_ref or ""
+        if not entry.execution_ref:
+            return None
+        ref = entry.execution_ref
         if "#" not in ref:
-            raise ValueError(f"source {source_id} has no resolvable config execution_ref")
+            raise ValueError(f"invalid execution_ref for {source_id}: {ref}")
         relative_path, execution_source_id = ref.split("#", 1)
-        payload = json.loads((Path(repo_root) / relative_path).read_text(encoding="utf-8"))
-        for item in payload.get("sources", []):
-            if item.get("source_id") == execution_source_id:
-                return SourceSpec.from_dict(item)
-        raise ValueError(f"execution source {execution_source_id} not found in {relative_path}")
+        path = Path(repo_root) / relative_path
+        from .cli import load_sources
+        for spec in load_sources(path):
+            if spec.source_id == execution_source_id:
+                return spec
+        raise ValueError(f"execution_ref target not found for {source_id}: {ref}")
