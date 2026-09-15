@@ -61,7 +61,8 @@ def query_year(year: int, *, timeout: int = 120) -> dict[str, Any]:
     for row in rows:
         codes.update(_find_beef_codes(row))
     if not codes:
-        raise RuntimeError(f"No 0201/0202 NCM code found for {year}")
+        sample = rows[:3]
+        raise RuntimeError(f"No 0201/0202 NCM code found for {year}; sample={sample!r}")
     return {
         "year": year,
         "beef_ncm_codes": sorted(codes),
@@ -78,15 +79,23 @@ def main() -> int:
     if any(year < 1997 or year > 2100 for year in years):
         raise ValueError("years outside Comex Stat NCM scope")
 
-    results = [query_year(year) for year in years]
+    results: list[dict[str, Any]] = []
+    failed = False
+    for year in years:
+        try:
+            results.append(query_year(year))
+        except Exception as exc:
+            failed = True
+            results.append({"year": year, "error": f"{type(exc).__name__}: {exc}"})
+
     payload = {
-        "status": "ok",
+        "status": "error" if failed else "ok",
         "source": API_URL,
         "years": results,
     }
     Path(args.out).write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
