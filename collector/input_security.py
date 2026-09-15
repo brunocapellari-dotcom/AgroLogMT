@@ -7,7 +7,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Iterable
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 
 DEFAULT_MAX_PAYLOAD_BYTES = 100 * 1024 * 1024
@@ -45,6 +45,31 @@ def redact_sensitive_text(value: str, *, max_chars: int = 2_000) -> str:
     text = _BEARER.sub("Bearer [REDACTED]", text)
     text = _SENSITIVE_ASSIGNMENT.sub(lambda m: f"{m.group(1)}{m.group(2)}[REDACTED]", text)
     return text
+
+
+def redact_known_secret(value: str, secret: str | None, *, max_chars: int = 2_000) -> str:
+    """Redact an exact runtime secret before a message reaches logs/manifests."""
+    text = str(value)[:max_chars]
+    if secret:
+        text = text.replace(str(secret), "[REDACTED]")
+    return redact_sensitive_text(text, max_chars=max_chars)
+
+
+def sanitize_url_query_parameter(url: str, parameter: str, *, replacement: str = "[REDACTED]") -> str:
+    """Return a URL safe for provenance/logging with one query parameter masked.
+
+    Some official APIs require API keys in query parameters. The network request
+    may contain that value, but `observed_url`, manifests, errors and logs must not.
+    """
+    name = str(parameter).strip()
+    if not name:
+        raise ValueError("parameter cannot be empty")
+    parts = urlsplit(str(url))
+    query = [
+        (key, replacement if key == name else value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+    ]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
 def enforce_payload_size(payload: bytes, *, max_bytes: int = DEFAULT_MAX_PAYLOAD_BYTES) -> None:
