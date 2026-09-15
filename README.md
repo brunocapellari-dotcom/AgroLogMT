@@ -32,9 +32,9 @@ Um módulo só é `OPERATIONAL` quando existe evidência para:
 
 `fonte → collector → storage → normalização → validação → análise → conhecimento → relatório/alerta → teste`
 
-Freshness é gate transversal. Se houver forecast, também são obrigatórios vintage, cutoff point-in-time, benchmark e avaliação.
+Freshness, segurança, lineage, observabilidade e restore são gates transversais. Se houver forecast, também são obrigatórios vintage, cutoff point-in-time, benchmark e avaliação.
 
-Etapa ausente implica `PARTIAL`, `GATED` ou `GAP` — nunca “pronto por documentação”.
+Etapa ausente implica `PARTIAL`, `GATED`, `BLOCKED` ou `GAP` — nunca “pronto por documentação”. A promoção objetiva usa `contracts/source_promotion_gate.v1.schema.json` e `collector/source_promotion.py`.
 
 ## Coleta autônoma
 
@@ -42,7 +42,8 @@ O control plane está dividido em:
 
 - `contracts/data_source_registry.v1.schema.json` — contrato;
 - `collector/config/data_source_registry.v1.json` — catálogo global;
-- `collector/source_registry.py` — validação, due/not_due, backoff e resolução de collectors existentes;
+- `collector/source_registry.py` — validação, due/not_due, backoff, source health e resolução de collectors existentes;
+- `collector/registry_scheduler.py` — planejamento e retry/fallback orientados ao registry;
 - `CollectorEngine` e adapters atuais — execução, preservados quando funcionam;
 - Cloud Scheduler/Cloud Run Jobs — gatilho durável de produção após homologação.
 
@@ -109,7 +110,7 @@ Controles incluem:
 - backup/restore somente considerado operacional depois de restore testado;
 - audit logs e incident response.
 
-Política canônica: `docs/SECURITY.md`.
+Política canônica: `docs/SECURITY.md`. Runbook de recuperação: `docs/BACKUP_RESTORE.md`.
 
 ## Programa Integrado Radar
 
@@ -134,6 +135,7 @@ O Geopolitical Watch é projeto independente e pode fornecer eventos/sinais por 
 - `docs/ARCHITECTURE.md` — arquitetura oficial global.
 - `docs/PHASE0_AUDIT_GAP_ANALYSIS_2026-09-14.md` — auditoria e Gap Analysis da Fase 0.
 - `docs/SECURITY.md` — segurança de dados, identidade, ingestão, runtime e incidentes.
+- `docs/BACKUP_RESTORE.md` — política operacional de backup, restore drill e critérios de recuperação verificada.
 - `docs/TECHNOLOGY_STACK.md` — seleção tecnológica e gates de promoção.
 - `docs/DATA_GOVERNANCE.md` — governança dos dados/evidências.
 - `docs/REPOSITORY_GOVERNANCE.md` — governança do GitHub.
@@ -150,6 +152,8 @@ O Geopolitical Watch é projeto independente e pode fornecer eventos/sinais por 
 Contratos novos centrais:
 
 - `contracts/data_source_registry.v1.schema.json`;
+- `contracts/source_promotion_gate.v1.schema.json`;
+- `contracts/restore_drill.v1.schema.json`;
 - `contracts/ai_roles.v1.json`;
 - `contracts/global_supply_demand.v1.schema.json`;
 - `contracts/forecast_vintage.v1.schema.json`;
@@ -189,18 +193,20 @@ Classificar explicitamente:
 
 ### Gates que bloqueiam produção
 
-1. Resolver o `CI_EXECUTION_BLOCKER` do hardening: os jobs do PR de segurança precisam efetivamente receber runner e executar os testes.
-2. Homologar CONAB Armazéns + AgroLog Gateway no GCP real e obter `N6 CORE HOMOLOGATION: PASS`.
+1. Resolver #159 (`CI_EXECUTION_BLOCKER`): os jobs do PR #156 precisam efetivamente receber runner e executar os testes.
+2. Executar #160: bootstrap GCP/WIF/service accounts, compartilhar Drive/IMEA e homologar CONAB Armazéns + AgroLog Gateway até `N6 CORE HOMOLOGATION: PASS`.
 3. Aplicar/readback das proteções de `main`, WIF/IAM/secrets e validar runtime privado/least privilege.
+4. Executar primeiro restore drill real do core antes de declarar recuperação operacional.
 
 ### Expansão que pode avançar em paralelo sem ativação prematura
 
-1. Consolidar Data Source Registry e scheduler genérico sobre collectors existentes.
-2. Fechar EUA + Global Supply & Demand.
-3. Fechar Argentina/América do Sul.
-4. Completar diesel/energia, indústria e gado.
-5. Transformar Madeira/Tapajós em produtos hidrológicos operacionais.
-6. Promover News Impact e Forecast somente com vintages/quality/backtests.
-7. Transformar agentes/Segundo Cérebro em runtime governado após os dados subjacentes estarem homologados.
+1. Consolidar Data Source Registry, scheduler e source promotion gate sobre collectors existentes.
+2. Fechar Brasil/MT + Maritime.
+3. Fechar EUA + Global Supply & Demand.
+4. Fechar Argentina/América do Sul.
+5. Completar diesel/energia, indústria e gado.
+6. Transformar Madeira/Tapajós em produtos hidrológicos operacionais.
+7. Promover News Impact e Forecast somente com vintages/quality/backtests.
+8. Transformar agentes/Segundo Cérebro em runtime governado após os dados subjacentes estarem homologados.
 
-> Evoluir incrementalmente; preservar collectors funcionais; nunca declarar produção sem runtime real, freshness observada, quality gate e evidência.
+> Evoluir incrementalmente; preservar collectors funcionais; nunca declarar produção sem runtime real, freshness observada, quality gate, restore verificado e evidência.
