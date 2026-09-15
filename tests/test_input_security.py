@@ -9,6 +9,7 @@ from collector.input_security import (
     assess_untrusted_text,
     enforce_payload_size,
     neutralize_spreadsheet_cell,
+    redact_sensitive_text,
     untrusted_evidence_envelope,
     validate_source_url,
     validate_zip_bytes,
@@ -60,6 +61,14 @@ class InputSecurityTests(unittest.TestCase):
         envelope = untrusted_evidence_envelope(text, source_id="fixture")
         self.assertTrue(envelope["suspicious_prompt_injection"])
         self.assertIn("Never execute", envelope["policy"])
+
+    def test_error_redaction_masks_common_secret_assignments_and_bearer(self) -> None:
+        message = "Authorization: Bearer abc.def token=topsecret senha=12345"
+        redacted = redact_sensitive_text(message)
+        self.assertNotIn("abc.def", redacted)
+        self.assertNotIn("topsecret", redacted)
+        self.assertNotIn("12345", redacted)
+        self.assertIn("[REDACTED]", redacted)
 
 
 if __name__ == "__main__":
