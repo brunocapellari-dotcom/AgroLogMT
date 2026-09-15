@@ -18,7 +18,9 @@ from typing import Any, Iterable
 from models.project_release_gate import ReleaseStage, evaluate_release
 
 
-EXCLUDED_PARTS = {".git", ".venv", "venv", "node_modules", "dist", "build", "__pycache__", ".pytest_cache"}
+EXCLUDED_PARTS = {
+    ".git", ".venv", "venv", "node_modules", "dist", "build", "__pycache__", ".pytest_cache", "outputs"
+}
 REMOTE_ACTION_RE = re.compile(r"^\s*-\s*uses:\s*([^#\s]+)", re.MULTILINE)
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 LIVE_TEST_RE = re.compile(r"(?:^|[_-])live(?:[_-]|\.py$)", re.IGNORECASE)
@@ -28,18 +30,28 @@ def excluded(path: Path) -> bool:
     return any(part in EXCLUDED_PARTS for part in path.parts)
 
 
-def files(repo: Path, pattern: str) -> list[Path]:
-    return sorted(path for path in repo.rglob(pattern) if path.is_file() and not excluded(path.relative_to(repo)))
+def files(root: Path, pattern: str) -> list[Path]:
+    if not root.exists():
+        return []
+    return sorted(
+        path for path in root.rglob(pattern)
+        if path.is_file() and not excluded(path.relative_to(root))
+    )
 
 
 def stage(name: str, status: str, evidence: Iterable[str] = (), **details: Any) -> dict[str, Any]:
-    return {"name": name, "status": status, "evidence": [str(x) for x in evidence if str(x)], "details": details}
+    return {
+        "name": name,
+        "status": status,
+        "evidence": [str(item) for item in evidence if str(item).strip()],
+        "details": details,
+    }
 
 
 def command(argv: list[str], *, cwd: Path) -> tuple[int, str]:
     proc = subprocess.run(argv, cwd=cwd, text=True, capture_output=True, check=False)
     output = ((proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")).strip()
-    return proc.returncode, output[-12000:]
+    return proc.returncode, output[-20000:]
 
 
 def check_python(repo: Path) -> dict[str, Any]:
@@ -50,22 +62,30 @@ def check_python(repo: Path) -> dict[str, Any]:
         for index, path in enumerate(candidates):
             try:
                 py_compile.compile(str(path), cfile=str(base / f"{index}.pyc"), doraise=True)
-            except Exception as exc:
+            except Exception as exc:  # pragma: no cover - failure evidence path
                 failures.append(f"{path.relative_to(repo)}: {exc}")
     return stage(
         "python_compile_all",
         "FAIL" if failures else "PASS",
         [] if failures else [f"compiled:{len(candidates)}"],
-        python_files=len(candidates), failures=failures,
+        python_files=len(candidates),
+        failures=failures,
     )
+
+
+def _test_paths(repo: Path, *, live: bool) -> list[Path]:
+    candidates = [path for path in files(repo, "test*.py") if "tests" in path.parts]
+    return [path for path in candidates if bool(LIVE_TEST_RE.search(path.name)) == live]
 
 
 def load_test_suite(paths: list[Path], repo: Path) -> tuple[unittest.TestSuite, list[str]]:
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     import_failures: list[str] = []
-    if str(repo) not in sys.path:
-        sys.path.insert(0, str(repo))
+    repo_text = str(repo)
+    if repo_text not in sys.path:
+        sys.path.insert(0, repo_text)
+
     for index, path in enumerate(paths):
         module_name = f"_agrolog_full_gate_test_{index}_{path.stem}"
         try:
@@ -73,53 +93,70 @@ def load_test_suite(paths: list[Path], repo: Path) -> tuple[unittest.TestSuite, 
             if spec is None or spec.loader is None:
                 raise RuntimeError("unable to create import spec")
             module = importlib.util.module_from_spec(spec)
+            # dataclasses, typing helpers and relative introspection may resolve
+            # the importing module through sys.modules while exec_module runs.
+            sys.modules[module_name] = module
             spec.loader.exec_module(module)
             suite.addTests(loader.loadTestsFromModule(module))
         except Exception as exc:
+            sys.modules.pop(module_name, None)
             import_failures.append(f"{path.relative_to(repo)}: {exc}")
     return suite, import_failures
 
 
 def run_tests(repo: Path, *, live: bool) -> dict[str, Any]:
-    all_tests = [p for p in files(repo, "test*.py") if "tests" in p.parts]
-    selected = [p for p in all_tests if bool(LIVE_TEST_RE.search(p.name)) == live]
+    selected = _test_paths(repo, live=live)
+    name = "tests_live_all" if live else "tests_deterministic_all"
+    if not selected:
+        return stage(name, "BLOCKED" if live else "FAIL", [], blocker="no matching test files")
+
     suite, import_failures = load_test_suite(selected, repo)
     with tempfile.TemporaryFile(mode="w+") as stream:
         result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
         stream.seek(0)
         output = stream.read()[-20000:]
-    failure_count = len(result.failures) + len(result.errors) + len(result.unexpectedSuccesses) + len(import_failures)
-    name = "tests_live_all" if live else "tests_deterministic_all"
-    if not selected:
-        status = "BLOCKED" if live else "FAIL"
-        evidence: list[str] = []
-    else:
-        status = "FAIL" if failure_count else "PASS"
-        evidence = [] if failure_count else [f"test_files:{len(selected)}", f"tests_run:{result.testsRun}"]
+
+    failure_count = (
+        len(result.failures)
+        + len(result.errors)
+        + len(result.unexpectedSuccesses)
+        + len(import_failures)
+    )
+    status = "FAIL" if failure_count else "PASS"
     return stage(
-        name, status, evidence,
-        test_files=len(selected), tests_run=result.testsRun, skipped=len(result.skipped),
-        import_failures=import_failures, failures=len(result.failures), errors=len(result.errors),
-        unexpected_successes=len(result.unexpectedSuccesses), output=output,
+        name,
+        status,
+        [] if failure_count else [f"test_files:{len(selected)}", f"tests_run:{result.testsRun}"],
+        test_files=len(selected),
+        tests_run=result.testsRun,
+        skipped=len(result.skipped),
+        import_failures=import_failures,
+        failures=len(result.failures),
+        errors=len(result.errors),
+        unexpected_successes=len(result.unexpectedSuccesses),
+        output=output,
     )
 
 
 def check_json_and_yaml(repo: Path) -> tuple[dict[str, Any], dict[str, Any]]:
-    json_paths = [p for p in files(repo, "*.json") if "outputs" not in p.parts]
+    json_paths = files(repo, "*.json")
     json_failures: list[str] = []
     for path in json_paths:
         try:
             json.loads(path.read_text(encoding="utf-8"))
         except Exception as exc:
             json_failures.append(f"{path.relative_to(repo)}: {exc}")
-    contracts_stage = stage(
-        "contracts_and_configs", "FAIL" if json_failures else "PASS",
+    contracts = stage(
+        "contracts_and_configs",
+        "FAIL" if json_failures else "PASS",
         [] if json_failures else [f"json_valid:{len(json_paths)}"],
-        json_files=len(json_paths), failures=json_failures,
+        json_files=len(json_paths),
+        failures=json_failures,
     )
 
     workflow_root = repo / ".github" / "workflows"
-    yaml_paths = files(workflow_root, "*.yml") + files(workflow_root, "*.yaml") + files(repo, "cloudbuild.yaml")
+    yaml_paths = files(workflow_root, "*.yml") + files(workflow_root, "*.yaml")
+    yaml_paths += [path for path in files(repo, "cloudbuild.yaml") if path not in yaml_paths]
     yaml_failures: list[str] = []
     try:
         import yaml
@@ -143,18 +180,21 @@ def check_json_and_yaml(repo: Path) -> tuple[dict[str, Any], dict[str, Any]]:
                 shell_failures.append(f"{path.relative_to(repo)}: {output}")
 
     failures = yaml_failures + shell_failures
-    workflow_stage = stage(
-        "workflow_and_shell_syntax", "FAIL" if failures else "PASS",
+    workflows = stage(
+        "workflow_and_shell_syntax",
+        "FAIL" if failures else "PASS",
         [] if failures else [f"yaml_valid:{len(yaml_paths)}", f"shell_valid:{len(shell_paths)}"],
-        workflow_yaml_files=len(yaml_paths), shell_files=len(shell_paths), failures=failures,
+        workflow_yaml_files=len(yaml_paths),
+        shell_files=len(shell_paths),
+        failures=failures,
     )
-    return contracts_stage, workflow_stage
+    return contracts, workflows
 
 
 def check_action_pins(repo: Path) -> list[str]:
     failures: list[str] = []
-    workflow_root = repo / ".github" / "workflows"
-    for path in files(workflow_root, "*.yml") + files(workflow_root, "*.yaml"):
+    root = repo / ".github" / "workflows"
+    for path in files(root, "*.yml") + files(root, "*.yaml"):
         text = path.read_text(encoding="utf-8")
         for match in REMOTE_ACTION_RE.finditer(text):
             ref = match.group(1)
@@ -172,7 +212,7 @@ def check_action_pins(repo: Path) -> list[str]:
 def check_docker_nonroot(repo: Path) -> list[str]:
     failures: list[str] = []
     for path in files(repo, "Dockerfile"):
-        users = []
+        users: list[str] = []
         for line in path.read_text(encoding="utf-8").splitlines():
             parts = line.strip().split(None, 1)
             if len(parts) == 2 and parts[0].upper() == "USER":
@@ -185,15 +225,23 @@ def check_docker_nonroot(repo: Path) -> list[str]:
 def check_repository_integrity(repo: Path) -> dict[str, Any]:
     failures = check_action_pins(repo) + check_docker_nonroot(repo)
     required = [
-        "AGENTS.md", "CLAUDE.md", "docs/ARCHITECTURE.md", "docs/DATA_GOVERNANCE.md", "docs/SECURITY.md",
-        "collector/config/data_source_registry.v1.json", "contracts/full_project_release_gate.v1.schema.json",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "docs/ARCHITECTURE.md",
+        "docs/DATA_GOVERNANCE.md",
+        "docs/SECURITY.md",
+        "docs/FINAL_RELEASE_GATE.md",
+        "collector/config/data_source_registry.v1.json",
+        "contracts/full_project_release_gate.v1.schema.json",
     ]
     for relative in required:
         if not (repo / relative).is_file():
             failures.append(f"missing required canonical file: {relative}")
     return stage(
-        "repository_integrity", "FAIL" if failures else "PASS",
-        [] if failures else ["canonical_files_present", "actions_sha_pinned", "docker_nonroot"], failures=failures,
+        "repository_integrity",
+        "FAIL" if failures else "PASS",
+        [] if failures else ["canonical_files_present", "actions_sha_pinned", "docker_nonroot"],
+        failures=failures,
     )
 
 
@@ -202,6 +250,7 @@ def check_registry(repo: Path) -> dict[str, Any]:
     count = 0
     try:
         from collector.source_registry import DataSourceRegistry
+
         registry = DataSourceRegistry.load(repo / "collector/config/data_source_registry.v1.json")
         count = len(registry.entries)
         for entry in registry.entries.values():
@@ -214,14 +263,17 @@ def check_registry(repo: Path) -> dict[str, Any]:
     except Exception as exc:
         failures.append(str(exc))
     return stage(
-        "source_registry", "FAIL" if failures else "PASS",
-        [] if failures else [f"registry_sources:{count}"], registered_sources=count, failures=failures,
+        "source_registry",
+        "FAIL" if failures else "PASS",
+        [] if failures else [f"registry_sources:{count}"],
+        registered_sources=count,
+        failures=failures,
     )
 
 
 def check_frontend(repo: Path) -> dict[str, Any]:
-    package_json = repo / "maritime_ui/package.json"
-    lock = repo / "maritime_ui/package-lock.json"
+    package_json = repo / "maritime_ui" / "package.json"
+    lock = repo / "maritime_ui" / "package-lock.json"
     failures: list[str] = []
     if not package_json.is_file():
         failures.append("maritime_ui/package.json missing")
@@ -231,13 +283,19 @@ def check_frontend(repo: Path) -> dict[str, Any]:
         return stage("frontend_reproducible_build", "FAIL", [], failures=failures)
     if not which("npm"):
         return stage("frontend_reproducible_build", "BLOCKED", [], blocker="npm unavailable")
-    code, install_output = command(["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"], cwd=repo / "maritime_ui")
+
+    code, install_output = command(
+        ["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"],
+        cwd=repo / "maritime_ui",
+    )
     if code:
         return stage("frontend_reproducible_build", "FAIL", [], step="npm_ci", output=install_output)
     code, build_output = command(["npm", "run", "build"], cwd=repo / "maritime_ui")
     return stage(
-        "frontend_reproducible_build", "PASS" if code == 0 else "FAIL",
-        ["npm_ci", "npm_run_build"] if code == 0 else [], output=build_output,
+        "frontend_reproducible_build",
+        "PASS" if code == 0 else "FAIL",
+        ["npm_ci", "npm_run_build"] if code == 0 else [],
+        output=build_output,
     )
 
 
@@ -248,7 +306,11 @@ def external_stage(name: str, env_name: str, *, exact_line: str | None = None) -
     path = Path(value)
     if not path.is_file():
         return stage(name, "FAIL", [], error=f"evidence file does not exist: {value}")
+    if path.stat().st_size <= 0:
+        return stage(name, "FAIL", [], error=f"evidence file is empty: {value}")
     text = path.read_text(encoding="utf-8", errors="replace")
+    if not text.strip():
+        return stage(name, "FAIL", [], error=f"evidence file contains no usable content: {value}")
     if exact_line and exact_line not in {line.strip() for line in text.splitlines()}:
         return stage(name, "FAIL", [], error=f"required evidence line missing: {exact_line}")
     return stage(name, "PASS", [str(path)], bytes=path.stat().st_size)
@@ -260,7 +322,9 @@ def build_report(repo: Path, *, mode: str) -> dict[str, Any]:
         check_repository_integrity(repo),
         check_python(repo),
         run_tests(repo, live=False),
-        run_tests(repo, live=True) if mode == "final" else stage("tests_live_all", "BLOCKED", [], blocker="final mode required"),
+        run_tests(repo, live=True) if mode == "final" else stage(
+            "tests_live_all", "BLOCKED", [], blocker="final mode required"
+        ),
         contracts_stage,
         workflow_stage,
         check_registry(repo),
@@ -273,18 +337,23 @@ def build_report(repo: Path, *, mode: str) -> dict[str, Any]:
         external_stage("data_quality_and_freshness", "AGROLOG_EVIDENCE_DATA_QUALITY"),
         external_stage("backup_restore", "AGROLOG_EVIDENCE_RESTORE"),
         external_stage("gcp_preflight", "AGROLOG_EVIDENCE_GCP_PREFLIGHT"),
-        external_stage("gcp_core_homologation", "AGROLOG_EVIDENCE_N6_CORE", exact_line="N6 CORE HOMOLOGATION: PASS"),
+        external_stage(
+            "gcp_core_homologation",
+            "AGROLOG_EVIDENCE_N6_CORE",
+            exact_line="N6 CORE HOMOLOGATION: PASS",
+        ),
         external_stage("final_auditor", "AGROLOG_EVIDENCE_FINAL_AUDITOR"),
     ]
-    parsed = [ReleaseStage.from_dict(item) for item in stages]
-    evaluation = evaluate_release(parsed)
+    evaluation = evaluate_release([ReleaseStage.from_dict(item) for item in stages])
     blockers = [
         f"{item['name']}: {item['details'].get('blocker', 'blocked')}"
-        for item in stages if item["status"] == "BLOCKED"
+        for item in stages
+        if item["status"] == "BLOCKED"
     ]
     failures = [
         f"{item['name']}: {item['details'].get('failures') or item['details'].get('error') or 'failed'}"
-        for item in stages if item["status"] == "FAIL"
+        for item in stages
+        if item["status"] == "FAIL"
     ]
     return {
         "version": "1.0.0",
@@ -313,8 +382,11 @@ def main() -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({
-        "status": report["status"], "mode": report["mode"], "report": str(output),
-        "failures": report["failures"], "blockers": report["blockers"],
+        "status": report["status"],
+        "mode": report["mode"],
+        "report": str(output),
+        "failures": report["failures"],
+        "blockers": report["blockers"],
     }, ensure_ascii=False, indent=2))
 
     if report["status"] == "FAIL":
