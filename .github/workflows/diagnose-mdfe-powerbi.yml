@@ -1,15 +1,6 @@
 name: Diagnose MDF-e Power BI
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'scripts/diagnose_mdfe_powerbi.py'
-      - 'scripts/extract_mdfe_powerbi.py'
-      - 'scripts/test_mdfe_filters.py'
-      - 'scripts/test_mdfe_ncm_exact.py'
-      - 'scripts/export_mdfe_destinations.py'
-      - '.github/workflows/diagnose-mdfe-powerbi.yml'
   workflow_dispatch:
 
 permissions:
