@@ -81,10 +81,11 @@ def _test_paths(repo: Path, *, live: bool) -> list[Path]:
     return [path for path in candidates if bool(LIVE_TEST_RE.search(path.name)) == live]
 
 
-def _junit_counts(report: Path) -> dict[str, int]:
+def _junit_summary(report: Path) -> tuple[dict[str, int], list[str]]:
     counts = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
+    problems: list[str] = []
     if not report.is_file():
-        return counts
+        return counts, problems
     root = ET.parse(report).getroot()
     suites = [root] if root.tag == "testsuite" else list(root.findall("testsuite"))
     if not suites and root.tag == "testsuites":
@@ -92,7 +93,16 @@ def _junit_counts(report: Path) -> dict[str, int]:
     for suite in suites:
         for key in counts:
             counts[key] += int(suite.attrib.get(key, "0") or 0)
-    return counts
+        for case in suite.iter("testcase"):
+            identity = "::".join(
+                part for part in (case.attrib.get("classname", ""), case.attrib.get("name", "")) if part
+            )
+            for kind in ("failure", "error", "skipped"):
+                node = case.find(kind)
+                if node is not None:
+                    message = (node.attrib.get("message") or "").strip().replace("\n", " ")[:240]
+                    problems.append(f"{kind}:{identity}" + (f": {message}" if message else ""))
+    return counts, problems[:200]
 
 
 def run_tests(repo: Path, *, live: bool) -> dict[str, Any]:
@@ -114,12 +124,18 @@ def run_tests(repo: Path, *, live: bool) -> dict[str, Any]:
             *[str(path.relative_to(repo)) for path in selected],
         ]
         code, output = command(argv, cwd=repo)
-        counts = _junit_counts(junit)
+        counts, problem_tests = _junit_summary(junit)
 
     failure_count = counts["failures"] + counts["errors"] + counts["skipped"]
     if code != 0 and failure_count == 0:
         failure_count = 1
     status = "FAIL" if failure_count else "PASS"
+    error = None
+    if failure_count:
+        error = (
+            f"pytest_exit_code={code}; tests={counts['tests']}; failures={counts['failures']}; "
+            f"errors={counts['errors']}; skipped={counts['skipped']}"
+        )
     return stage(
         name,
         status,
@@ -135,6 +151,8 @@ def run_tests(repo: Path, *, live: bool) -> dict[str, Any]:
         failures=counts["failures"],
         errors=counts["errors"],
         pytest_exit_code=code,
+        problem_tests=problem_tests,
+        error=error,
         output=output,
     )
 
@@ -351,11 +369,13 @@ def build_report(repo: Path, *, mode: str) -> dict[str, Any]:
         for item in stages
         if item["status"] == "BLOCKED"
     ]
-    failures = [
-        f"{item['name']}: {item['details'].get('failures') or item['details'].get('error') or 'failed'}"
-        for item in stages
-        if item["status"] == "FAIL"
-    ]
+    failures = []
+    for item in stages:
+        if item["status"] != "FAIL":
+            continue
+        details = item["details"]
+        reason = details.get("problem_tests") or details.get("failures") or details.get("error") or "failed"
+        failures.append(f"{item['name']}: {reason}")
     return {
         "version": "1.0.0",
         "release_id": os.environ.get("AGROLOG_RELEASE_ID", "local-full-project-gate"),
