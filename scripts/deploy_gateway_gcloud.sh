@@ -45,6 +45,25 @@ IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/${IMAGE_NAME}:${I
 
 gcloud config set project "$PROJECT_ID" >/dev/null
 
+require_dataset() {
+  local dataset="$1"
+  local tmp actual
+  tmp="/tmp/agrolog-gateway-dataset-${dataset}.json"
+  if ! bq show --project_id="$PROJECT_ID" --format=prettyjson "${PROJECT_ID}:${dataset}" >"$tmp" 2>/dev/null; then
+    echo "ERRO: dataset ${dataset} ausente. Execute o bootstrap administrativo." >&2
+    exit 3
+  fi
+  actual="$(python - "$tmp" <<'PY'
+import json,sys
+print(json.load(open(sys.argv[1])).get('location',''))
+PY
+)"
+  if [[ -n "$actual" && "$actual" != "$BQ_LOCATION" ]]; then
+    echo "ERRO: dataset ${dataset} em ${actual}; esperado ${BQ_LOCATION}" >&2
+    exit 3
+  fi
+}
+
 assert_private_gateway() {
   if ! gcloud run services describe "$SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
     return 0
@@ -81,10 +100,7 @@ for sa in "$GATEWAY_SERVICE_ACCOUNT" "$BUILD_SERVICE_ACCOUNT"; do
   }
 done
 for dataset in "$LOGISTICA_DATASET" "$MARITIME_DATASET" "$PECUARIA_DATASET" "$TRADE_DATASET"; do
-  bq show --project_id="$PROJECT_ID" "${PROJECT_ID}:${dataset}" >/dev/null 2>&1 || {
-    echo "ERRO: dataset ${dataset} ausente. Execute o bootstrap administrativo." >&2
-    exit 3
-  }
+  require_dataset "$dataset"
 done
 gcloud artifacts repositories describe "$AR_REPOSITORY" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1 || {
   echo "ERRO: Artifact Registry ${AR_REPOSITORY} ausente." >&2
