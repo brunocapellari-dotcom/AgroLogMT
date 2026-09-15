@@ -2,17 +2,15 @@ name: comex-beef-ncm-history-probe
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "contracts/product_trade_codes.v1.json"
-      - "models/pecuaria_trade.py"
-      - "scripts/probe_comex_beef_ncm_history.py"
-      - "tests/test_product_trade_codes_contract.py"
-      - "tests/test_pecuaria_trade.py"
-      - ".github/workflows/comex-beef-ncm-history-probe.yml"
+  schedule:
+    - cron: "43 10 15 * *"
 
 permissions:
   contents: read
+
+concurrency:
+  group: comex-beef-ncm-history-probe
+  cancel-in-progress: false
 
 jobs:
   probe:
@@ -30,7 +28,12 @@ jobs:
         continue-on-error: true
         env:
           PYTHONPATH: ${{ github.workspace }}
-        run: python scripts/probe_comex_beef_ncm_history.py --from-year 1997 --to-year 2026 --inter-year-delay 15 --out comex_beef_ncm_history_probe.json
+        run: |
+          python scripts/probe_comex_beef_ncm_history.py \
+            --from-year 1997 \
+            --to-year "$(date -u +%Y)" \
+            --inter-year-delay 15 \
+            --out comex_beef_ncm_history_probe.json
       - name: Upload probe artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -38,7 +41,7 @@ jobs:
           name: comex-beef-ncm-history-${{ github.run_id }}
           path: comex_beef_ncm_history_probe.json
           if-no-files-found: error
-          retention-days: 30
-      - name: Enforce probe success
+          retention-days: 90
+      - name: Enforce audit success
         if: steps.probe.outcome != 'success'
         run: exit 1
