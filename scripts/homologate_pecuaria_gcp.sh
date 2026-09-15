@@ -12,7 +12,7 @@ PPM_SOURCE_ID="ibge_sidra_ppm_3939"
 SLAUGHTER_SOURCE_ID="ibge_sidra_slaughter_1092"
 SIGSIF_SOURCE_ID="mapa_sigsif_slaughter_snapshot"
 BEEF_SOURCE_ID="mdic_comexstat_beef_mt_export_api"
-CONFIG="/app/collector/config/sources.pecuaria.json"
+REGISTRY="/app/collector/config/data_source_registry.v1.json"
 BEEF_NCMS=(02011000 02012010 02012020 02012090 02013000 02021000 02022010 02022020 02022090 02023000)
 
 if [[ -z "${PROJECT_ID}" || "${PROJECT_ID}" == "(unset)" ]]; then
@@ -20,23 +20,23 @@ if [[ -z "${PROJECT_ID}" || "${PROJECT_ID}" == "(unset)" ]]; then
   exit 2
 fi
 
-restore_group_mode() {
+restore_registry_mode() {
   gcloud run jobs update "${JOB}" \
     --region "${REGION}" \
     --project "${PROJECT_ID}" \
-    --remove-env-vars "AGROLOG_SOURCE_ID" \
-    --update-env-vars "AGROLOG_CONFIG=${CONFIG},AGROLOG_GROUP=pecuaria,AGROLOG_PECUARIA_DATASET=${PECUARIA_DATASET},AGROLOG_TRADE_DATASET=${TRADE_DATASET}" \
+    --remove-env-vars "AGROLOG_SOURCE_ID,AGROLOG_GATED_CANARY" \
+    --update-env-vars "AGROLOG_REGISTRY_MODE=1,AGROLOG_SOURCE_REGISTRY=${REGISTRY},AGROLOG_DOMAIN=cattle,AGROLOG_PECUARIA_DATASET=${PECUARIA_DATASET},AGROLOG_TRADE_DATASET=${TRADE_DATASET}" \
     --quiet >/dev/null || true
 }
-trap restore_group_mode EXIT
+trap restore_registry_mode EXIT
 
-run_source() {
+run_gated_canary() {
   local source_id="$1"
   gcloud run jobs execute "${JOB}" \
     --region "${REGION}" \
     --project "${PROJECT_ID}" \
     --wait \
-    --update-env-vars "AGROLOG_CONFIG=${CONFIG},AGROLOG_SOURCE_ID=${source_id},AGROLOG_PECUARIA_DATASET=${PECUARIA_DATASET},AGROLOG_TRADE_DATASET=${TRADE_DATASET}"
+    --update-env-vars "AGROLOG_REGISTRY_MODE=1,AGROLOG_SOURCE_REGISTRY=${REGISTRY},AGROLOG_SOURCE_ID=${source_id},AGROLOG_GATED_CANARY=1,AGROLOG_PECUARIA_DATASET=${PECUARIA_DATASET},AGROLOG_TRADE_DATASET=${TRADE_DATASET}"
 }
 
 validate_domain() {
@@ -69,46 +69,48 @@ validate_beef() {
   python scripts/validate_comexstat_bigquery.py "${args[@]}" "${extra[@]}"
 }
 
-echo "[1/16] PPM primeira execução"
-run_source "${PPM_SOURCE_ID}"
+echo "[1/16] PPM canary inicial"
+run_gated_canary "${PPM_SOURCE_ID}"
 echo "[2/16] PPM validação inicial"
 validate_domain ppm
-echo "[3/16] PPM segunda execução"
-run_source "${PPM_SOURCE_ID}"
+echo "[3/16] PPM canary repetido"
+run_gated_canary "${PPM_SOURCE_ID}"
 echo "[4/16] PPM gate de idempotência"
 validate_domain ppm --require-idempotency
 
-echo "[5/16] IBGE Abate primeira execução"
-run_source "${SLAUGHTER_SOURCE_ID}"
+echo "[5/16] IBGE Abate canary inicial"
+run_gated_canary "${SLAUGHTER_SOURCE_ID}"
 echo "[6/16] IBGE Abate validação inicial"
 validate_domain slaughter
-echo "[7/16] IBGE Abate segunda execução"
-run_source "${SLAUGHTER_SOURCE_ID}"
+echo "[7/16] IBGE Abate canary repetido"
+run_gated_canary "${SLAUGHTER_SOURCE_ID}"
 echo "[8/16] IBGE Abate gate de idempotência"
 validate_domain slaughter --require-idempotency
 
-echo "[9/16] SIGSIF primeira execução"
-run_source "${SIGSIF_SOURCE_ID}"
+echo "[9/16] SIGSIF canary inicial"
+run_gated_canary "${SIGSIF_SOURCE_ID}"
 echo "[10/16] SIGSIF validação inicial"
 validate_domain sigsif
-echo "[11/16] SIGSIF segunda execução"
-run_source "${SIGSIF_SOURCE_ID}"
+echo "[11/16] SIGSIF canary repetido"
+run_gated_canary "${SIGSIF_SOURCE_ID}"
 echo "[12/16] SIGSIF gate de idempotência"
 validate_domain sigsif --require-idempotency
 
-echo "[13/16] Comex bovino primeira execução"
-run_source "${BEEF_SOURCE_ID}"
+echo "[13/16] Comex bovino canary inicial"
+run_gated_canary "${BEEF_SOURCE_ID}"
 echo "[14/16] Comex bovino validação inicial"
 validate_beef
-echo "[15/16] Comex bovino segunda execução"
-run_source "${BEEF_SOURCE_ID}"
+echo "[15/16] Comex bovino canary repetido"
+run_gated_canary "${BEEF_SOURCE_ID}"
 echo "[16/16] Comex bovino gate de idempotência"
 validate_beef --require-idempotency
 
-# Final aggregate gate proves the three domestic livestock tables together.
+# Gate agregado prova as três tabelas domésticas em conjunto; Comex é validado
+# separadamente porque reside no dataset de comércio exterior.
 validate_domain all --require-idempotency
 
-restore_group_mode
+restore_registry_mode
 trap - EXIT
 
-echo "PECUARIA_HOMOLOGATION_PASS project=${PROJECT_ID} ppm_dataset=${PECUARIA_DATASET} trade_dataset=${TRADE_DATASET} feeds=4"
+echo "PECUARIA_HOMOLOGATION_PASS project=${PROJECT_ID} ppm_dataset=${PECUARIA_DATASET} trade_dataset=${TRADE_DATASET} feeds=4 registry_status=gated"
+echo "A homologação NÃO promove automaticamente o Registry; promoção para active exige evidência final e revisão explícita."
