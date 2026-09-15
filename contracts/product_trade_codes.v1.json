@@ -1,6 +1,6 @@
 {
-  "contract_version": "1.1",
-  "source_basis": "Catálogo de filtros NCM da API oficial Comex Stat/MDIC, validado ao vivo em 2026-08-26; descrições do próprio catálogo da API.",
+  "contract_version": "1.2",
+  "source_basis": "Catálogo de filtros NCM da API oficial Comex Stat/MDIC, validado ao vivo em 2026-08-26; descrições do próprio catálogo da API. Escopo atual de carne bovina in natura validado em fontes oficiais MAPA/Receita/Siscomex em 2026-09-15; histórico continua sujeito ao mapping NCM válido por competência.",
   "products": {
     "soja_grao": {
       "ncm8": ["12011000", "12019000"],
@@ -44,6 +44,33 @@
       },
       "catalog_validated": true
     },
+    "carne_bovina_in_natura": {
+      "ncm8": [
+        "02011000", "02012010", "02012020", "02012090", "02013000",
+        "02021000", "02022010", "02022020", "02022090", "02023000"
+      ],
+      "segments": {
+        "fresca_refrigerada": ["02011000", "02012010", "02012020", "02012090", "02013000"],
+        "congelada": ["02021000", "02022010", "02022020", "02022090", "02023000"]
+      },
+      "descriptions": {
+        "02011000": "Carcaças e meias-carcaças de bovino, frescas ou refrigeradas",
+        "02012010": "Quartos dianteiros de bovino, não desossados, frescos ou refrigerados",
+        "02012020": "Quartos traseiros de bovino, não desossados, frescos ou refrigerados",
+        "02012090": "Outras peças de bovino, não desossadas, frescas ou refrigeradas",
+        "02013000": "Carnes de bovino, desossadas, frescas ou refrigeradas",
+        "02021000": "Carcaças e meias-carcaças de bovino, congeladas",
+        "02022010": "Quartos dianteiros de bovino, não desossados, congelados",
+        "02022020": "Quartos traseiros de bovino, não desossados, congelados",
+        "02022090": "Outras peças de bovino, não desossadas, congeladas",
+        "02023000": "Carnes de bovino, desossadas, congeladas"
+      },
+      "catalog_validated_current": true,
+      "historical_mapping_required": true,
+      "flow": "export",
+      "offal_excluded": true,
+      "note": "Escopo carne bovina in natura dos capítulos 0201 e 0202. Miudezas e demais produtos bovinos permanecem fora deste agregado. Antes de backfill 1997-presente, validar vigência histórica da NCM por competência."
+    },
     "fertilizante_ureia": {
       "ncm8": ["31021010", "31021090"],
       "descriptions": {
@@ -86,9 +113,10 @@
   },
   "rules": [
     "grao, semente, farelo, oleo e demais derivados permanecem fluxos separados",
+    "carne bovina in natura, miudezas e demais produtos bovinos permanecem fluxos separados",
     "mudanca futura de NCM exige nova versao do mapping",
     "historico anterior a mudancas de nomenclatura deve usar mapping valido para a competencia",
-    "codigos marcados temporal_mapping_required nao podem ser agregados automaticamente entre vintages sem regra de vigencia",
+    "codigos marcados temporal_mapping_required ou historical_mapping_required nao podem ser agregados automaticamente entre vintages sem regra de vigencia",
     "NCM nao identifica porto nem empresa exportadora por si so",
     "URF e via podem descrever corredor aduaneiro, mas URF nao e sinonimo automatico de terminal portuario",
     "municipio do modulo cities representa a geografia declarada pelo modulo e nao deve ser convertido em origem fisica da carga"
