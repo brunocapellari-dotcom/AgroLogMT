@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -42,56 +43,79 @@ def _find_beef_codes(row: dict[str, Any]) -> set[str]:
     return found
 
 
-def query_year(year: int, *, timeout: int = 120) -> dict[str, Any]:
+def _post(body: dict[str, Any], *, timeout: int = 120, retries: int = 4) -> dict[str, Any]:
+    last_error: Exception | None = None
+    for attempt in range(retries):
+        try:
+            response = requests.post(API_URL, json=body, timeout=timeout)
+            if response.status_code == 429:
+                retry_after = response.headers.get("Retry-After")
+                delay = float(retry_after) if retry_after and retry_after.isdigit() else 5.0 * (attempt + 1)
+                time.sleep(delay)
+                continue
+            response.raise_for_status()
+            payload = response.json()
+            if payload.get("success") is False:
+                raise RuntimeError(f"Comex Stat API reported failure: {payload.get('message')}")
+            return payload
+        except Exception as exc:
+            last_error = exc
+            if attempt + 1 < retries:
+                time.sleep(3.0 * (attempt + 1))
+    raise RuntimeError(f"Comex Stat API unavailable after {retries} attempts: {last_error}")
+
+
+def query_period(start_year: int, end_year: int, *, timeout: int = 120) -> dict[str, Any]:
+    if start_year > end_year:
+        raise ValueError("start_year posterior a end_year")
     body = {
         "flow": "export",
         "monthDetail": False,
-        "period": {"from": f"{year}-01", "to": f"{year}-12"},
+        "period": {"from": f"{start_year}-01", "to": f"{end_year}-12"},
         "filters": [],
         "details": ["ncm"],
         "metrics": ["metricKG"],
     }
-    response = requests.post(API_URL, json=body, timeout=timeout)
-    response.raise_for_status()
-    payload = response.json()
-    if payload.get("success") is False:
-        raise RuntimeError(f"Comex Stat API reported failure for {year}: {payload.get('message')}")
+    payload = _post(body, timeout=timeout)
     rows = _rows(payload)
     codes: set[str] = set()
     for row in rows:
         codes.update(_find_beef_codes(row))
     if not codes:
         sample = rows[:3]
-        raise RuntimeError(f"No 0201/0202 NCM code found for {year}; sample={sample!r}")
+        raise RuntimeError(f"No 0201/0202 NCM code found for {start_year}-{end_year}; sample={sample!r}")
     return {
-        "year": year,
+        "start_year": start_year,
+        "end_year": end_year,
         "beef_ncm_codes": sorted(codes),
         "result_rows": len(rows),
     }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Probe historical 0201/0202 NCM codes used by official Comex Stat exports.")
-    parser.add_argument("--year", type=int, action="append", dest="years")
+    parser = argparse.ArgumentParser(description="Probe 0201/0202 NCM codes used by official Comex Stat exports.")
+    parser.add_argument("--from-year", type=int, default=1997)
+    parser.add_argument("--to-year", type=int, default=2026)
     parser.add_argument("--out", default="comex_beef_ncm_history_probe.json")
     args = parser.parse_args()
-    years = args.years or [1997, 2001, 2002, 2003, 2004]
-    if any(year < 1997 or year > 2100 for year in years):
+    if args.from_year < 1997 or args.to_year > 2100:
         raise ValueError("years outside Comex Stat NCM scope")
 
-    results: list[dict[str, Any]] = []
     failed = False
-    for year in years:
-        try:
-            results.append(query_year(year))
-        except Exception as exc:
-            failed = True
-            results.append({"year": year, "error": f"{type(exc).__name__}: {exc}"})
+    try:
+        result = query_period(args.from_year, args.to_year)
+    except Exception as exc:
+        failed = True
+        result = {
+            "start_year": args.from_year,
+            "end_year": args.to_year,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
 
     payload = {
         "status": "error" if failed else "ok",
         "source": API_URL,
-        "years": results,
+        "period": result,
     }
     Path(args.out).write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
