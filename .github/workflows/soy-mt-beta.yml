@@ -5,17 +5,6 @@ on:
   schedule:
     - cron: "15 11 * * *"
     - cron: "15 19 * * *"
-  pull_request:
-    paths:
-      - "scripts/generate_soy_mt_beta.py"
-      - "scripts/generate_soy_mt_beta_v02.py"
-      - "scripts/run_soy_mt_beta.py"
-      - "scripts/probe_conab_storage_layout.py"
-      - "tests/test_soy_mt_beta.py"
-      - "tests/test_soy_mt_beta_v02.py"
-      - "tests/test_soy_mt_timezone.py"
-      - "models/agroclimate.py"
-      - ".github/workflows/soy-mt-beta.yml"
 
 permissions:
   contents: read
@@ -36,12 +25,9 @@ jobs:
       - name: Generate live Soja MT Beta V0.2 snapshot
         env:
           PYTHONPATH: ${{ github.workspace }}
-          EVENT_NAME: ${{ github.event_name }}
         run: |
-          SAMPLE_POINTS=7
-          if [ "$EVENT_NAME" = "pull_request" ]; then SAMPLE_POINTS=3; fi
           python scripts/run_soy_mt_beta.py \
-            --climate-sample-points "$SAMPLE_POINTS" \
+            --climate-sample-points 7 \
             --out-json soy_mt_beta.json \
             --out-md soy_mt_beta.md
       - name: Publish beta summary
