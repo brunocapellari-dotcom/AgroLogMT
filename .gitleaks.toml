@@ -1,0 +1,17 @@
+title = "AgroLog MT Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Known security-test sentinel in commit 78137d1c058712a33dd8b3d2c8bc62de8af6904f; verified as literal test data, not key material"
+targetRules = ["private-key"]
+commits = ["78137d1c058712a33dd8b3d2c8bc62de8af6904f"]
+
+[[allowlists]]
+description = "Public Power BI share URL used by ANTT MDF-e extraction; not a Grafana credential"
+targetRules = ["grafana-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^scripts/(?:diagnose|extract)_mdfe_powerbi\.py$''']
+regexes = ['''https://app\.powerbi\.com/view\?r=eyJrIjoi''']
