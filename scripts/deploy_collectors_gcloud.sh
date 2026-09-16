@@ -4,6 +4,7 @@ set -euo pipefail
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
 REGION="${REGION:-southamerica-east1}"
 DRIVE_FOLDER_ID="${DRIVE_FOLDER_ID:-}"
+DRIVE_FOLDER_SECRET="${DRIVE_FOLDER_SECRET:-agrolog-drive-folder-id}"
 OPS_DATASET="${OPS_DATASET:-agrolog_ops}"
 LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
 TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
@@ -22,10 +23,6 @@ if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "ERRO: projeto GCP não configurado" >&2
   exit 2
 fi
-if [[ -z "$DRIVE_FOLDER_ID" ]]; then
-  echo "ERRO: DRIVE_FOLDER_ID ausente; injete a referência da pasta RAW em runtime/secret store." >&2
-  exit 2
-fi
 if [[ "$MANAGE_SCHEDULER" != "0" ]]; then
   echo "ERRO: deploy recorrente não gerencia Cloud Scheduler/IAM. Use bootstrap administrativo separado." >&2
   exit 2
@@ -34,11 +31,18 @@ for cmd in gcloud bq; do
   command -v "$cmd" >/dev/null || { echo "ERRO: $cmd ausente" >&2; exit 2; }
 done
 
+gcloud config set project "$PROJECT_ID" >/dev/null
+if [[ -z "$DRIVE_FOLDER_ID" ]]; then
+  DRIVE_FOLDER_ID="$(gcloud secrets versions access latest --secret "$DRIVE_FOLDER_SECRET" --project "$PROJECT_ID" 2>/dev/null || true)"
+fi
+if [[ -z "$DRIVE_FOLDER_ID" ]]; then
+  echo "ERRO: referência RAW ausente. Configure ${DRIVE_FOLDER_SECRET} via bootstrap administrativo ou forneça DRIVE_FOLDER_ID em runtime." >&2
+  exit 2
+fi
+
 COLLECTOR_SERVICE_ACCOUNT="${COLLECTOR_SERVICE_ACCOUNT:-${COLLECTOR_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
 BUILD_SERVICE_ACCOUNT="${BUILD_SERVICE_ACCOUNT:-${BUILD_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}"
-
-gcloud config set project "$PROJECT_ID" >/dev/null
 
 require_api() {
   local api="$1"
@@ -67,7 +71,7 @@ PY
   fi
 }
 
-for api in run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com bigquery.googleapis.com storage.googleapis.com; do
+for api in run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com bigquery.googleapis.com storage.googleapis.com secretmanager.googleapis.com; do
   require_api "$api"
 done
 for sa in "$COLLECTOR_SERVICE_ACCOUNT" "$BUILD_SERVICE_ACCOUNT"; do
@@ -121,6 +125,8 @@ gcloud run jobs deploy "agrolog-pecuaria" \
   --max-retries 1 \
   --task-timeout 30m
 
+unset DRIVE_FOLDER_ID common_env
+
 cat <<EOF
 Collector preparado sem mutação de IAM/APIs/datasets.
 Projeto: ${PROJECT_ID}
@@ -130,7 +136,7 @@ Builder: ${BUILD_SERVICE_ACCOUNT}
 Build staging: gs://${BUILD_SOURCE_BUCKET}/source
 Collector: ${COLLECTOR_SERVICE_ACCOUNT}
 Datasets: ${OPS_DATASET}, ${LOGISTICA_DATASET}, ${TRADE_DATASET}, ${AGRO_DATASET}, ${PECUARIA_DATASET}
-Pasta RAW/Drive: configurada por variável protegida
+Pasta RAW/Drive: configurada via Secret Manager/runtime
 Job Pecuária: agrolog-pecuaria (Registry Mode; domain=cattle)
 
 Gate externo do Drive:
