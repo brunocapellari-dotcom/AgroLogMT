@@ -20,6 +20,7 @@ concurrency:
 jobs:
   whole-project-ci:
     name: Whole project deterministic gate
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: [self-hosted, linux, x64, agrolog-ci]
     timeout-minutes: 35
     steps:
