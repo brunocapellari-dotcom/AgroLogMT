@@ -4,6 +4,8 @@ import importlib.util
 import unittest
 from pathlib import Path
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "harden_github_workflows.py"
@@ -29,6 +31,18 @@ class WorkflowZizmorHardeningTests(unittest.TestCase):
             if module.harden_text(text) != text:
                 offenders.append(path.name)
         self.assertEqual(offenders, [], f"workflows ainda exigem hardening: {offenders}")
+
+    def test_dependabot_uses_at_least_seven_day_cooldown_for_all_ecosystems(self) -> None:
+        path = ROOT / ".github" / "dependabot.yml"
+        config = yaml.safe_load(path.read_text(encoding="utf-8"))
+        updates = config.get("updates", [])
+        self.assertTrue(updates, "dependabot.yml precisa declarar updates")
+        offenders = []
+        for item in updates:
+            days = (item.get("cooldown") or {}).get("default-days", 0)
+            if not isinstance(days, int) or days < 7:
+                offenders.append(f"{item.get('package-ecosystem')}:{item.get('directory')}={days}")
+        self.assertEqual(offenders, [], f"cooldown Dependabot abaixo de 7 dias: {offenders}")
 
 
 if __name__ == "__main__":
