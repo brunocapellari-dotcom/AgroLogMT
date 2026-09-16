@@ -51,7 +51,7 @@ class DeployPolicyTests(unittest.TestCase):
         self.assertIn('roles/secretmanager.secretAccessor', bootstrap)
         self.assertIn('SCHEDULER_SA_NAME="${SCHEDULER_SA_NAME:-agrolog-scheduler}"', preflight)
         self.assertIn('DRIVE_FOLDER_SECRET="${DRIVE_FOLDER_SECRET:-agrolog-drive-folder-id}"', preflight)
-        self.assertIn('scheduler:\'roles/run.invoker\'', preflight)
+        self.assertIn("scheduler:'roles/run.invoker'", preflight)
         self.assertIn('gcloud secrets versions access latest', preflight)
 
     def test_deploys_resolve_raw_reference_without_hardcoded_id(self) -> None:
@@ -67,6 +67,16 @@ class DeployPolicyTests(unittest.TestCase):
         self.assertIn('AGRO_DATASET="${AGRO_DATASET:-agro}"', deploy)
         self.assertIn('AGROLOG_AGRO_DATASET=${AGRO_DATASET}', deploy)
         self.assertIn('AGRO_DATASET="${AGRO_DATASET:-agro}"', preflight)
+
+    def test_main_ruleset_requires_canonical_whole_project_gate(self) -> None:
+        harden = Path("scripts/harden_github_repository.sh").read_text(encoding="utf-8")
+        workflow = Path(".github/workflows/full-project-final-gate.yml").read_text(encoding="utf-8")
+        self.assertIn('REQUIRED_CHECK="${REQUIRED_CHECK:-Whole project deterministic gate}"', harden)
+        self.assertIn('name: Whole project deterministic gate', workflow)
+        self.assertNotIn('REQUIRED_CHECK="${REQUIRED_CHECK:-unittest}"', harden)
+        self.assertIn('strict_required_status_checks_policy', harden)
+        self.assertIn('required_review_thread_resolution', harden)
+        self.assertIn('"bypass_actors": []', harden)
 
 
 if __name__ == "__main__":
