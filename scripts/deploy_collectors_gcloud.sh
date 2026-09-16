@@ -3,7 +3,7 @@ set -euo pipefail
 
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
 REGION="${REGION:-southamerica-east1}"
-DRIVE_FOLDER_ID="${DRIVE_FOLDER_ID:-17AX2iCrQ17Jm86Pp9ijqn3hyEHVaQPqd}"
+DRIVE_FOLDER_ID="${DRIVE_FOLDER_ID:-}"
 OPS_DATASET="${OPS_DATASET:-agrolog_ops}"
 LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
 TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
@@ -20,6 +20,10 @@ MANAGE_SCHEDULER="${MANAGE_SCHEDULER:-0}"
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "ERRO: projeto GCP não configurado" >&2
+  exit 2
+fi
+if [[ -z "$DRIVE_FOLDER_ID" ]]; then
+  echo "ERRO: DRIVE_FOLDER_ID ausente; injete a referência da pasta RAW em runtime/secret store." >&2
   exit 2
 fi
 if [[ "$MANAGE_SCHEDULER" != "0" ]]; then
@@ -126,7 +130,7 @@ Builder: ${BUILD_SERVICE_ACCOUNT}
 Build staging: gs://${BUILD_SOURCE_BUCKET}/source
 Collector: ${COLLECTOR_SERVICE_ACCOUNT}
 Datasets: ${OPS_DATASET}, ${LOGISTICA_DATASET}, ${TRADE_DATASET}, ${AGRO_DATASET}, ${PECUARIA_DATASET}
-Pasta RAW/Drive: ${DRIVE_FOLDER_ID}
+Pasta RAW/Drive: configurada por variável protegida
 Job Pecuária: agrolog-pecuaria (Registry Mode; domain=cattle)
 
 Gate externo do Drive:
