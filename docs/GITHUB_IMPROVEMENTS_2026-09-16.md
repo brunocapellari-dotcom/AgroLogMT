@@ -10,6 +10,8 @@ Pesquisar melhorias novas sem criar tool-sprawl. Toda decisão abaixo compara a 
 
 Repositório oficial: `actions/runner`.
 
+Release oficial observada nesta rodada: `v2.337.0`.
+
 Uso potencial: self-hosted runner privado em infraestrutura controlada caso GitHub-hosted minutes continuem sendo gargalo recorrente.
 
 Decisão atual: não provisionar ainda. O AgroLog já possui Cloud Shell/GCP operacional e agora possui `scripts/finalize_agrolog_without_actions.sh`, que reproduz o gate inteiro sem gastar GitHub-hosted Actions minutes. Um runner persistente adicionaria patching, hardening, disponibilidade, custo e superfície de ataque.
@@ -22,11 +24,27 @@ Decisão atual: não provisionar ainda. O AgroLog já possui Cloud Shell/GCP ope
 
 O repositório contém arquitetura, contratos, infraestrutura, source registry e controles internos. Expor tudo publicamente apenas para ganhar minutos de runner aumenta superfície de ataque e é irreversível do ponto de vista de divulgação. A estratégia preferida é manter privado e executar gate via Cloud Shell/GCP ou, se necessário, self-hosted runner controlado.
 
+## Supply chain / release tooling
+
+### `aquasecurity/trivy` — KEEP / UPDATE PIN
+
+Release observada nesta rodada: `v0.74.0`.
+
+O zero-Actions finalizer usa essa versão e verifica o checksum oficial antes de executar scan de filesystem/IaC e das imagens de produção. Continua sendo o scanner principal; não adicionar OSV como segundo scanner obrigatório com responsabilidade sobreposta.
+
+### `anchore/syft` — KEEP / UPDATE PIN
+
+Release observada nesta rodada: `v1.51.1`.
+
+O zero-Actions finalizer usa essa versão com checksum oficial para produzir SBOM SPDX do source e das imagens. Continua sendo a ferramenta canônica de inventário de componentes.
+
 ## Reprodutibilidade Python
 
 ### `astral-sh/uv` — POC / provável REPLACE
 
-Objetivo: substituir a concatenação dinâmica de múltiplos `requirements*.txt` por resolução reprodutível com lock único e instalação mais rápida.
+Release observada nesta rodada: `0.12.15`.
+
+Objetivo: substituir a concatenação dinâmica de múltiplos `requirements*.txt` por resolução reprodutível com lock único e instalação mais rápida. O Cloud Shell atual já disponibiliza `uv`, portanto o POC não exige nova infraestrutura.
 
 Critério de promoção: migração completa, `uv.lock` versionado, paridade de todas as dependências atuais, zero mudanças funcionais inesperadas e Full Project Final Gate integral verde. Não coexistir indefinidamente com outro mecanismo de lock.
 
@@ -44,7 +62,7 @@ Uso: testes generativos/contratuais do OpenAPI do AgroLog Gateway, incluindo pay
 
 Não entra antes do Gateway real estar homologado, para evitar manter testes de API sobre uma superfície ainda não estável.
 
-## Sensoriamento remoto e STAC
+## Sensoriamento remoto, clima e dados globais
 
 ### `stac-utils/pystac-client` — ADOPT como cliente STAC canônico
 
@@ -57,6 +75,16 @@ Evita clientes STAC caseiros por fonte. Adaptadores específicos ficam somente o
 Uso: busca/autenticação/acesso a produtos NASA Earthdata quando a camada de sensoriamento remoto avançar além dos endpoints já existentes.
 
 Não substituir NASA POWER quando POWER for a fonte correta; `earthaccess` entra apenas para produtos Earthdata que não são cobertos pelo collector atual.
+
+### `ecmwf/ecmwf-datastores-client` — POC para ECMWF/CDS
+
+Uso potencial: ERA5/reanálises e outros produtos do Climate Data Store para climatologia, validação histórica, features de forecast e comparação com NOAA/CPTEC/INMET.
+
+Preferir o cliente mais novo de datastores ao criar integração nova; `ecmwf/cdsapi` permanece referência/compatibilidade para endpoints que ainda o exijam. Nenhum produto ECMWF vira fonte operacional sem registrar licença, autenticação, frequência, freshness, custo e política de redistribuição no Data Source Registry.
+
+### FAOSTAT — usar API oficial, não MCP comunitário como fonte canônica
+
+A busca encontrou o namespace oficial `FAOSTAT` e implementações MCP comunitárias. Para o Global Supply & Demand, o AgroLog deve integrar a API/dataset oficial diretamente e tratar wrappers comunitários somente como referência de implementação. Isso evita dependência extra, mantém provenance primária e reduz risco de supply chain.
 
 ## Ferramentas mantidas como canônicas
 
@@ -75,6 +103,7 @@ Não substituir NASA POWER quando POWER for a fonte correta; `earthaccess` entra
 1. Executar o zero-Actions finalizer sobre o head exato da branch de correção Cloud Build.
 2. Obter `N6 CORE HOMOLOGATION: PASS`.
 3. Obter `AGROLOG MT FINAL RELEASE: PASS` com zero skips.
-4. Promover o head exato validado para `main`.
-5. Aplicar ruleset de `main` somente depois de alinhar o required check ao gate canônico atual.
-6. Depois da release real, migrar reprodutibilidade Python para `uv` e introduzir Hypothesis/Schemathesis/STAC de forma controlada, cada mudança sempre seguida pelo gate integral.
+4. Publicar/readback do status canônico `Whole project deterministic gate` no SHA testado.
+5. Promover o head exato validado para `main`.
+6. Aplicar/readback do ruleset de `main` usando o contexto canônico atual.
+7. Depois da release real, migrar reprodutibilidade Python para `uv` e introduzir Hypothesis/Schemathesis/STAC/ECMWF de forma controlada, cada mudança sempre seguida pelo gate integral.
