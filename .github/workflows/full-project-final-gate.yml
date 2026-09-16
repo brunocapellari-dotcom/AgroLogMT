@@ -145,6 +145,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   final-live-release:
+    environment: agrolog-production
     name: Whole project LIVE + GCP final release
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.final_release == true }}
     needs: whole-project-ci

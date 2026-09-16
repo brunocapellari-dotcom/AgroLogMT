@@ -21,6 +21,7 @@ concurrency:
 
 jobs:
   trigger:
+    environment: agrolog-production
     permissions:
       contents: read
       id-token: write
