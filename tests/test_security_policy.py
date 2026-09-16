@@ -34,8 +34,6 @@ class SecurityPolicyTests(unittest.TestCase):
         text = self.read("docs/SECURITY.md")
         for token in ("PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED"):
             self.assertIn(f"`{token}`", text)
-        # Security/confidentiality and epistemic evidence are orthogonal axes.
-        # Keep the test semantic rather than binding policy to one synonym.
         self.assertIn("A classe de segurança é independente da classe epistemológica", text)
         for evidence_class in ("observado", "estimado", "projetado", "inferido"):
             self.assertIn(evidence_class, text)
@@ -126,6 +124,31 @@ class SecurityPolicyTests(unittest.TestCase):
         self.assertNotIn("pull_request:", diagnostic_trigger)
         self.assertIn("unittest:", diagnostic)
 
+    def test_self_hosted_gate_blocks_fork_pull_requests(self) -> None:
+        final_gate = self.read(".github/workflows/full-project-final-gate.yml")
+        whole = final_gate.split("whole-project-ci:", 1)[1].split("final-live-release:", 1)[0]
+        self.assertIn("runs-on: [self-hosted, linux, x64, agrolog-ci]", whole)
+        self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", whole)
+        self.assertNotIn("id-token: write", whole)
+
+        diagnostic = self.read(".github/workflows/unit-tests.yml")
+        self.assertIn("runs-on: [self-hosted, linux, x64, agrolog-ci]", diagnostic)
+        self.assertIn("workflow_dispatch:", diagnostic.split("permissions:", 1)[0])
+
+    def test_ephemeral_runner_has_no_gcp_identity_and_one_job_lifetime(self) -> None:
+        text = self.read("scripts/create_gce_ephemeral_runner.sh")
+        for token in (
+            "--ephemeral",
+            "--no-service-account",
+            "--no-scopes",
+            "--shielded-secure-boot",
+            "--shielded-vtpm",
+            "--shielded-integrity-monitoring",
+            "--max-run-duration",
+            "--instance-termination-action DELETE",
+        ):
+            self.assertIn(token, text)
+
     def test_github_hardening_script_enforces_main_ruleset(self) -> None:
         text = self.read("scripts/harden_github_repository.sh")
         for token in (
@@ -143,6 +166,7 @@ class SecurityPolicyTests(unittest.TestCase):
             self.assertIn(token, text)
         self.assertIn("gh api", text)
         self.assertIn("PASS GitHub main hardening", text)
+        self.assertIn("Whole project deterministic gate", text)
 
     def test_gitignore_and_dockerignore_cover_high_risk_secret_material(self) -> None:
         gitignore = self.read(".gitignore")
