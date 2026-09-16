@@ -24,10 +24,13 @@ DEPLOYER_SA_NAME="${DEPLOYER_SA_NAME:-agrolog-github-deployer}"
 BUILD_SA_NAME="${BUILD_SA_NAME:-agrolog-builder}"
 COLLECTOR_SA_NAME="${COLLECTOR_SA_NAME:-agrolog-collector}"
 GATEWAY_SA_NAME="${GATEWAY_SA_NAME:-agrolog-gateway}"
+SCHEDULER_SA_NAME="${SCHEDULER_SA_NAME:-agrolog-scheduler}"
 GATEWAY_SERVICE_NAME="${GATEWAY_SERVICE_NAME:-agrolog-gateway}"
 CONFIGURE_ANA="${CONFIGURE_ANA:-0}"
 ANA_IDENTIFICADOR_SECRET="${ANA_IDENTIFICADOR_SECRET:-agrolog-ana-identificador}"
 ANA_SENHA_SECRET="${ANA_SENHA_SECRET:-agrolog-ana-senha}"
+DRIVE_FOLDER_SECRET="${DRIVE_FOLDER_SECRET:-agrolog-drive-folder-id}"
+DRIVE_FOLDER_ID="${DRIVE_FOLDER_ID:-}"
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "ERRO: configure o projeto: gcloud config set project <PROJECT_ID>" >&2
@@ -60,6 +63,7 @@ gcloud services enable \
   bigquery.googleapis.com run.googleapis.com cloudbuild.googleapis.com \
   artifactregistry.googleapis.com serviceusage.googleapis.com drive.googleapis.com \
   logging.googleapis.com storage.googleapis.com secretmanager.googleapis.com \
+  cloudscheduler.googleapis.com \
   --project "$PROJECT_ID"
 
 ensure_sa() {
@@ -110,15 +114,47 @@ ensure_secret() {
   printf '%s' "$value" | gcloud secrets versions add "$name" --project "$PROJECT_ID" --data-file=- >/dev/null
 }
 
+# Migração best-effort do identificador RAW já implantado para Secret Manager.
+# O valor nunca é ecoado nem gravado no GitHub.
+if [[ -z "$DRIVE_FOLDER_ID" ]] && gcloud run jobs describe agrolog-dados --region "$REGION" --project "$PROJECT_ID" --format=json >/tmp/agrolog-existing-dados.json 2>/dev/null; then
+  DRIVE_FOLDER_ID="$(python - /tmp/agrolog-existing-dados.json <<'PY'
+import json,sys
+obj=json.load(open(sys.argv[1], encoding='utf-8'))
+
+def walk(value):
+    if isinstance(value, dict):
+        if value.get('name') == 'AGROLOG_DRIVE_FOLDER_ID' and value.get('value'):
+            return str(value['value'])
+        for child in value.values():
+            found=walk(child)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found=walk(child)
+            if found:
+                return found
+    return ''
+print(walk(obj))
+PY
+)"
+fi
+if [[ -n "$DRIVE_FOLDER_ID" ]]; then
+  ensure_secret "$DRIVE_FOLDER_SECRET" "$DRIVE_FOLDER_ID"
+fi
+unset DRIVE_FOLDER_ID
+
 ensure_sa "$DEPLOYER_SA_NAME" "AgroLog GitHub deployer"
 ensure_sa "$BUILD_SA_NAME" "AgroLog Cloud Build"
 ensure_sa "$COLLECTOR_SA_NAME" "AgroLog collector runtime"
 ensure_sa "$GATEWAY_SA_NAME" "AgroLog gateway runtime"
+ensure_sa "$SCHEDULER_SA_NAME" "AgroLog scheduler invoker"
 
 DEPLOYER_SA_EMAIL="${DEPLOYER_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 BUILD_SA_EMAIL="${BUILD_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 COLLECTOR_SA_EMAIL="${COLLECTOR_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 GATEWAY_SA_EMAIL="${GATEWAY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+SCHEDULER_SA_EMAIL="${SCHEDULER_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
 BUILD_SERVICE_AGENT="service-${PROJECT_NUMBER}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
 
@@ -160,6 +196,9 @@ for dataset in "$LOGISTICA_DATASET" "$MARITIME_DATASET" "$PECUARIA_DATASET" "$TR
   ensure_dataset_role "$dataset" "$GATEWAY_SA_EMAIL" roles/bigquery.dataViewer
 done
 
+# Scheduler somente invoca jobs; não possui permissão de escrita em dados/IAM.
+ensure_project_role "$SCHEDULER_SA_EMAIL" roles/run.invoker
+
 ensure_project_role "$BUILD_SA_EMAIL" roles/logging.logWriter
 gcloud artifacts repositories add-iam-policy-binding "$AR_REPOSITORY" \
   --location "$REGION" --project "$PROJECT_ID" \
@@ -192,12 +231,23 @@ gcloud storage buckets add-iam-policy-binding "gs://${BUILD_SOURCE_BUCKET}" \
 gcloud storage buckets add-iam-policy-binding "gs://${BUILD_SOURCE_BUCKET}" \
   --member="serviceAccount:${DEPLOYER_SA_EMAIL}" --role=roles/storage.bucketViewer --quiet >/dev/null
 
-for sa in "$BUILD_SA_EMAIL" "$COLLECTOR_SA_EMAIL" "$GATEWAY_SA_EMAIL"; do
+for sa in "$BUILD_SA_EMAIL" "$COLLECTOR_SA_EMAIL" "$GATEWAY_SA_EMAIL" "$SCHEDULER_SA_EMAIL"; do
   gcloud iam service-accounts add-iam-policy-binding "$sa" \
     --project "$PROJECT_ID" \
     --member="serviceAccount:${DEPLOYER_SA_EMAIL}" \
     --role=roles/iam.serviceAccountUser --quiet >/dev/null
 done
+
+# Secret operacional RAW fica somente no Secret Manager. Deployer lê para injetar
+# no Cloud Run; collector recebe o valor como env do job. Nunca registrar o valor.
+if gcloud secrets describe "$DRIVE_FOLDER_SECRET" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  for principal in "$COLLECTOR_SA_EMAIL" "$DEPLOYER_SA_EMAIL"; do
+    gcloud secrets add-iam-policy-binding "$DRIVE_FOLDER_SECRET" --project "$PROJECT_ID" \
+      --member="serviceAccount:${principal}" --role=roles/secretmanager.secretAccessor --quiet >/dev/null
+  done
+else
+  echo "WARN: Secret Manager ${DRIVE_FOLDER_SECRET} ainda não configurado; forneça DRIVE_FOLDER_ID ao bootstrap antes do deploy final." >&2
+fi
 
 if gcloud run services describe "$GATEWAY_SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
   gcloud run services update "$GATEWAY_SERVICE_NAME" \
@@ -279,10 +329,12 @@ printf 'Deployer:           %s\n' "$DEPLOYER_SA_EMAIL"
 printf 'Builder:            %s\n' "$BUILD_SA_EMAIL"
 printf 'Collector:          %s\n' "$COLLECTOR_SA_EMAIL"
 printf 'Gateway:            %s\n' "$GATEWAY_SA_EMAIL"
+printf 'Scheduler:          %s\n' "$SCHEDULER_SA_EMAIL"
 printf 'Build staging:      gs://%s\n' "$BUILD_SOURCE_BUCKET"
 printf 'WIF repository_id:  %s\n' "$REPO_NUMERIC_ID"
 printf 'WIF owner_id:       %s\n' "$REPO_OWNER_NUMERIC_ID"
 printf 'Datasets:           %s, %s, %s, %s, %s, %s, %s, %s\n' "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$PECUARIA_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"
+printf 'RAW Drive reference: Secret Manager %s (valor não exibido).\n' "$DRIVE_FOLDER_SECRET"
 printf 'IMPORTANTE: compartilhe a pasta RAW do Drive como Editor somente com %s.\n' "$COLLECTOR_SA_EMAIL"
 printf 'Credenciais ANA ficam somente no Secret Manager; não em GitHub Secrets.\n'
 printf 'Deploy/homologação recorrente não deve alterar IAM, APIs ou criar datasets.\n'
