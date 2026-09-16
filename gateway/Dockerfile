@@ -13,7 +13,8 @@ RUN pip install --no-cache-dir --disable-pip-version-check -r /app/requirements-
     && groupadd --system agrolog \
     && useradd --system --gid agrolog --home-dir /nonexistent --shell /usr/sbin/nologin agrolog
 COPY --chown=agrolog:agrolog gateway /app/gateway
+COPY --chown=agrolog:agrolog contracts /app/contracts
 COPY --chown=agrolog:agrolog --from=maritime-ui /ui/dist /app/maritime_ui/dist
 
 USER agrolog
-CMD ["uvicorn", "gateway.app:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "gateway.production_app:app", "--host", "0.0.0.0", "--port", "8080"]
