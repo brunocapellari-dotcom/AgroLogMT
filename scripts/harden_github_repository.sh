@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO="${REPO:-brunocapellari-dotcom/AgroLogMT}"
 RULESET_NAME="${RULESET_NAME:-AgroLog Security Baseline}"
-REQUIRED_CHECK="${REQUIRED_CHECK:-unittest}"
+REQUIRED_CHECK="${REQUIRED_CHECK:-Whole project deterministic gate}"
 API_VERSION="${GITHUB_API_VERSION:-2026-03-10}"
 
 command -v gh >/dev/null 2>&1 || { echo 'ERRO: gh ausente' >&2; exit 2; }
