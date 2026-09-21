@@ -259,3 +259,17 @@ Uma tecnologia só pode ser promovida quando:
 ## 12. Princípio final
 
 O produto é o AgroLog MT. Ferramentas são substituíveis. A infraestrutura deve permanecer mínima, auditável, modular e proporcional ao problema real.
+
+
+## 13. Benchmark operacional unificado
+
+O gate comparativo de routing/GIS/VRP/AIS fica em:
+
+- `benchmarks/logistics_gis/manifest.v1.json`;
+- `scripts/run_logistics_gis_benchmarks.py`;
+- `requirements-benchmarks.txt`;
+- `tests/test_logistics_gis_benchmark.py`.
+
+O benchmark executa o port-call engine próprio e, quando as dependências/serviços estiverem disponíveis, H3, pyais, PyVRP, Valhalla, PyOsmium e OSMnx. O modo `--strict` transforma qualquer `SKIP` em bloqueio e é o único modo válido para promover POC→CORE.
+
+Dependências de benchmark permanecem isoladas do runtime de produção. Resultado de benchmark é evidência de engenharia, não fonte de verdade analítica.
