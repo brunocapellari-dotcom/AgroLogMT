@@ -107,6 +107,8 @@ P0/P1 continuam sendo gates para declarar o núcleo ponta a ponta validado. As f
 ### B3.1 — Avaliação, tracing e red-team de IA
 - [x] Criar contrato canônico `contracts/agent_evaluation.v1.schema.json`.
 - [x] Adicionar teste de governança para grounding, classificação epistemológica, autorização de tools, prompt injection, exfiltração e cutoff temporal.
+- [x] Implementar gate determinístico fail-closed em `models/agent_evaluation.py`, independente do avaliador externo.
+- [x] Cobrir missing/duplicate checks, tool não autorizada, evidência incompleta e divergência de status em `tests/test_agent_evaluation.py`.
 - [ ] Instrumentar o primeiro piloto com OpenTelemetry/Phoenix.
 - [ ] Construir golden dataset versionado por cenário/agente.
 - [ ] Criar suíte Promptfoo para regressão + red-team.
