@@ -32,6 +32,13 @@ class WorkflowZizmorHardeningTests(unittest.TestCase):
                 offenders.append(path.name)
         self.assertEqual(offenders, [], f"workflows ainda exigem hardening: {offenders}")
 
+    def test_actionlint_knows_agrolog_self_hosted_labels(self) -> None:
+        path = ROOT / ".github" / "actionlint.yaml"
+        config = yaml.safe_load(path.read_text(encoding="utf-8"))
+        labels = set((config.get("self-hosted-runner") or {}).get("labels") or [])
+        self.assertIn("agrolog-ci", labels)
+        self.assertIn("gcp-ephemeral", labels)
+
     def test_dependabot_uses_at_least_seven_day_cooldown_for_all_ecosystems(self) -> None:
         path = ROOT / ".github" / "dependabot.yml"
         config = yaml.safe_load(path.read_text(encoding="utf-8"))
