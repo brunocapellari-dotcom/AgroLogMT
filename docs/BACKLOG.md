@@ -70,7 +70,8 @@ P0/P1 continuam sendo gates para declarar o núcleo ponta a ponta validado. As f
 - [ ] Criar regra transversal de data de corte para impedir look-ahead em estudos históricos, sinais e backtests.
 
 ### A5 — Earth Observation cloud-native
-- [ ] Selecionar um caso real MT/Brasil com valor operacional (prioridade: umidade do solo/chuva/vegetação) e fonte autorizada.
+- [x] Registrar NASA CMR-STAC/LPCLOUD como fonte EO oficial `gated`, com MOD09GA_061 e MOD11A1_061 confirmados no catálogo.
+- [ ] Selecionar o primeiro caso operacional MT/Brasil para materialização (prioridade: vegetação/refletância ou temperatura de superfície; umidade do solo em fonte/produto adequado separado).
 - [ ] Comparar acesso via STAC (PySTAC Client + odc-stac) e NASA Earthdata (earthaccess) conforme a fonte escolhida.
 - [x] Criar contrato canônico de asset EO e normalizador STAC dependency-free, preservando item/asset, aquisição, geometria, bandas, licença, cloud cover, quality flags e provenance.
 - [ ] Validar esse normalizador contra uma fonte STAC oficial real e preservar asset/item/vintage, geometria/AOI, timestamps e licença.
