@@ -101,6 +101,27 @@ class GlobalArchitectureContractTests(unittest.TestCase):
             {"PASS", "FAIL", "BLOCKED"},
         )
 
+    def test_earth_observation_contract_preserves_asset_provenance_and_cutoff(self) -> None:
+        payload = self.read_json("contracts/earth_observation_asset.v1.schema.json")
+        required = set(payload["required"])
+        for field in (
+            "source_id", "provider", "discovery_method", "collection_id",
+            "item_id", "asset_key", "asset_href", "acquisition_start",
+            "acquisition_end", "data_referencia", "data_publicacao",
+            "data_coleta", "geometry_ref", "bands", "license",
+            "evidence_class", "source_url",
+        ):
+            self.assertIn(field, required)
+        self.assertEqual(
+            set(payload["properties"]["discovery_method"]["enum"]),
+            {"STAC", "EARTHDATA_CMR", "OFFICIAL_API", "OFFICIAL_FILE"},
+        )
+        self.assertEqual(
+            set(payload["properties"]["evidence_class"]["enum"]),
+            {"observado", "estimado", "inferido"},
+        )
+        self.assertEqual(payload["properties"]["cloud_cover_pct"]["maximum"], 100)
+
     def test_phase0_audit_has_required_operational_dimensions(self) -> None:
         text = (ROOT / "docs" / "PHASE0_AUDIT_GAP_ANALYSIS_2026-09-14.md").read_text(encoding="utf-8")
         for token in ("Coleta", "Normalização", "Armazenamento", "Freshness", "Qualidade", "Análise", "Modelos", "Conhecimento", "Relatórios", "Alertas", "Testes"):
