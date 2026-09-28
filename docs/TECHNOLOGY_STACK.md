@@ -69,6 +69,20 @@ Dolt, lakeFS e XTDB permanecem `REFERENCIA` arquitetural. O conceito de versiona
 | Frontend cartográfico | MapLibre | CORE | Base preferencial do mapa operacional. |
 | Renderização massiva/replay | deck.gl | POC | Vessel points, trilhas, H3, heading e replay temporal sobre MapLibre. |
 
+## 3.1 Earth Observation e raster cloud-native
+
+| Capacidade | Escolha | Estado | Regra de uso |
+|---|---|---:|---|
+| Descoberta STAC | PySTAC Client | POC | Cliente padrão quando a fonte expuser STAC; não substituir API oficial simples sem benefício. |
+| Carregamento STAC | odc-stac + xarray | POC | Transformar STAC Items em cubos temporais/espaciais para análise e features. |
+| NASA Earthdata | earthaccess | POC | Busca, autenticação e acesso/streaming para produtos NASA aprovados. |
+| Virtualização HDF/NetCDF | VirtualiZarr | POC | Preferir acesso virtual quando evitar cópia integral e preservar provenance; Kerchunk é fallback/reference. |
+| Metadata STAC bulk | STAC-GeoParquet | POC | Snapshot/inventário analítico de Items; não é segundo catálogo de fontes. |
+| Raster tiles dinâmicos | TiTiler | POC | COG/STAC/Zarr → tiles para MapLibre quando existir camada raster operacional. |
+| Catálogo STAC próprio | pgSTAC/stac-fastapi | FUTURO | Não implantar enquanto serviço próprio não for necessário; evita Postgres/PostGIS antecipado. |
+
+Fluxo preferencial: `fonte oficial/STAC/Earthdata → RAW/asset reference → catálogo/metadata versionado → xarray/GeoParquet → features/BigQuery → TiTiler somente para visualização raster necessária`.
+
 ## 4. Matriz OD, rodovias e otimização
 
 | Capacidade | Escolha | Estado |
@@ -151,13 +165,24 @@ AISdb permanece `REFERENCIA` por utilidade arquitetural; qualquer incorporação
 
 Esses componentes só entram após existir ao menos um modelo operacional com dataset point-in-time homologado. Nenhum modelo é promovido apenas por acurácia aparente: exige benchmark, validação fora da amostra, calibração, estabilidade e auditoria de leakage.
 
-## 8. Orquestração e execução durável
+## 8. Orquestração, agentes e execução durável
 
-- GitHub Actions, Cloud Run/jobs e os mecanismos existentes continuam atendendo o núcleo atual.
-- n8n permanece candidato para gatilhos/webhooks e automações simples, conforme arquitetura atual.
-- LangGraph permanece candidato preferencial para orquestração de agentes analíticos stateful.
-- Temporal fica `FUTURO` para workflows realmente duráveis, longos e com recovery/human-in-the-loop; não instalar enquanto retry/checkpoint dos componentes atuais forem suficientes.
-- Dagster, Airflow e Prefect ficam `NAO_SELECIONADO` no momento para evitar uma segunda plataforma de orquestração sem necessidade comprovada.
+- GitHub Actions, Cloud Run/jobs e os mecanismos existentes continuam atendendo o núcleo operacional.
+- n8n permanece candidato para gatilhos/webhooks e automações simples.
+- **Pydantic AI + Pydantic AI Harness** passa a `POC` preferencial para agentes analíticos: tipagem, tools, subagentes, planejamento, memória operacional, Step Persistence e OpenTelemetry.
+- **LangGraph** fica `REFERENCIA/ALTERNATIVA_CONDICIONAL`; só entra se benchmark mostrar requisito de grafo stateful não atendido adequadamente pelo stack preferencial.
+- **Phoenix** fica `POC` para tracing/evals de agentes sobre OpenTelemetry/OpenInference.
+- **Promptfoo** fica `POC` para regressão e red-team de prompts/agentes/RAG.
+- Temporal permanece `FUTURO`; se durabilidade for necessária, primeiro testar os backends de durable execution já suportados pelo runtime de agentes antes de criar outra camada central.
+- Dagster, Airflow e Prefect continuam `NAO_SELECIONADO` como orquestradores gerais para evitar segunda plataforma sem necessidade comprovada.
+
+## 8.1 Engenharia Python
+
+| Capacidade | Escolha | Estado | Regra |
+|---|---|---:|---|
+| Package/project manager | uv | POC | Benchmark após o primeiro FINAL PASS; não migrar lock/deps durante homologação do PR #187. |
+| Lint/format Python | Ruff | POC | Avaliar como gate rápido adicional; não substituir testes, Bandit ou type checks. |
+| DAG Python de transformação | Apache Hamilton | REFERENCIA | Benchmark apenas se feature pipelines Python crescerem a ponto de exigir DAG explícito/lineage; não duplicar SQLMesh/dlt/OpenLineage. |
 
 ## 9. Tecnologias explicitamente não promovidas ao core agora
 
