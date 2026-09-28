@@ -102,7 +102,18 @@ Uso:
 
 Não criar um catálogo paralelo ao Data Source Registry. O registry governa a fonte; STAC-GeoParquet é representação analítica de itens/assets.
 
-### ADOPT COMO POC — TiTiler
+### ADOPT COMO POC PREFERENCIAL — deck.gl-raster
+
+**Papel:** renderização raster client-side no cockpit já baseado em deck.gl.
+
+Usar primeiro para COG/GeoTIFF/Zarr quando:
+- asset puder ser entregue ao browser com política segura;
+- CORS/range requests e performance forem adequados;
+- não houver transformação confidencial/server-side.
+
+Benefício principal: elimina um serviço raster separado para casos simples e aproveita a stack já adotada no Maritime/MapLibre/deck.gl.
+
+### ADOPT COMO POC CONDICIONADO — TiTiler
 
 **Papel:** tiles raster dinâmicos para o cockpit geográfico.
 
@@ -117,7 +128,19 @@ Uso proposto:
 - Zarr/xarray;
 - mapas de chuva, NDVI/EVI, temperatura, umidade e outros rasters.
 
-Só entra no runtime quando existir uma camada raster que precise visualização dinâmica; antes disso, gerar artefatos estáticos continua mais simples.
+Não é mais o primeiro caminho para todo raster. Entra quando client-side não atender: dados privados/autorizados, processamento ou estilo server-side, mosaicos, política de acesso, formatos/volume incompatíveis com browser ou necessidade de API raster compartilhada.
+
+### REFERENCE / FUTURO — eoAPI
+
+Stack integrada de metadata/raster/vector baseada em pgSTAC, STAC API, TiTiler e serviço vetorial. Boa referência para evolução de uma API EO completa, mas seria infraestrutura excessiva agora e introduziria Postgres/PostGIS antes de necessidade comprovada.
+
+### REFERENCE / BENCHMARK — obstore
+
+Interface Rust/Python para S3/GCS/Azure com streaming e alto throughput. Não substitui o cliente GCS canônico agora. Benchmark somente se backfill/EO revelar gargalo mensurável de I/O.
+
+### REFERENCE / BENCHMARK — Lonboard
+
+Útil para exploração geoespacial em notebooks com GeoArrow/GeoParquet e renderização em escala. Não é frontend de produto e não substitui MapLibre/deck.gl.
 
 ### REFERENCE / BENCHMARK — Apache Hamilton
 
