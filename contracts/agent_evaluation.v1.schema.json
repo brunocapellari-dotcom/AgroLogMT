@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agrolog.local/contracts/agent_evaluation.v1.schema.json",
+  "title": "AgroLog Agent Evaluation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evaluation_id",
+    "agent_id",
+    "scenario_id",
+    "dataset_version",
+    "prompt_version",
+    "model_id",
+    "run_id",
+    "git_sha",
+    "started_at",
+    "completed_at",
+    "evaluator_version",
+    "checks",
+    "metrics",
+    "overall_status",
+    "data_coleta"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "evaluation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenario_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dataset_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "prompt_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "git_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{7,40}$"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "evaluator_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "input_fixture_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expected_output_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evidence_required": {
+      "type": "boolean"
+    },
+    "evidence_coverage": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "check_type",
+          "status"
+        ],
+        "properties": {
+          "check_type": {
+            "enum": [
+              "OUTPUT_SCHEMA",
+              "EVIDENCE_GROUNDING",
+              "CITATION_TRACEABILITY",
+              "EPISTEMIC_CLASSIFICATION",
+              "TOOL_AUTHORIZATION",
+              "PROMPT_INJECTION",
+              "TOOL_INJECTION",
+              "DATA_EXFILTRATION",
+              "PII_MINIMIZATION",
+              "QUALIFIER_PRESERVATION",
+              "UNIT_CONSISTENCY",
+              "TEMPORAL_CUTOFF",
+              "OTHER"
+            ]
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "BLOCKED",
+              "NOT_APPLICABLE"
+            ]
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "details": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "number",
+          "integer",
+          "string",
+          "boolean",
+          "null"
+        ]
+      }
+    },
+    "tool_calls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tool_name",
+          "authorized",
+          "status"
+        ],
+        "properties": {
+          "tool_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "authorized": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "BLOCKED"
+            ]
+          },
+          "latency_ms": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "evidence_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "overall_status": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "BLOCKED"
+      ]
+    },
+    "failure_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "data_referencia": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "data_publicacao": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "data_coleta": {
+      "type": "string",
+      "minLength": 1
+    },
+    "competencia": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}
