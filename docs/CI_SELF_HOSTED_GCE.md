@@ -29,7 +29,7 @@ No Cloud Shell, com `gcloud` e `gh` autenticados e projeto GCP correto:
 ```bash
 cd ~/AgroLogMT
 git fetch origin
-git switch release/final-project-gate-v1
+git switch fix/cloud-build-service-account-resource
 git pull --ff-only
 bash scripts/create_gce_ephemeral_runner.sh
 ```
@@ -69,4 +69,4 @@ Se a demanda crescer para muitos runners concorrentes, avaliar `terraform-google
 
 ## Release policy
 
-Não existe promoção por módulo. O único gate de release é `full-project-final-gate.yml`, que executa o projeto inteiro. O workflow `unit-tests.yml` é diagnóstico manual e não substitui o gate canônico.
+Não existe promoção por módulo. O gate de release do candidato PR #187 é `full-project-final-gate.yml`, que executa o projeto inteiro. O workflow `unit-tests.yml` é diagnóstico manual e não substitui o gate canônico.
