@@ -69,6 +69,21 @@ class EarthObservationTests(unittest.TestCase):
         self.assertEqual(result["acquisition_start"], "2026-09-20T12:00:00Z")
         self.assertEqual(result["acquisition_end"], "2026-09-20T14:00:00Z")
 
+    def test_numeric_epsg_is_normalized_to_text(self) -> None:
+        item = self.item()
+        item["properties"].pop("proj:code")
+        item["properties"]["proj:epsg"] = 32721
+        result = normalize_stac_asset(
+            item,
+            asset_key="red",
+            source_id="official_stac",
+            provider="official_provider",
+            license_id="CC-BY-4.0",
+            data_coleta="2026-09-28T20:00:00Z",
+            source_url="https://example.test/stac",
+        )
+        self.assertEqual(result["crs"], "32721")
+
     def test_missing_asset_fails_closed(self) -> None:
         with self.assertRaises(ValueError):
             normalize_stac_asset(
