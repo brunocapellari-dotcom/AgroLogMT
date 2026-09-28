@@ -123,7 +123,7 @@ def normalize_stac_asset(
         "competencia": competencia,
         "geometry_ref": f"stac:{collection_id}:{item_id}#geometry",
         "bbox": item.get("bbox"),
-        "crs": properties.get("proj:code") or properties.get("proj:epsg"),
+        "crs": (str(properties.get("proj:code") or properties.get("proj:epsg")) if (properties.get("proj:code") is not None or properties.get("proj:epsg") is not None) else None),
         "bands": _bands(asset),
         "cloud_cover_pct": cloud_cover,
         "spatial_resolution_m": properties.get("gsd"),
