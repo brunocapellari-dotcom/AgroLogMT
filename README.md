@@ -193,10 +193,18 @@ Classificar explicitamente:
 
 ### Gates que bloqueiam produção
 
-1. Resolver #159 (`CI_EXECUTION_BLOCKER`): os jobs do PR #156 precisam efetivamente receber runner e executar os testes.
-2. Executar #160: bootstrap GCP/WIF/service accounts, compartilhar Drive/IMEA e homologar CONAB Armazéns + AgroLog Gateway até `N6 CORE HOMOLOGATION: PASS`.
-3. Aplicar/readback das proteções de `main`, WIF/IAM/secrets e validar runtime privado/least privilege.
-4. Executar primeiro restore drill real do core antes de declarar recuperação operacional.
+1. **PR #187 / #159:** provisionar runner GCE efêmero `agrolog-ci` ou executar o finalizador integral diretamente no Cloud Shell/GCP; o workflow canônico permanece enfileirado quando não há runner.
+2. **#160:** o compartilhamento Drive do collector já foi revalidado como resolvido; falta executar a homologação GCP real de CONAB Armazéns + AgroLog Gateway até `N6 CORE HOMOLOGATION: PASS`.
+3. Executar o Full Project Final Gate no mesmo SHA, com zero LIVE skips, Trivy/SBOM/Gitleaks/history, runtime security, freshness/data quality e restore drill, até `AGROLOG MT FINAL RELEASE: PASS`.
+4. **#183:** somente após o PASS integral, promover exatamente o SHA validado e aplicar/readback das proteções canônicas de `main`.
+
+### Capacidades preparadas no candidato, ainda não promovidas
+
+- runtime de agentes: Pydantic AI + Harness selecionado como POC preferencial; integração externa ainda não ativada;
+- avaliação de agentes: contrato e gate fail-closed próprios implementados, com testes;
+- Earth Observation: contrato de provenance de assets + métricas NDVI/EVI/LAI/LST preparados; STAC/Earthdata permanecem POC;
+- sinais comerciais: vetores de condições de venda do produtor e demanda 30d implementados sem score/forecast não calibrado;
+- nenhuma dessas capacidades é considerada produção antes do gate integral.
 
 ### Expansão que pode avançar em paralelo sem ativação prematura
 
