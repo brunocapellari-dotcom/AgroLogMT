@@ -78,10 +78,12 @@ Dolt, lakeFS e XTDB permanecem `REFERENCIA` arquitetural. O conceito de versiona
 | NASA Earthdata | earthaccess | POC | Busca, autenticação e acesso/streaming para produtos NASA aprovados. |
 | Virtualização HDF/NetCDF | VirtualiZarr | POC | Preferir acesso virtual quando evitar cópia integral e preservar provenance; Kerchunk é fallback/reference. |
 | Metadata STAC bulk | STAC-GeoParquet | POC | Snapshot/inventário analítico de Items; não é segundo catálogo de fontes. |
-| Raster tiles dinâmicos | TiTiler | POC | COG/STAC/Zarr → tiles para MapLibre quando existir camada raster operacional. |
+| Raster client-side | deck.gl-raster | POC preferencial | COG/GeoTIFF/Zarr público ou acessível diretamente no browser; evita serviço de tiles quando segurança e volume permitirem. |
+| Raster tiles backend | TiTiler | POC condicionado | Usar quando houver dado privado, autorização, transformação server-side, mosaico/política de acesso ou limitação objetiva do client-side. |
+| Catálogo/API EO completo | eoAPI | FUTURO / REFERENCIA | Combina pgSTAC/STAC API/raster/vector; não implantar enquanto serviço composto não for necessário. |
 | Catálogo STAC próprio | pgSTAC/stac-fastapi | FUTURO | Não implantar enquanto serviço próprio não for necessário; evita Postgres/PostGIS antecipado. |
 
-Fluxo preferencial: `fonte oficial/STAC/Earthdata → RAW/asset reference → catálogo/metadata versionado → xarray/GeoParquet → features/BigQuery → TiTiler somente para visualização raster necessária`.
+Fluxo preferencial: `fonte oficial/STAC/Earthdata → RAW/asset reference → catálogo/metadata versionado → xarray/GeoParquet → features/BigQuery → deck.gl-raster quando client-side for seguro/suficiente → TiTiler somente quando backend raster for objetivamente necessário`.
 
 ## 4. Matriz OD, rodovias e otimização
 
