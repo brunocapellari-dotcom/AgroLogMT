@@ -35,3 +35,7 @@ quant.pressao_frete,quant,Índice de pressão de frete,indice,estimado,AgroLog,N
 quant.risco_navegacao,quant,Risco de restrição à navegação,probabilidade,estimado,AgroLog,Calibrar por corredor e restrição
 quant.exportacao_30d,quant,Previsão de exportação 30 dias,t,estimado,AgroLog,Backtest rolling-origin obrigatório
 quant.produtividade_prevista,quant,Previsão de produtividade,kg/ha,estimado,AgroLog,Out-of-sample por safra obrigatório
+remote_sensing.ndvi,remote_sensing,NDVI adimensional,index,observado,fonte_STAC|NASA_Earthdata,Preservar sensor produto versão aquisição processamento e máscara de nuvem
+remote_sensing.evi,remote_sensing,EVI adimensional,index,observado,fonte_STAC|NASA_Earthdata,Preservar sensor produto versão aquisição processamento e máscara de nuvem
+remote_sensing.lai,remote_sensing,Índice de área foliar,m2/m2,observado,fonte_STAC|NASA_Earthdata,Registrar algoritmo/produto e quality flags
+remote_sensing.lst,remote_sensing,Temperatura da superfície,°C,observado,fonte_STAC|NASA_Earthdata,Não confundir temperatura de superfície com temperatura do ar
