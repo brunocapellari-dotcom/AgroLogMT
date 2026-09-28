@@ -72,7 +72,8 @@ P0/P1 continuam sendo gates para declarar o núcleo ponta a ponta validado. As f
 ### A5 — Earth Observation cloud-native
 - [ ] Selecionar um caso real MT/Brasil com valor operacional (prioridade: umidade do solo/chuva/vegetação) e fonte autorizada.
 - [ ] Comparar acesso via STAC (PySTAC Client + odc-stac) e NASA Earthdata (earthaccess) conforme a fonte escolhida.
-- [ ] Preservar asset/item/vintage, geometria/AOI, timestamps, licença e provenance.
+- [x] Criar contrato canônico de asset EO e normalizador STAC dependency-free, preservando item/asset, aquisição, geometria, bandas, licença, cloud cover, quality flags e provenance.
+- [ ] Validar esse normalizador contra uma fonte STAC oficial real e preservar asset/item/vintage, geometria/AOI, timestamps e licença.
 - [ ] Avaliar VirtualiZarr para HDF/NetCDF grandes antes de download/cópia integral.
 - [ ] Materializar inventário STAC em GeoParquet somente se o volume justificar.
 - [ ] Usar TiTiler somente quando houver raster operacional que precise tiles dinâmicos no MapLibre.
@@ -158,6 +159,14 @@ P0/P1 continuam sendo gates para declarar o núcleo ponta a ponta validado. As f
 - [ ] Expor IA local por interface controlada, sem espalhar dependência de provider pelo código.
 - [ ] Não manter llama.cpp como servidor paralelo; avaliá-lo somente para requisito específico de hardware/quantização/desempenho.
 - [ ] Definir quais tarefas nunca podem ser rebaixadas para modelo local sem validação adicional.
+
+### B10 — Inteligência comercial evidence-first
+- [x] Implementar vetor de condições de venda do produtor com preço físico, basis, spread de paridade e delta de comercialização.
+- [x] Proibir score composto enquanto não houver metodologia calibrada/backtest.
+- [x] Implementar vetor de demanda 30d separando exportação programada, exportação realizada, demanda industrial de referência e fluxo doméstico.
+- [x] Proibir soma automática de componentes com semântica/período diferentes e preservar `programado != realizado`.
+- [ ] Conectar os vetores às fontes canônicas point-in-time após homologação N6.
+- [ ] Calibrar qualquer futuro score/forecast somente com histórico suficiente, baseline e rolling-origin.
 
 ## Frente C — expansão operacional e comercial
 
