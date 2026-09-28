@@ -47,11 +47,20 @@ Os itens desta seção foram selecionados por criarem capacidade nova ou por ter
 
 ### Orquestração de agentes analíticos
 
-**LangGraph — candidato preferencial**
-- Uso pretendido: coordenar agentes analíticos stateful e de longa duração, com handoffs explícitos, checkpoint, condição de parada, human-in-the-loop e rastreabilidade de estado.
-- Papel: orquestração de **agentes de inteligência**, não de pipelines de coleta.
-- Separação obrigatória: `n8n` permanece candidato para orquestração operacional/gatilhos; LangGraph coordena raciocínio e fluxos multiagente.
-- Regra: não instalar simultaneamente Agno, CrewAI, Semantic Kernel e AutoGen para a mesma responsabilidade. Eles permanecem alternativas de referência caso LangGraph falhe no benchmark.
+**Pydantic AI + Pydantic AI Harness — candidato preferencial**
+- Uso pretendido: runtime tipado para os agentes definidos em `contracts/ai_roles.v1.json`, com ferramentas/outputs estruturados, Planning, SubAgents, Dynamic Workflow, Step Persistence, memória operacional segregada e instrumentação OpenTelemetry.
+- Papel: coordenação de **agentes de inteligência**, não de pipelines de coleta.
+- Toda ferramenta de dados deve passar pelo AgroLog Gateway/contrato autorizado; agentes não recebem acesso irrestrito ao BigQuery.
+- Memory/Conversation Search são memória de runtime, nunca conhecimento canônico; Obsidian e a Knowledge Factory prevalecem para conhecimento aprovado.
+- Durable execution só entra quando houver workflow longo/recovery real; não criar infraestrutura adicional por antecipação.
+
+**LangGraph — referência / alternativa condicional**
+- Continua válido para grafos stateful e human-in-the-loop, porém não será instalado em paralelo por precaução.
+- Só deve superar Pydantic AI/Harness se benchmark real demonstrar requisito de grafo/ciclo/controle de estado que o stack preferencial não atenda adequadamente.
+
+**Regra de exclusividade**
+- Não instalar CrewAI, Agno, Semantic Kernel, AutoGen ou outro framework equivalente para a mesma responsabilidade sem falha objetiva do candidato preferencial.
+- `n8n` continua separado para gatilhos/integrações operacionais; não é runtime de raciocínio.
 
 **Padrão de debate inspirado em TradingAgents**
 - Adotar o padrão conceitual de especialistas independentes, análise pró/contra, agente cético/risco, auditor e consolidador final.
@@ -108,6 +117,20 @@ Os itens desta seção foram selecionados por criarem capacidade nova ou por ter
 - Regra: selecionar somente o mínimo necessário após benchmark; evitar empilhar frameworks equivalentes.
 - LangGraph, quando adotado, será tratado separadamente como orquestrador de agentes, não como substituto automático da camada RAG.
 
+### Observabilidade e regressão de agentes
+
+**Phoenix — POC preferencial de observabilidade/eval de IA**
+- Instrumentação via OpenTelemetry/OpenInference.
+- Tracing de modelo, tools, retrieval, tokens, latência, custo e erros.
+- Datasets/experimentos para comparar versões de agentes e prompts.
+- Aplicar minimização/redaction antes de enviar conteúdo sensível à telemetria.
+- Não substitui OpenTelemetry Collector nem logs operacionais do runtime.
+
+**Promptfoo — POC preferencial de regressão/red-team**
+- Testar prompt injection, tool injection, exfiltração, uso indevido de ferramentas, regressão de citação/evidência e violações de classificação epistemológica.
+- Usar golden cases versionados e ataques explícitos em CI/ambiente controlado.
+- Não substitui unittest, data-quality gates, live tests ou auditor final.
+
 ### Cockpit interno e acesso humano à IA
 
 **LibreChat — candidato preferencial de cockpit**
@@ -138,10 +161,11 @@ Os itens desta seção foram selecionados por criarem capacidade nova ou por ter
 
 ### Memória de agentes
 
-**mem0 ou mecanismo equivalente**
-- Uso pretendido: memória operacional de análises, hipóteses e previsões.
-- Regra: GitHub, BigQuery e documentação canônica prevalecem sobre memória de agente.
-- Se LangGraph atender memória/checkpoint de forma suficiente, evitar instalar uma segunda camada apenas por conveniência.
+**Pydantic AI Harness Memory / Conversation Search — preferência de runtime**
+- Usar somente para memória operacional segregada por projeto/agente/conversa.
+- Obsidian/Segundo Cérebro continua sendo a verdade editorial/canônica aprovada.
+- Runtime memory não pode promover, alterar ou sobrescrever conhecimento canônico.
+- Mem0 e equivalentes permanecem `NAO_SELECIONADO` enquanto duplicarem essa função sem ganho mensurável.
 
 ### Sinais externos experimentais
 
