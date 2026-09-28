@@ -76,6 +76,31 @@ class GlobalArchitectureContractTests(unittest.TestCase):
         stages = set(payload["properties"]["causal_chain"]["items"]["properties"]["stage"]["enum"])
         self.assertEqual(stages, {"EVENT", "MECHANISM", "COMMODITY", "WORLD", "BRAZIL", "MATO_GROSSO"})
 
+    def test_agent_evaluation_contract_fails_closed_on_security_and_grounding(self) -> None:
+        payload = self.read_json("contracts/agent_evaluation.v1.schema.json")
+        required = set(payload["required"])
+        for field in (
+            "agent_id", "scenario_id", "dataset_version", "prompt_version",
+            "model_id", "run_id", "git_sha", "checks", "metrics",
+            "overall_status", "data_coleta",
+        ):
+            self.assertIn(field, required)
+
+        check_types = set(
+            payload["properties"]["checks"]["items"]["properties"]["check_type"]["enum"]
+        )
+        for check in (
+            "EVIDENCE_GROUNDING", "EPISTEMIC_CLASSIFICATION",
+            "TOOL_AUTHORIZATION", "PROMPT_INJECTION",
+            "DATA_EXFILTRATION", "TEMPORAL_CUTOFF",
+        ):
+            self.assertIn(check, check_types)
+
+        self.assertEqual(
+            set(payload["properties"]["overall_status"]["enum"]),
+            {"PASS", "FAIL", "BLOCKED"},
+        )
+
     def test_phase0_audit_has_required_operational_dimensions(self) -> None:
         text = (ROOT / "docs" / "PHASE0_AUDIT_GAP_ANALYSIS_2026-09-14.md").read_text(encoding="utf-8")
         for token in ("Coleta", "Normalização", "Armazenamento", "Freshness", "Qualidade", "Análise", "Modelos", "Conhecimento", "Relatórios", "Alertas", "Testes"):
