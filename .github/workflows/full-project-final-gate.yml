@@ -170,6 +170,16 @@ jobs:
             echo 'Docker, Trivy, SBOM, full Git-history scan, LIVE tests and GCP run once in the manual final release gate.'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Upload deterministic gate evidence
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 pinned
+        with:
+          name: full-project-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          path: outputs/full-project-gate
+          if-no-files-found: ignore
+          retention-days: 14
+
   final-live-release:
     environment: agrolog-production
     name: Whole project LIVE + GCP final release
@@ -496,3 +506,15 @@ jobs:
               echo 'Final release did not produce PASS evidence.'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload final release evidence
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 pinned
+        with:
+          name: full-project-final-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            outputs/full-project-gate
+            outputs/n6-core
+          if-no-files-found: ignore
+          retention-days: 30
