@@ -80,3 +80,55 @@ WHERE (@geo_id IS NULL OR geo_id=@geo_id)
 ORDER BY data_referencia DESC, source_id
 LIMIT @limit
 """.strip()
+
+
+def build_hydrology_latest_sql(project: str, dataset: str) -> str:
+    project = safe_identifier(project, label="project")
+    dataset = safe_identifier(dataset, label="dataset")
+    return f"""
+SELECT
+  station_code, station_name, river, data_referencia,
+  stage_cm_median, flow_m3s_median,
+  stage_delta_3obs, stage_delta_7obs,
+  flow_delta_3obs, flow_delta_7obs,
+  sample_years, climatology_quality, h_score, o_score,
+  t_gate, p_gate, f_gate, latest_measurement, latest_source_update,
+  evidence_class
+FROM `{project}.{dataset}.hydrology_latest_v1`
+WHERE (@river IS NULL OR LOWER(river)=LOWER(@river))
+ORDER BY data_referencia DESC, station_code
+LIMIT @limit
+""".strip()
+
+
+def build_ptax_current_sql(project: str, dataset: str) -> str:
+    project = safe_identifier(project, label="project")
+    dataset = safe_identifier(dataset, label="dataset")
+    return f"""
+SELECT
+  data_referencia, data_publicacao, data_coleta, competencia,
+  moeda, cotacao_compra, cotacao_venda, data_hora_cotacao,
+  evidence_class, collector_version
+FROM `{project}.{dataset}.ptax_current_v1`
+WHERE (@currency IS NULL OR moeda=@currency)
+ORDER BY data_referencia DESC, data_hora_cotacao DESC
+LIMIT 1
+""".strip()
+
+
+def build_imea_freight_reference_sql(project: str, dataset: str) -> str:
+    project = safe_identifier(project, label="project")
+    dataset = safe_identifier(dataset, label="dataset")
+    return f"""
+SELECT
+  snapshot_id, record_id, data_referencia, produto, metric_name,
+  origem, destino, valor, unidade_origem, unidade_canonica,
+  evidence_class, evidence_subtype, negotiated, data_coleta,
+  route_type
+FROM `{project}.{dataset}.imea_freight_reference_v1`
+WHERE (@origin IS NULL OR LOWER(origem)=LOWER(@origin))
+  AND (@destination IS NULL OR LOWER(destino)=LOWER(@destination))
+  AND (@product IS NULL OR LOWER(produto)=LOWER(@product))
+ORDER BY data_referencia DESC, origem, destino
+LIMIT @limit
+""".strip()
