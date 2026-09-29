@@ -69,7 +69,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m bandit -q -r collector gateway models scripts ckan_connector socrata_connector cftc_cot usda_agtransport -ll -ii
+          mkdir -p outputs/full-project-gate
+          set +e
+          python -m bandit -q -r collector gateway models scripts ckan_connector socrata_connector cftc_cot usda_agtransport -ll -ii -f json -o outputs/full-project-gate/bandit.json
+          bandit_code=$?
+          set -e
+          python scripts/evaluate_bandit_report.py outputs/full-project-gate/bandit.json
+          if [[ "$bandit_code" -ne 0 ]]; then
+            echo "Bandit reported findings; evaluator above is authoritative for Medium/High gate." >&2
+          fi
 
       - name: Audit Python dependencies
         shell: bash
