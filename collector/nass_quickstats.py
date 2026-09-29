@@ -40,9 +40,10 @@ def _request_json(url: str, *, api_key: str, timeout: int) -> tuple[bytes, dict[
     validate_source_url(url, allowed_hosts=["quickstats.nass.usda.gov"])
     request = Request(url, headers={"User-Agent": "AgroLogMT/0.1 (+nass-quickstats)"})
     try:
-        with urlopen(request, timeout=timeout) as response:
+        with urlopen(request, timeout=timeout) as response:  # nosec B310 - HTTPS and USDA host validated before/after redirect.
             payload = response.read()
             observed = response.geturl()
+            validate_source_url(observed, allowed_hosts=["quickstats.nass.usda.gov"])
     except Exception as exc:
         safe = redact_known_secret(str(exc), api_key)
         raise RuntimeError(f"NASS Quick Stats request falhou: {safe}") from None
