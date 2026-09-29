@@ -4,14 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#07121f" />
-    <title>AgroLog Maritime Intelligence</title>
+    <title>AgroLog MT 360</title>
   </head>
   <body>
     <div id="app">
       <header class="topbar">
         <div>
-          <div class="eyebrow">AGROLOG MT</div>
-          <h1>Maritime Intelligence</h1>
+          <div class="eyebrow">AGROLOG MT · COCKPIT 360</div>
+          <h1>Inteligência Agro & Logística</h1>
         </div>
         <div class="toolbar">
           <label>
@@ -25,7 +25,27 @@
         </div>
       </header>
 
-      <section class="metrics" aria-label="Resumo operacional">
+
+      <section class="card intelligence-overview" aria-label="Resumo AgroLog 360">
+        <div class="card-title-row">
+          <div>
+            <h2>AgroLog MT 360</h2>
+            <p>Produção, armazenagem e agroclima derivados das fontes canônicas. Campos indisponíveis permanecem explícitos.</p>
+          </div>
+          <span id="agro-overview-status" class="count-pill">carregando</span>
+        </div>
+        <section class="metrics" aria-label="Indicadores AgroLog 360">
+          <article><span>Produção</span><strong id="agro-production">—</strong></article>
+          <article><span>Capacidade estática</span><strong id="agro-storage">—</strong></article>
+          <article><span>Produção / capacidade</span><strong id="agro-storage-ratio">—</strong></article>
+          <article><span>Gap armazenagem</span><strong id="agro-storage-gap">—</strong></article>
+          <article><span>Chuva 7d</span><strong id="agro-rain-7">—</strong></article>
+          <article><span>Chuva 30d</span><strong id="agro-rain-30">—</strong></article>
+          <article><span>Chuva 90d</span><strong id="agro-rain-90">—</strong></article>
+        </section>
+      </section>
+
+      <section class="metrics" aria-label="Resumo marítimo operacional">
         <article><span>Navios recentes</span><strong id="metric-live">—</strong></article>
         <article><span>Aproximando</span><strong id="metric-approach">—</strong></article>
         <article><span>Aguardando</span><strong id="metric-waiting">—</strong></article>
