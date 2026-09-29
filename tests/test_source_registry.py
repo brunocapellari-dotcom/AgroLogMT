@@ -25,6 +25,9 @@ class DataSourceRegistryTests(unittest.TestCase):
             "sagyp_argentina", "bcr_gea", "bolsa_cereales_argentina",
             "amis_market_monitor", "igc_global", "faostat", "aisstream_maritime",
             "nasa_cmr_stac_lpcloud",
+            "antt_rntrc", "antt_mdfe_public", "epe_sienergia_biomass", "ibge_pevs_biomass",
+            "snif_forest_biomass", "sema_mt_sisflora", "ons_biomass_generation", "epe_ben_biomass",
+            "anp_biometano", "ibama_dof_native", "whatsapp_freight_authorized",
         }
         self.assertTrue(required.issubset(registry.entries))
         self.assertTrue(registry.by_domain("us_crop"))
