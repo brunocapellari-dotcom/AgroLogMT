@@ -39,6 +39,7 @@ TABLES = {
         "dataset": "clima",
         "table": "daily_observations",
         "cluster": "source_id, geo_id, competencia",
+        "columns": ("record_id","source_id","geo_id","data_referencia","data_publicacao","data_coleta","competencia","precipitacao_mm","tmin_c","tmax_c","evidence_class","quality_flags"),
         "ddl": """
 record_id STRING NOT NULL,
 source_id STRING NOT NULL,
@@ -58,6 +59,7 @@ quality_flags ARRAY<STRING>
         "dataset": "logistica",
         "table": "freight_offer_observations",
         "cluster": "origin_municipality_id, destination_municipality_id, product_id",
+        "columns": ("record_id","observation_id","source_channel_type","source_provider","source_channel_id_hash","source_message_id_hash","origin_municipality_id","destination_municipality_id","product_id","freight_brl_per_t","freight_brl_per_t_km","announced_brl_per_trip","distance_km","payload_t","dedup_cluster_id","requires_review","data_referencia","data_publicacao","data_coleta","competencia","evidence_class","evidence_subtype","contracted_status","executed_status"),
         "ddl": """
 record_id STRING NOT NULL,
 observation_id STRING NOT NULL,
@@ -89,6 +91,7 @@ executed_status STRING NOT NULL
         "dataset": "energia",
         "table": "biomass_observations",
         "cluster": "source_id, geo_id, biomass_type, metric_id",
+        "columns": ("record_id","source_id","geo_id","biomass_type","metric_id","value","unit","data_referencia","data_publicacao","data_coleta","competencia","evidence_class","observation_semantics","source_quality","quality_flags"),
         "ddl": """
 record_id STRING NOT NULL,
 source_id STRING NOT NULL,
@@ -180,17 +183,25 @@ class AgroLog360BigQueryLoader:
 
         target = self._target(kind)
         stage = f"{target}_stage_{int(started.timestamp())}"
-        table = self._bigquery.Table(stage)
+        target_obj = self.client.get_table(target)
+        table = self._bigquery.Table(stage, schema=target_obj.schema)
         table.expires = datetime.now(timezone.utc) + timedelta(hours=2)
         self.client.create_table(table)
         try:
-            config = self._bigquery.LoadJobConfig(write_disposition="WRITE_TRUNCATE", autodetect=True)
+            config = self._bigquery.LoadJobConfig(
+                schema=target_obj.schema,
+                write_disposition="WRITE_TRUNCATE",
+            )
             self.client.load_table_from_json(prepared, stage, job_config=config).result()
+            columns = tuple(TABLES[kind]["columns"])
+            insert_columns = ", ".join(columns)
+            insert_values = ", ".join(f"S.{column}" for column in columns)
             merge = f"""
 MERGE `{target}` T
 USING `{stage}` S
 ON T.record_id=S.record_id
-WHEN NOT MATCHED THEN INSERT ROW
+WHEN NOT MATCHED THEN
+  INSERT ({insert_columns}) VALUES ({insert_values})
 """.strip()
             job = self.client.query(merge)
             job.result()
