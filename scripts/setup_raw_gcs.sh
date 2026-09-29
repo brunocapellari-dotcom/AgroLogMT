@@ -19,7 +19,7 @@ if ! gcloud storage buckets describe "gs://${RAW_BUCKET}" --project "$PROJECT_ID
   gcloud storage buckets create "gs://${RAW_BUCKET}"     --project "$PROJECT_ID"     --location "$REGION"     --uniform-bucket-level-access
 fi
 
-gcloud storage buckets update "gs://${RAW_BUCKET}"   --project "$PROJECT_ID"   --public-access-prevention=enforced   --uniform-bucket-level-access
+gcloud storage buckets update "gs://${RAW_BUCKET}"   --project "$PROJECT_ID"   --public-access-prevention   --uniform-bucket-level-access
 
 for role in roles/storage.objectCreator roles/storage.objectViewer; do
   gcloud storage buckets add-iam-policy-binding "gs://${RAW_BUCKET}"     --project "$PROJECT_ID"     --member "serviceAccount:${COLLECTOR_SERVICE_ACCOUNT}"     --role "$role" >/dev/null
