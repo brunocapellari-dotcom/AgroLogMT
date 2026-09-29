@@ -28,6 +28,16 @@ const els = {
   sourceHealthList: document.querySelector('#source-health-list'),
   briefBody: document.querySelector('#brief-body'),
   briefGenerated: document.querySelector('#brief-generated'),
+  agroOverviewStatus: document.querySelector('#agro-overview-status'),
+  agro: {
+    production: document.querySelector('#agro-production'),
+    storage: document.querySelector('#agro-storage'),
+    ratio: document.querySelector('#agro-storage-ratio'),
+    gap: document.querySelector('#agro-storage-gap'),
+    rain7: document.querySelector('#agro-rain-7'),
+    rain30: document.querySelector('#agro-rain-30'),
+    rain90: document.querySelector('#agro-rain-90'),
+  },
   metrics: {
     live: document.querySelector('#metric-live'),
     approach: document.querySelector('#metric-approach'),
@@ -83,6 +93,24 @@ function fmtNumber(value, decimals = 0) {
     maximumFractionDigits: decimals,
     minimumFractionDigits: decimals,
   }).format(number);
+}
+
+function fmtTonnes(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  if (Math.abs(number) >= 1_000_000) return `${fmtNumber(number / 1_000_000, 2)} mi t`;
+  if (Math.abs(number) >= 1_000) return `${fmtNumber(number / 1_000, 1)} mil t`;
+  return `${fmtNumber(number, 0)} t`;
+}
+
+function fmtMm(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${fmtNumber(number, 1)} mm` : '—';
+}
+
+function fmtPercentRatio(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${fmtNumber(number * 100, 1)}%` : '—';
 }
 
 function fmtHours(value) {
@@ -374,6 +402,26 @@ function renderOperationalBrief() {
   )).join('') + divergenceHtml;
 }
 
+async function refreshAgroOverview() {
+  if (!els.agroOverviewStatus) return;
+  els.agroOverviewStatus.textContent = 'atualizando';
+  try {
+    const response = await getJson('/v1/intelligence/overview?uf=MT');
+    const row = response.data || {};
+    els.agro.production.textContent = fmtTonnes(row.producao_t);
+    els.agro.storage.textContent = fmtTonnes(row.capacidade_estatica_t);
+    els.agro.ratio.textContent = fmtPercentRatio(row.producao_capacidade_ratio);
+    els.agro.gap.textContent = fmtTonnes(row.gap_capacidade_t);
+    els.agro.rain7.textContent = fmtMm(row.chuva_7d_mm);
+    els.agro.rain30.textContent = fmtMm(row.chuva_30d_mm);
+    els.agro.rain90.textContent = fmtMm(row.chuva_90d_mm);
+    els.agroOverviewStatus.textContent = row.data_coleta ? `atualizado ${fmtDate(row.data_coleta)}` : 'sem dado';
+  } catch (error) {
+    console.warn('AgroLog 360 overview indisponível', error);
+    els.agroOverviewStatus.textContent = 'dados ainda gated';
+  }
+}
+
 async function refreshAll({fit = false} = {}) {
   setStatus('idle', 'atualizando');
   els.refresh.disabled = true;
@@ -523,7 +571,7 @@ els.replaySlider.addEventListener('input', event => {
 map.on('load', async () => {
   try {
     await loadConfig();
-    await refreshAll({fit: true});
+    await Promise.all([refreshAll({fit: true}), refreshAgroOverview()]);
   } catch (error) {
     console.error(error);
     setStatus('error', 'gateway indisponível');
@@ -531,5 +579,8 @@ map.on('load', async () => {
 });
 
 setInterval(() => {
-  if (!document.hidden) refreshAll({fit: false});
+  if (!document.hidden) {
+    refreshAll({fit: false});
+    refreshAgroOverview();
+  }
 }, 30000);
