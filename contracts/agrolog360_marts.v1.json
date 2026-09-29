@@ -57,6 +57,30 @@
         "marts_agrolog360.climate_rollups_v1"
       ],
       "evidence": "derived"
+    },
+    {
+      "mart_id": "hydrology_latest",
+      "target": "marts_agrolog360.hydrology_latest_v1",
+      "sources": [
+        "hidrologia.m04_components_latest"
+      ],
+      "evidence": "derived_from_observed_hydrology"
+    },
+    {
+      "mart_id": "ptax_current",
+      "target": "marts_agrolog360.ptax_current_v1",
+      "sources": [
+        "mercado.ptax_usd_daily"
+      ],
+      "evidence": "observed_official_bcb"
+    },
+    {
+      "mart_id": "imea_freight_reference",
+      "target": "marts_agrolog360.imea_freight_reference_v1",
+      "sources": [
+        "logistica.imea_frete_referencia"
+      ],
+      "evidence": "observed_or_estimated_as_source_row_declares_route_unclassified"
     }
   ]
 }
