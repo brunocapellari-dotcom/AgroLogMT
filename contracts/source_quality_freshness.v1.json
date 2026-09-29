@@ -1,0 +1,32 @@
+{
+  "version": "1.0.0",
+  "contract_id": "source_quality_freshness.v1",
+  "required_temporal_fields": ["data_referencia", "data_publicacao", "data_coleta", "competencia"],
+  "required_provenance_fields": ["source_id", "evidence_class"],
+  "evidence_classes": [
+    "OBSERVADO",
+    "ESTIMADO",
+    "PROJETADO",
+    "INFERIDO",
+    "INFORMADO",
+    "DERIVADO_DE_OBSERVADO"
+  ],
+  "rules": [
+    "missing source values remain missing unless an explicit imputation methodology is registered",
+    "programmed or informed values never become observed merely because time passed",
+    "freshness is measured against the source publication cadence, not a universal threshold",
+    "historical backfills preserve publication/vintage when the source exposes it",
+    "derived metrics retain upstream source identifiers and collection timestamps",
+    "quality failure blocks promotion but never rewrites raw evidence"
+  ],
+  "minimum_checks": [
+    "schema",
+    "required_fields",
+    "duplicate_key",
+    "range_and_unit",
+    "reference_publication_collection_order",
+    "freshness",
+    "row_count_or_tie_out_when_available",
+    "source_hash_or_equivalent_integrity_evidence"
+  ]
+}
