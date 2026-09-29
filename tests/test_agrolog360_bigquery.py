@@ -13,6 +13,13 @@ class AgroLog360BigQueryTests(unittest.TestCase):
             self.assertIn("PARTITION BY data_referencia", table_sql)
             self.assertIn("CLUSTER BY", table_sql)
 
+    def test_every_table_has_explicit_merge_columns(self) -> None:
+        from collector.agrolog360_bigquery import TABLES
+        for kind, spec in TABLES.items():
+            self.assertIn("columns", spec, kind)
+            self.assertEqual(spec["columns"][0], "record_id")
+            self.assertEqual(len(spec["columns"]), len(set(spec["columns"])))
+
     def test_stable_record_id_is_deterministic(self) -> None:
         self.assertEqual(stable_record_id(["a", 1, None]), stable_record_id(["a", 1, None]))
         self.assertNotEqual(stable_record_id(["a", 1]), stable_record_id(["a", 2]))
