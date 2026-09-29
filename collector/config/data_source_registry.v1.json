@@ -1485,6 +1485,308 @@
           720
         ]
       }
+    },
+    {
+      "source_id": "antt_rntrc",
+      "name": "ANTT - RNTRC",
+      "domain": "logistics",
+      "type": "file",
+      "endpoint": null,
+      "method": "OFFICIAL_DOWNLOAD",
+      "frequency": "daily_monthly",
+      "freshness_expected": "dataset dependent",
+      "last_collection_at": null,
+      "status": "planned",
+      "fallback": [
+        "antt_open_data"
+      ],
+      "license": "ANTT_open_data",
+      "reliability": "primary_high",
+      "security_class": "PUBLIC",
+      "auth": "none",
+      "trusted_transport": false,
+      "schedule": {
+        "min_interval_minutes": 1440,
+        "retry_minutes": [
+          120,
+          240,
+          480,
+          720
+        ]
+      },
+      "notes": "Cadastro/estatísticas RNTRC. Dataset/endpoint exato deve ser homologado antes de status active."
+    },
+    {
+      "source_id": "antt_mdfe_public",
+      "name": "ANTT - MDF-e/movimentação de cargas pública",
+      "domain": "logistics",
+      "type": "file",
+      "endpoint": null,
+      "method": "OFFICIAL_DOWNLOAD",
+      "frequency": "monthly",
+      "freshness_expected": "publication dependent",
+      "last_collection_at": null,
+      "status": "planned",
+      "fallback": [],
+      "license": "TO_VALIDATE",
+      "reliability": "primary_high",
+      "security_class": "PUBLIC",
+      "auth": "unknown",
+      "trusted_transport": false,
+      "schedule": {
+        "min_interval_minutes": 1440,
+        "retry_minutes": [
+          240,
+          480,
+          720
+        ]
+      },
+      "notes": "Somente granularidades legal e tecnicamente acessíveis; não inferir embarcador/transportador individual quando a fonte não expõe."
+    },
+    {
+      "source_id": "epe_sienergia_biomass",
+      "name": "EPE/SIEnergia - potencial de biomassa",
+      "domain": "energy",
+      "type": "file",
+      "endpoint": null,
+      "method": "OFFICIAL_DOWNLOAD",
+      "frequency": "annual_irregular",
+      "freshness_expected": "publication dependent",
+      "last_collection_at": null,
+      "status": "planned",
+      "fallback": [],
+      "license": "TO_VALIDATE",
+      "reliability": "primary_high",
+      "security_class": "PUBLIC",
+      "auth": "none",
+      "trusted_transport": false,
+      "schedule": {
+        "min_interval_minutes": 1440,
+        "retry_minutes": [
+          240,
+          480,
+          720
+        ]
+      }
+    },
+    {
+      "source_id": "ibge_pevs_biomass",
+      "name": "IBGE PEVS - produção florestal",
+      "domain": "energy",
+      "type": "api",
+      "endpoint": null,
+      "method": "REST_API",
+      "frequency": "annual",
+      "freshness_expected": "same official release cycle",
+      "last_collection_at": null,
+      "status": "planned",
+      "fallback": [],
+      "license": "IBGE_open_data",
+      "reliability": "primary_high",
+      "security_class": "PUBLIC",
+      "auth": "none",
+      "trusted_transport": false,
+      "schedule": {
+        "min_interval_minutes": 1440,
+        "retry_minutes": [
+          240,
+          480,
+          720
+        ]
+      }
+    },
+    {
+      "source_id": "snif_forest_biomass",
+      "name": "SNIF - florestas plantadas e produção florestal",
+      "domain": "energy",
+      "type": "file",
+      "endpoint": null,
+      "method": "OFFICIAL_DOWNLOAD",
+      "frequency": "annual_irregular",
+      "freshness_expected": "publication dependent",
+      "last_collection_at": null,
+      "status": "planned",
+      "fallback": [
+        "ibge_pevs_biomass"
+      ],
+      "license": "TO_VALIDATE",
+      "reliability": "primary_high",
+      "security_class": "PUBLIC",
+      "auth": "none",
+      "trusted_transport": false,
+      "schedule": {
+        "min_interval_minutes": 1440,
+        "retry_minutes": [
+          240,
+          480,
+          720
+        ]
+      }
+    },
+    {
+      "source_id": "sema_mt_sisflora",
+      "name": "SEMA-MT/SISFLORA - movimentação de produtos florestais",
+      "domain": "energy",
+      "type": "file",
+      "endpoint": null,
+      "method": "AUTHORIZED_OR_OFFICIAL_DOWNLOAD",
+      "frequency": "monthly_irregular",
+      "freshness_expected": "publication/access dependent",
+      "last_collection_at": null,
+      "status": "planned",
+      "fallback": [],
+      "license": "TO_VALIDATE",
+      "reliability": "primary_high",
+      "security_class": "INTERNAL",
+      "auth": "unknown",
+      "trusted_transport": false,
+      "schedule": {
+        "min_interval_minutes": 1440,
+        "retry_minutes": [
+          240,
+          480,
+          720
+        ]
+      }
+    },
+    {
+      "source_id": "ons_biomass_generation",
+      "name": "ONS - geração observada de usinas a biomassa",
+      "domain": "energy",
+      "type": "file",
+      "endpoint": null,
+      "method": "OFFICIAL_DOWNLOAD",
+      "frequency": "hourly_daily",
+      "freshness_expected": "dataset dependent",
+      "last_collection_at": null,
+      "status": "planned",
+      "fallback": [
+        "ons_open_data"
+      ],
+      "license": "TO_VALIDATE",
+      "reliability": "primary_high",
+      "security_class": "PUBLIC",
+      "auth": "none",
+      "trusted_transport": false,
+      "schedule": {
+        "min_interval_minutes": 240,
+        "retry_minutes": [
+          120,
+          240,
+          480
+        ]
+      }
+    },
+    {
+      "source_id": "epe_ben_biomass",
+      "name": "EPE BEN - consumo energético de biomassas",
+      "domain": "energy",
+      "type": "file",
+      "endpoint": null,
+      "method": "OFFICIAL_DOWNLOAD",
+      "frequency": "annual",
+      "freshness_expected": "same official release cycle",
+      "last_collection_at": null,
+      "status": "planned",
+      "fallback": [
+        "epe_sienergia_biomass"
+      ],
+      "license": "TO_VALIDATE",
+      "reliability": "primary_high",
+      "security_class": "PUBLIC",
+      "auth": "none",
+      "trusted_transport": false,
+      "schedule": {
+        "min_interval_minutes": 1440,
+        "retry_minutes": [
+          240,
+          480,
+          720
+        ]
+      }
+    },
+    {
+      "source_id": "anp_biometano",
+      "name": "ANP - produtores/capacidade/produção de biometano",
+      "domain": "energy",
+      "type": "file",
+      "endpoint": null,
+      "method": "OFFICIAL_DOWNLOAD",
+      "frequency": "monthly_irregular",
+      "freshness_expected": "publication dependent",
+      "last_collection_at": null,
+      "status": "planned",
+      "fallback": [
+        "anp_bioenergy"
+      ],
+      "license": "ANP_open_data",
+      "reliability": "primary_high",
+      "security_class": "PUBLIC",
+      "auth": "none",
+      "trusted_transport": false,
+      "schedule": {
+        "min_interval_minutes": 1440,
+        "retry_minutes": [
+          240,
+          480,
+          720
+        ]
+      }
+    },
+    {
+      "source_id": "ibama_dof_native",
+      "name": "IBAMA DOF - fluxos de produtos florestais nativos fora de sistemas estaduais próprios",
+      "domain": "energy",
+      "type": "file",
+      "endpoint": null,
+      "method": "OFFICIAL_DOWNLOAD",
+      "frequency": "monthly_irregular",
+      "freshness_expected": "publication dependent",
+      "last_collection_at": null,
+      "status": "planned",
+      "fallback": [],
+      "license": "TO_VALIDATE",
+      "reliability": "primary_high",
+      "security_class": "PUBLIC",
+      "auth": "none",
+      "trusted_transport": false,
+      "schedule": {
+        "min_interval_minutes": 1440,
+        "retry_minutes": [
+          240,
+          480,
+          720
+        ]
+      },
+      "notes": "Não usar como cobertura interna de Mato Grosso quando o fluxo estiver sob sistema estadual próprio."
+    },
+    {
+      "source_id": "whatsapp_freight_authorized",
+      "name": "Freight Listener - canais WhatsApp autorizados",
+      "domain": "logistics",
+      "type": "event",
+      "endpoint": null,
+      "method": "AUTHORIZED_WEBHOOK",
+      "frequency": "event_driven",
+      "freshness_expected": "near_real_time when pilot is active",
+      "last_collection_at": null,
+      "status": "gated",
+      "fallback": [],
+      "license": "authorized_internal_use",
+      "reliability": "sample_observation",
+      "security_class": "CONFIDENTIAL",
+      "auth": "secret",
+      "trusted_transport": false,
+      "schedule": {
+        "min_interval_minutes": 60,
+        "retry_minutes": [
+          60,
+          120,
+          240
+        ],
+        "event_driven": true
+      },
+      "notes": "Oferta observada não implica frete contratado ou executado; PII minimizada/pseudonimizada."
     }
   ]
 }
