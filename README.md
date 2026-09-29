@@ -147,6 +147,7 @@ O Geopolitical Watch é projeto independente e pode fornecer eventos/sinais por 
 - `docs/SOY_MT_DATAMART.md` — primeiro Data Mart vertical.
 - `docs/MARITIME_INTELLIGENCE_V1.md` — inteligência marítima.
 - `docs/FREIGHT_LISTENER.md` — inteligência de ofertas observadas.
+- `docs/AGROLOG360_OPERATIONAL_EXPANSION.md` — marts, indicadores, cockpit e expansão operacional 51–100.
 - `docs/BACKLOG.md` — backlog executável.
 
 Contratos novos centrais:
@@ -157,7 +158,10 @@ Contratos novos centrais:
 - `contracts/ai_roles.v1.json`;
 - `contracts/global_supply_demand.v1.schema.json`;
 - `contracts/forecast_vintage.v1.schema.json`;
-- `contracts/news_signal.v0_5.schema.json`.
+- `contracts/news_signal.v0_5.schema.json`;
+- `contracts/agrolog_observation.v1.schema.json`;
+- `contracts/source_quality_freshness.v1.json`;
+- `contracts/agrolog360_marts.v1.json`.
 
 ## Fontes de verdade
 
