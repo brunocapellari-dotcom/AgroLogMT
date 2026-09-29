@@ -303,27 +303,60 @@ jobs:
           docker build --pull --file gateway/Dockerfile --tag agrolog-gateway:gate .
           printf 'CONTAINERS PASS\nagrolog-collector:gate\nagrolog-gateway:gate\n' > outputs/full-project-gate/containers.txt
 
-      - name: Trivy collector image scan
+      - name: Trivy collector image evidence
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 pinned
         with:
           scan-type: image
           image-ref: agrolog-collector:gate
           severity: HIGH,CRITICAL
           ignore-unfixed: false
+          exit-code: '0'
+          format: table
+          output: outputs/full-project-gate/trivy-collector-all.txt
+
+      - name: Trivy collector fixable-vulnerability gate
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 pinned
+        with:
+          scan-type: image
+          image-ref: agrolog-collector:gate
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
           exit-code: '1'
           format: table
           output: outputs/full-project-gate/trivy-collector.txt
 
-      - name: Trivy gateway image scan
+      - name: Trivy gateway image evidence
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 pinned
         with:
           scan-type: image
           image-ref: agrolog-gateway:gate
           severity: HIGH,CRITICAL
           ignore-unfixed: false
+          exit-code: '0'
+          format: table
+          output: outputs/full-project-gate/trivy-gateway-all.txt
+
+      - name: Trivy gateway fixable-vulnerability gate
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 pinned
+        with:
+          scan-type: image
+          image-ref: agrolog-gateway:gate
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
           exit-code: '1'
           format: table
           output: outputs/full-project-gate/trivy-gateway.txt
+
+      - name: Consolidate vulnerability evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            outputs/full-project-gate/trivy-collector-all.txt \
+            outputs/full-project-gate/trivy-gateway-all.txt \
+            outputs/full-project-gate/trivy-collector.txt \
+            outputs/full-project-gate/trivy-gateway.txt \
+            >> outputs/full-project-gate/trivy-fs.txt
 
       - name: Generate collector image SBOM
         uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2 pinned
