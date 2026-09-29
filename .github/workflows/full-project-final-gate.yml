@@ -171,14 +171,18 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload deterministic gate evidence
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 pinned
         with:
           name: full-project-ci-${{ github.run_id }}-${{ github.run_attempt }}
-          path: outputs/full-project-gate
+          path: |
+            outputs/full-project-gate/bandit.json
+            outputs/full-project-gate/ci-report.json
+            outputs/full-project-gate/zizmor.txt
+            outputs/full-project-gate/gitleaks.txt
           if-no-files-found: ignore
-          retention-days: 14
+          retention-days: 3
 
   final-live-release:
     environment: agrolog-production
@@ -514,7 +518,11 @@ jobs:
         with:
           name: full-project-final-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            outputs/full-project-gate
-            outputs/n6-core
+            outputs/full-project-gate/FINAL.json
+            outputs/full-project-gate/pre-audit.json
+            outputs/full-project-gate/final-auditor.json
+            outputs/full-project-gate/n6-result.txt
+            outputs/full-project-gate/restore-drill.json
+            outputs/full-project-gate/gcp-preflight.txt
           if-no-files-found: ignore
-          retention-days: 30
+          retention-days: 7
