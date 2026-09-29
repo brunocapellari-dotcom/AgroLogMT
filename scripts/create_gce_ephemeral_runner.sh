@@ -7,8 +7,10 @@ set -euo pipefail
 
 REPO="${REPO:-brunocapellari-dotcom/AgroLogMT}"
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
-ZONE="${ZONE:-southamerica-east1-b}"
-MACHINE_TYPE="${MACHINE_TYPE:-e2-standard-4}"
+ZONE="${ZONE:-}"
+MACHINE_TYPE="${MACHINE_TYPE:-}"
+ZONE_CANDIDATES="${ZONE_CANDIDATES:-southamerica-east1-b southamerica-east1-c southamerica-east1-a}"
+MACHINE_TYPE_CANDIDATES="${MACHINE_TYPE_CANDIDATES:-e2-standard-4 n2-standard-4 e2-standard-2}"
 BOOT_DISK_SIZE="${BOOT_DISK_SIZE:-50GB}"
 RUNNER_COUNT="${RUNNER_COUNT:-1}"
 MAX_RUN_DURATION="${MAX_RUN_DURATION:-3h}"
@@ -29,8 +31,10 @@ gcloud auth list --filter=status:ACTIVE --format='value(account)' | grep -q . ||
 
 echo "Projeto GCP: $PROJECT_ID"
 echo "Repositório: $REPO"
-echo "Zona: $ZONE"
-echo "Machine type: $MACHINE_TYPE"
+echo "Zona fixa: ${ZONE:-auto}"
+echo "Machine type fixo: ${MACHINE_TYPE:-auto}"
+echo "Zonas candidatas: $ZONE_CANDIDATES"
+echo "Machine types candidatos: $MACHINE_TYPE_CANDIDATES"
 echo "Runners efêmeros: $RUNNER_COUNT"
 
 gcloud config set project "$PROJECT_ID" >/dev/null
@@ -107,29 +111,47 @@ exit "\$runner_exit"
 EOF
 
   echo "Criando runner ${vm_name}..."
-  gcloud compute instances create "$vm_name" \
-    --project "$PROJECT_ID" \
-    --zone "$ZONE" \
-    --machine-type "$MACHINE_TYPE" \
-    --image-family "$IMAGE_FAMILY" \
-    --image-project "$IMAGE_PROJECT" \
-    --boot-disk-size "$BOOT_DISK_SIZE" \
-    --boot-disk-type pd-balanced \
-    --no-service-account \
-    --no-scopes \
-    --shielded-secure-boot \
-    --shielded-vtpm \
-    --shielded-integrity-monitoring \
-    --max-run-duration "$MAX_RUN_DURATION" \
-    --instance-termination-action DELETE \
-    --metadata block-project-ssh-keys=true \
-    --metadata-from-file startup-script="$startup" \
-    --labels agrolog-ci=true,github-runner=true \
-    --quiet
+  zones_to_try="${ZONE:-$ZONE_CANDIDATES}"
+  machine_types_to_try="${MACHINE_TYPE:-$MACHINE_TYPE_CANDIDATES}"
+  provisioned=""
+  selected_zone=""
+  selected_machine_type=""
+
+  for candidate_zone in $zones_to_try; do
+    for candidate_machine_type in $machine_types_to_try; do
+      echo "Tentativa: zone=${candidate_zone} machine=${candidate_machine_type}"
+      if gcloud compute instances create "$vm_name" \
+        --project "$PROJECT_ID" \
+        --zone "$candidate_zone" \
+        --machine-type "$candidate_machine_type" \
+        --image-family "$IMAGE_FAMILY" \
+        --image-project "$IMAGE_PROJECT" \
+        --boot-disk-size "$BOOT_DISK_SIZE" \
+        --boot-disk-type pd-balanced \
+        --no-service-account \
+        --no-scopes \
+        --shielded-secure-boot \
+        --shielded-vtpm \
+        --shielded-integrity-monitoring \
+        --max-run-duration "$MAX_RUN_DURATION" \
+        --instance-termination-action DELETE \
+        --metadata block-project-ssh-keys=true \
+        --metadata-from-file startup-script="$startup" \
+        --labels agrolog-ci=true,github-runner=true \
+        --quiet; then
+        provisioned="yes"
+        selected_zone="$candidate_zone"
+        selected_machine_type="$candidate_machine_type"
+        break 2
+      fi
+      echo "WARN: indisponível em ${candidate_zone}/${candidate_machine_type}; tentando próximo candidato" >&2
+    done
+  done
 
   rm -f "$startup"
   unset registration_token
-  echo "Runner provisionado: $vm_name"
+  [[ "$provisioned" == "yes" ]] || fail "não foi possível provisionar ${vm_name} nas zonas/máquinas candidatas"
+  echo "Runner provisionado: $vm_name zone=$selected_zone machine=$selected_machine_type"
 done
 
 cat <<EOF
@@ -138,5 +160,5 @@ OK: runners efêmeros provisionados.
 Eles aparecem em GitHub > AgroLogMT > Settings > Actions > Runners com o label '${RUNNER_LABEL}'.
 Cada runner executa somente 1 job e depois desliga.
 Após o gate, execute:
-  PROJECT_ID='${PROJECT_ID}' ZONE='${ZONE}' bash scripts/cleanup_gce_ci_runners.sh
+  PROJECT_ID='${PROJECT_ID}' bash scripts/cleanup_gce_ci_runners.sh
 EOF
