@@ -134,6 +134,63 @@ FROM {source}
     return MartSql("biomass", target_name, sql)
 
 
+
+def hydrology_latest_sql(project_id: str) -> MartSql:
+    source = _q(project_id, "hidrologia", "m04_components_latest")
+    target_name = "marts_agrolog360.hydrology_latest_v1"
+    target = _q(project_id, "marts_agrolog360", "hydrology_latest_v1")
+    sql = f"""CREATE OR REPLACE VIEW {target} AS
+SELECT
+  station_code, station_name, river, data_referencia,
+  stage_cm_median, flow_m3s_median,
+  stage_delta_3obs, stage_delta_7obs,
+  flow_delta_3obs, flow_delta_7obs,
+  sample_years, climatology_quality,
+  h_score, o_score, t_gate, p_gate, f_gate,
+  latest_measurement, latest_source_update,
+  'DERIVADO_DE_OBSERVADO' AS evidence_class
+FROM {source}
+""".strip()
+    return MartSql("hydrology_latest", target_name, sql)
+
+
+def ptax_current_sql(project_id: str) -> MartSql:
+    source = _q(project_id, "mercado", "ptax_usd_daily")
+    target_name = "marts_agrolog360.ptax_current_v1"
+    target = _q(project_id, "marts_agrolog360", "ptax_current_v1")
+    sql = f"""CREATE OR REPLACE VIEW {target} AS
+SELECT * EXCEPT(rn)
+FROM (
+  SELECT
+    data_referencia, data_publicacao, data_coleta, competencia,
+    moeda, cotacao_compra, cotacao_venda, data_hora_cotacao,
+    source_url, snapshot_sha256, evidence_class, collector_version,
+    ROW_NUMBER() OVER (
+      PARTITION BY moeda
+      ORDER BY data_referencia DESC, data_hora_cotacao DESC, data_coleta DESC
+    ) AS rn
+  FROM {source}
+)
+WHERE rn=1
+""".strip()
+    return MartSql("ptax_current", target_name, sql)
+
+
+def imea_freight_reference_sql(project_id: str) -> MartSql:
+    source = _q(project_id, "logistica", "imea_frete_referencia")
+    target_name = "marts_agrolog360.imea_freight_reference_v1"
+    target = _q(project_id, "marts_agrolog360", "imea_freight_reference_v1")
+    sql = f"""CREATE OR REPLACE VIEW {target} AS
+SELECT
+  snapshot_id, record_id, data_referencia, produto, metric_name,
+  origem, destino, valor, unidade_origem, unidade_canonica,
+  evidence_class, evidence_subtype, negotiated,
+  data_coleta, source_hash,
+  'UNCLASSIFIED' AS route_type
+FROM {source}
+""".strip()
+    return MartSql("imea_freight_reference", target_name, sql)
+
 def overview_sql(project_id: str) -> MartSql:
     storage = _q(project_id, "marts_agrolog360", "storage_balance_v1")
     climate = _q(project_id, "marts_agrolog360", "climate_rollups_v1")
@@ -176,5 +233,8 @@ def build_agrolog360_sql_bundle(project_id: str) -> tuple[MartSql, ...]:
         freight_lanes_sql(project_id),
         fertilizer_trade_sql(project_id),
         biomass_sql(project_id),
+        hydrology_latest_sql(project_id),
+        ptax_current_sql(project_id),
+        imea_freight_reference_sql(project_id),
         overview_sql(project_id),
     )
