@@ -2,8 +2,6 @@
 set -euo pipefail
 
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
-ZONE="${ZONE:-southamerica-east1-b}"
-
 [[ -n "$PROJECT_ID" && "$PROJECT_ID" != "(unset)" ]] || { echo 'ERRO: PROJECT_ID não configurado' >&2; exit 2; }
 
 gcloud config set project "$PROJECT_ID" >/dev/null
