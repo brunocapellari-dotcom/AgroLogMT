@@ -19,6 +19,9 @@ SOURCE_DEPENDENCIES = {
     "freight_lanes": ("logistica.freight_offer_observations",),
     "fertilizer_imports": ("comercio_exterior.comexstat_ncm_import",),
     "biomass": ("energia.biomass_observations",),
+    "hydrology_latest": ("hidrologia.m04_components_latest",),
+    "ptax_current": ("mercado.ptax_usd_daily",),
+    "imea_freight_reference": ("logistica.imea_frete_referencia",),
     "overview_current": (
         "marts_agrolog360.storage_balance_v1",
         "marts_agrolog360.climate_rollups_v1",
@@ -49,7 +52,7 @@ def apply_ready_marts(*, project: str, location: str, execute: bool) -> dict[str
     rows: list[dict[str, Any]] = []
     dataset_created = False
 
-    for mart_id in ("climate_rollups", "storage_balance", "freight_lanes", "fertilizer_imports", "biomass", "overview_current"):
+    for mart_id in ("climate_rollups", "storage_balance", "freight_lanes", "fertilizer_imports", "biomass", "hydrology_latest", "ptax_current", "imea_freight_reference", "overview_current"):
         mart = bundle[mart_id]
         missing = [dep for dep in SOURCE_DEPENDENCIES[mart_id] if not _exists(client, project, dep)]
         if missing:
