@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agrolog.local/contracts/biomass_observation.v1.schema.json",
+  "title": "AgroLog biomass observation",
+  "type": "object",
+  "required": [
+    "source_id",
+    "geo_id",
+    "biomass_type",
+    "metric_id",
+    "value",
+    "unit",
+    "data_referencia",
+    "data_coleta",
+    "competencia",
+    "evidence_class",
+    "observation_semantics",
+    "source_quality"
+  ],
+  "properties": {
+    "source_id": {"type": "string"},
+    "geo_id": {"type": "string"},
+    "biomass_type": {"type": "string"},
+    "metric_id": {"type": "string"},
+    "value": {"type": "number", "minimum": 0},
+    "unit": {"type": "string"},
+    "data_referencia": {"type": "string", "format": "date"},
+    "data_publicacao": {"type": ["string", "null"], "format": "date-time"},
+    "data_coleta": {"type": "string", "format": "date-time"},
+    "competencia": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$"},
+    "evidence_class": {"enum": ["OBSERVADO", "ESTIMADO", "INFERIDO"]},
+    "observation_semantics": {
+      "enum": [
+        "ESTIMATIVA_POR_COEFICIENTE",
+        "SINAL_DE_OPERACAO_GERACAO",
+        "MOVIMENTACAO_FLORESTAL_OBSERVADA",
+        "CONSUMO_INDUSTRIAL_DECLARADO",
+        "OUTRA_EVIDENCIA"
+      ]
+    },
+    "source_quality": {"type": "string"},
+    "quality_flags": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  },
+  "additionalProperties": true
+}
