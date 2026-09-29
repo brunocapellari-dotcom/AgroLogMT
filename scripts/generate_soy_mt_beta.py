@@ -18,15 +18,19 @@ from collector.conab_safra import parse_conab_safra_workbook
 from collector.conab_safra_history import discover_publications
 from collector.ibge_malhas import extract_geometry, fetch_state_geojson
 from collector.nasa_power import fetch_daily
+from collector.transport_security import validate_https_url
 
 SAO_PAULO = ZoneInfo("America/Sao_Paulo")
 CONAB_STORAGE_URL = "https://portaldeinformacoes.conab.gov.br/downloads/arquivos/ArmazensCadastrados.txt"
 
 
 def _download(url: str, *, timeout: int = 120) -> tuple[bytes, str]:
+    validate_https_url(url)
     request = Request(url, headers={"User-Agent": "AgroLogMT/0.1 (+week-one-beta)"})
-    with urlopen(request, timeout=timeout) as response:
-        return response.read(), response.geturl()
+    with urlopen(request, timeout=timeout) as response:  # nosec B310 - HTTPS validated before request and after redirect.
+        observed = response.geturl()
+        validate_https_url(observed)
+        return response.read(), observed
 
 
 def _round(value: float | None, digits: int = 1) -> float | None:
