@@ -6,7 +6,10 @@ from gateway.intelligence_queries import (
     build_biomass_sql,
     build_fertilizer_imports_sql,
     build_freight_lanes_sql,
+    build_hydrology_latest_sql,
+    build_imea_freight_reference_sql,
     build_overview_sql,
+    build_ptax_current_sql,
     build_storage_balance_sql,
 )
 
@@ -19,6 +22,9 @@ class IntelligenceQueriesTests(unittest.TestCase):
             build_freight_lanes_sql,
             build_fertilizer_imports_sql,
             build_biomass_sql,
+            build_hydrology_latest_sql,
+            build_ptax_current_sql,
+            build_imea_freight_reference_sql,
         )
         for builder in builders:
             sql = builder("agrolog-prod", "marts_agrolog360")
