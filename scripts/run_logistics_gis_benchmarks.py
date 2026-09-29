@@ -6,6 +6,7 @@ import json
 import sys
 import time
 import urllib.request
+from urllib.parse import urlsplit
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -104,13 +105,16 @@ def benchmark_pyvrp(manifest: dict[str, Any]) -> BenchmarkResult:
 
 
 def _post_json(url: str, payload: dict[str, Any], timeout: int) -> dict[str, Any]:
+    parts = urlsplit(url)
+    if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username or parts.password:
+        raise ValueError("benchmark endpoint must be an http(s) URL without embedded credentials")
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json", "User-Agent": "AgroLogMT-benchmark/1.0"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=timeout) as response:
+    with urllib.request.urlopen(req, timeout=timeout) as response:  # nosec B310 - benchmark URL scheme/host/credentials validated above.
         if response.status != 200:
             raise RuntimeError(f"HTTP {response.status}")
         return json.load(response)
