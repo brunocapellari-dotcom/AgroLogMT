@@ -37,6 +37,8 @@ const els = {
     rain7: document.querySelector('#agro-rain-7'),
     rain30: document.querySelector('#agro-rain-30'),
     rain90: document.querySelector('#agro-rain-90'),
+    ptax: document.querySelector('#agro-ptax'),
+    hydroStations: document.querySelector('#agro-hydro-stations'),
   },
   metrics: {
     live: document.querySelector('#metric-live'),
@@ -405,9 +407,16 @@ function renderOperationalBrief() {
 async function refreshAgroOverview() {
   if (!els.agroOverviewStatus) return;
   els.agroOverviewStatus.textContent = 'atualizando';
-  try {
-    const response = await getJson('/v1/intelligence/overview?uf=MT');
-    const row = response.data || {};
+  const [overviewResult, ptaxResult, hydroResult] = await Promise.allSettled([
+    getJson('/v1/intelligence/overview?uf=MT'),
+    getJson('/v1/intelligence/ptax?currency=USD'),
+    getJson('/v1/intelligence/hydrology?limit=50'),
+  ]);
+
+  let available = 0;
+  let newest = null;
+  if (overviewResult.status === 'fulfilled') {
+    const row = overviewResult.value.data || {};
     els.agro.production.textContent = fmtTonnes(row.producao_t);
     els.agro.storage.textContent = fmtTonnes(row.capacidade_estatica_t);
     els.agro.ratio.textContent = fmtPercentRatio(row.producao_capacidade_ratio);
@@ -415,11 +424,30 @@ async function refreshAgroOverview() {
     els.agro.rain7.textContent = fmtMm(row.chuva_7d_mm);
     els.agro.rain30.textContent = fmtMm(row.chuva_30d_mm);
     els.agro.rain90.textContent = fmtMm(row.chuva_90d_mm);
-    els.agroOverviewStatus.textContent = row.data_coleta ? `atualizado ${fmtDate(row.data_coleta)}` : 'sem dado';
-  } catch (error) {
-    console.warn('AgroLog 360 overview indisponível', error);
-    els.agroOverviewStatus.textContent = 'dados ainda gated';
+    newest = row.data_coleta || newest;
+    available += 1;
   }
+  if (ptaxResult.status === 'fulfilled') {
+    const row = ptaxResult.value.data || {};
+    els.agro.ptax.textContent = Number.isFinite(Number(row.cotacao_venda))
+      ? `R$ ${fmtNumber(row.cotacao_venda, 4)}`
+      : '—';
+    newest = row.data_coleta || newest;
+    available += 1;
+  }
+  if (hydroResult.status === 'fulfilled') {
+    const rows = hydroResult.value.data || [];
+    els.agro.hydroStations.textContent = fmtNumber(rows.length);
+    available += 1;
+  }
+
+  if (overviewResult.status === 'rejected') console.warn('Overview 360 indisponível', overviewResult.reason);
+  if (ptaxResult.status === 'rejected') console.warn('PTAX 360 indisponível', ptaxResult.reason);
+  if (hydroResult.status === 'rejected') console.warn('Hidrologia 360 indisponível', hydroResult.reason);
+
+  els.agroOverviewStatus.textContent = available
+    ? (newest ? `parcial · ${fmtDate(newest)}` : `${available}/3 fontes`)
+    : 'dados ainda gated';
 }
 
 async function refreshAll({fit = false} = {}) {
