@@ -16,6 +16,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from google.cloud import bigquery
 
+from .intelligence_queries import (
+    build_biomass_sql,
+    build_fertilizer_imports_sql,
+    build_freight_lanes_sql,
+    build_overview_sql,
+    build_storage_balance_sql,
+)
 from .maritime_queries import (
     build_lineup_reconciliation_sql,
     build_live_vessels_sql,
@@ -39,6 +46,9 @@ PROJECT_ID = safe_identifier(
 DATASET_ID = safe_identifier(os.environ.get("AGROLOG_LOGISTICA_DATASET", "logistica"), label="dataset")
 MARITIME_DATASET_ID = safe_identifier(
     os.environ.get("AGROLOG_MARITIME_DATASET", "agrolog_models"), label="maritime_dataset"
+)
+INTELLIGENCE_DATASET_ID = safe_identifier(
+    os.environ.get("AGROLOG_INTELLIGENCE_DATASET", "marts_agrolog360"), label="intelligence_dataset"
 )
 BQ_LOCATION = os.environ.get("AGROLOG_BQ_LOCATION", "southamerica-east1")
 BQ_MAX_BYTES_BILLED = int(os.environ.get("AGROLOG_BQ_MAX_BYTES_BILLED", "1000000000"))
@@ -349,6 +359,116 @@ def maritime_summary(
         "evidence_class": "DERIVED_FROM_OBSERVED_AND_RECONCILED",
         "filters": {"port_id": port_id, "hours": hours, "future_hours": future_hours},
         "data": _jsonable(rows[0] if rows else {}),
+    }
+
+
+@app.get("/v1/intelligence/overview")
+def intelligence_overview(uf: str | None = "MT") -> dict[str, Any]:
+    try:
+        uf = normalize_uf(uf)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    sql = build_overview_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID)
+    rows = _query(sql, [bigquery.ScalarQueryParameter("uf", "STRING", uf)])
+    return {
+        "source_id": "marts_agrolog360.overview_current_v1",
+        "evidence_class": "DERIVED",
+        "filters": {"uf": uf},
+        "data": _jsonable(rows[0] if rows else {}),
+    }
+
+
+@app.get("/v1/intelligence/storage-balance")
+def intelligence_storage_balance(
+    uf: str | None = "MT",
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict[str, Any]:
+    try:
+        uf = normalize_uf(uf)
+        limit = normalize_limit(limit, maximum=100)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    sql = build_storage_balance_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID)
+    params = [
+        bigquery.ScalarQueryParameter("uf", "STRING", uf),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.storage_balance_v1",
+        "evidence_class": "DERIVED_FROM_OBSERVED",
+        "filters": {"uf": uf, "limit": limit},
+        "data": [_jsonable(row) for row in _query(sql, params)],
+    }
+
+
+@app.get("/v1/intelligence/freight-lanes")
+def intelligence_freight_lanes(
+    origin: str | None = None,
+    destination: str | None = None,
+    product: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    try:
+        limit = normalize_limit(limit, maximum=500)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    params = [
+        bigquery.ScalarQueryParameter("origin", "STRING", origin),
+        bigquery.ScalarQueryParameter("destination", "STRING", destination),
+        bigquery.ScalarQueryParameter("product", "STRING", product),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    rows = [_jsonable(row) for row in _query(build_freight_lanes_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)]
+    return {
+        "source_id": "marts_agrolog360.freight_lanes_v1",
+        "evidence_class": "DERIVED_FROM_OBSERVED_OFFERS_NOT_EXECUTED_FREIGHT",
+        "filters": {"origin": origin, "destination": destination, "product": product, "limit": limit},
+        "data": rows,
+    }
+
+
+@app.get("/v1/intelligence/fertilizers")
+def intelligence_fertilizers(
+    uf: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    try:
+        uf = normalize_uf(uf)
+        limit = normalize_limit(limit, maximum=500)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    params = [
+        bigquery.ScalarQueryParameter("uf", "STRING", uf),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.fertilizer_imports_v1",
+        "evidence_class": "OBSERVED_CUSTOMS_AGGREGATE",
+        "filters": {"uf": uf, "limit": limit},
+        "data": [_jsonable(row) for row in _query(build_fertilizer_imports_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
+    }
+
+
+@app.get("/v1/intelligence/biomass")
+def intelligence_biomass(
+    geo_id: str | None = "MT",
+    biomass_type: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    try:
+        limit = normalize_limit(limit, maximum=500)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    params = [
+        bigquery.ScalarQueryParameter("geo_id", "STRING", geo_id),
+        bigquery.ScalarQueryParameter("biomass_type", "STRING", biomass_type),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.biomass_v1",
+        "evidence_class": "MIXED_EXPLICIT",
+        "filters": {"geo_id": geo_id, "biomass_type": biomass_type, "limit": limit},
+        "data": [_jsonable(row) for row in _query(build_biomass_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
     }
 
 
