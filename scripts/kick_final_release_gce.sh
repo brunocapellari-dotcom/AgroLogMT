@@ -25,7 +25,7 @@ echo "Release candidate: branch=$BRANCH sha=$HEAD_SHA"
 
 # Evita que um run PR antigo consuma runners destinados ao final release.
 mapfile -t active_runs < <(
-  gh run list     --repo "$REPO"     --workflow "$WORKFLOW"     --limit 30     --json databaseId,status,event,headSha     --jq '.[] | select((.status=="queued" or .status=="in_progress") and (.event!="workflow_dispatch" or .headSha!="'"$HEAD_SHA"'")) | .databaseId'
+  gh run list     --repo "$REPO"     --workflow "$WORKFLOW"     --branch "$BRANCH"     --limit 30     --json databaseId,status,event,headSha     --jq '.[] | select((.status=="queued" or .status=="in_progress") and (.event!="workflow_dispatch" or .headSha!="'"$HEAD_SHA"'")) | .databaseId'
 )
 for run_id in "${active_runs[@]}"; do
   [[ -n "$run_id" ]] || continue
@@ -34,7 +34,7 @@ for run_id in "${active_runs[@]}"; do
 done
 
 current_dispatch="$(
-  gh run list     --repo "$REPO"     --workflow "$WORKFLOW"     --limit 30     --json databaseId,status,event,headSha,url     --jq '.[] | select((.status=="queued" or .status=="in_progress") and .event=="workflow_dispatch" and .headSha=="'"$HEAD_SHA"'") | [.databaseId,.url] | @tsv'     | head -n1
+  gh run list     --repo "$REPO"     --workflow "$WORKFLOW"     --branch "$BRANCH"     --limit 30     --json databaseId,status,event,headSha,url     --jq '.[] | select((.status=="queued" or .status=="in_progress") and .event=="workflow_dispatch" and .headSha=="'"$HEAD_SHA"'") | [.databaseId,.url] | @tsv'     | head -n1
 )"
 
 if [[ -z "$current_dispatch" ]]; then
@@ -48,7 +48,7 @@ fi
 RUNNER_COUNT="$RUNNER_COUNT" MAX_RUN_DURATION="$MAX_RUN_DURATION"   bash scripts/create_gce_ephemeral_runner.sh
 
 latest="$(
-  gh run list     --repo "$REPO"     --workflow "$WORKFLOW"     --limit 10     --json databaseId,status,event,headSha,url     --jq '.[] | select(.event=="workflow_dispatch" and .headSha=="'"$HEAD_SHA"'") | [.databaseId,.status,.url] | @tsv'     | head -n1
+  gh run list     --repo "$REPO"     --workflow "$WORKFLOW"     --branch "$BRANCH"     --limit 10     --json databaseId,status,event,headSha,url     --jq '.[] | select(.event=="workflow_dispatch" and .headSha=="'"$HEAD_SHA"'") | [.databaseId,.status,.url] | @tsv'     | head -n1
 )"
 
 printf '\nFINAL RELEASE DISPATCHED\nsha=%s\nrun=%s\n' "$HEAD_SHA" "${latest:-pending-discovery}"
