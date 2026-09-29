@@ -7,16 +7,19 @@ from datetime import datetime, timezone
 from urllib.request import Request, urlopen
 
 from collector.conab_armazens import parse_conab_armazens
+from collector.transport_security import validate_https_url
 
 URL = "https://portaldeinformacoes.conab.gov.br/downloads/arquivos/ArmazensCadastrados.txt"
 MIN_FIELD_COVERAGE = 0.95
 
 
 def main() -> int:
+    validate_https_url(URL, allowed_hosts={"portaldeinformacoes.conab.gov.br"})
     req = Request(URL, headers={"User-Agent": "AgroLogMT/0.1 (+storage-layout-probe)"})
-    with urlopen(req, timeout=120) as resp:
+    with urlopen(req, timeout=120) as resp:  # nosec B310 - HTTPS and official CONAB host validated before/after redirect.
         payload = resp.read()
         observed = resp.geturl()
+        validate_https_url(observed, allowed_hosts={"portaldeinformacoes.conab.gov.br"})
     sha = hashlib.sha256(payload).hexdigest()
     parsed = parse_conab_armazens(
         payload,
