@@ -4,72 +4,248 @@
   "title": "AgroLog Data Source Registry v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "sources"],
+  "required": [
+    "version",
+    "sources"
+  ],
   "properties": {
-    "version": {"const": "1.0.0"},
-    "sources": {"type": "array", "items": {"$ref": "#/$defs/source"}}
+    "version": {
+      "const": "1.0.0"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source"
+      }
+    }
   },
   "$defs": {
     "schedule": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["min_interval_minutes", "retry_minutes"],
+      "required": [
+        "min_interval_minutes",
+        "retry_minutes"
+      ],
       "properties": {
-        "min_interval_minutes": {"type": ["integer", "null"], "minimum": 1},
+        "min_interval_minutes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
         "retry_minutes": {
           "type": "array",
-          "items": {"type": "integer", "minimum": 1},
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
           "minItems": 1
         },
-        "event_driven": {"type": "boolean", "default": false},
-        "max_consecutive_failures": {"type": "integer", "minimum": 1, "default": 6}
+        "event_driven": {
+          "type": "boolean",
+          "default": false
+        },
+        "max_consecutive_failures": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 6
+        }
       }
     },
     "source": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "source_id", "name", "domain", "type", "endpoint", "method",
-        "frequency", "freshness_expected", "last_collection_at", "status",
-        "fallback", "license", "reliability"
+        "source_id",
+        "name",
+        "domain",
+        "type",
+        "endpoint",
+        "method",
+        "frequency",
+        "freshness_expected",
+        "last_collection_at",
+        "status",
+        "fallback",
+        "license",
+        "reliability"
       ],
       "properties": {
-        "source_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_\\-]{2,127}$"},
-        "name": {"type": "string", "minLength": 2},
+        "source_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{2,127}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 2
+        },
         "domain": {
           "type": "string",
           "enum": [
-            "crop", "weather", "global_market", "brazil_market", "us_crop",
-            "argentina_crop", "logistics", "maritime", "hydrology", "energy",
-            "industrial", "cattle", "commercial_intelligence", "news", "forecast",
-            "knowledge", "macro", "geospatial"
+            "crop",
+            "weather",
+            "global_market",
+            "brazil_market",
+            "us_crop",
+            "argentina_crop",
+            "logistics",
+            "maritime",
+            "hydrology",
+            "energy",
+            "industrial",
+            "cattle",
+            "commercial_intelligence",
+            "news",
+            "forecast",
+            "knowledge",
+            "macro",
+            "geospatial"
           ]
         },
-        "type": {"type": "string", "enum": ["api", "stream", "file", "web", "database", "feed", "mcp"]},
-        "endpoint": {"type": ["string", "null"]},
+        "type": {
+          "type": "string",
+          "enum": [
+            "api",
+            "stream",
+            "file",
+            "web",
+            "database",
+            "feed",
+            "mcp",
+            "event"
+          ]
+        },
+        "endpoint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "method": {
           "type": "string",
           "enum": [
-            "REST_API", "WebSocket", "FTP_SFTP", "CSV", "XLSX", "JSON", "HTML",
-            "RSS", "STAC", "BigQuery", "OFFICIAL_DOWNLOAD", "MCP", "STREAM",
-            "CKAN", "SOCRATA", "DRIVE_WORKBOOK", "DOCUMENT"
+            "REST_API",
+            "WebSocket",
+            "FTP_SFTP",
+            "CSV",
+            "XLSX",
+            "JSON",
+            "HTML",
+            "RSS",
+            "STAC",
+            "BigQuery",
+            "OFFICIAL_DOWNLOAD",
+            "MCP",
+            "STREAM",
+            "CKAN",
+            "SOCRATA",
+            "DRIVE_WORKBOOK",
+            "DOCUMENT",
+            "AUTHORIZED_WEBHOOK",
+            "AUTHORIZED_OR_OFFICIAL_DOWNLOAD"
           ]
         },
-        "frequency": {"type": "string", "minLength": 2},
-        "freshness_expected": {"type": "string", "minLength": 2},
-        "last_collection_at": {"type": ["string", "null"], "format": "date-time"},
-        "status": {"type": "string", "enum": ["active", "gated", "planned", "blocked", "deprecated"]},
-        "fallback": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-        "license": {"type": "string", "minLength": 1},
-        "reliability": {"type": "string", "enum": ["primary_high", "specialized_high", "secondary", "experimental", "unknown"]},
-        "geography": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-        "commodities": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-        "execution_ref": {"type": ["string", "null"]},
-        "security_class": {"type": "string", "enum": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED"], "default": "PUBLIC"},
-        "auth": {"type": "string", "enum": ["none", "secret_manager", "adc", "oauth", "api_key", "session", "unknown"]},
-        "trusted_transport": {"type": "boolean", "default": false},
-        "schedule": {"$ref": "#/$defs/schedule"},
-        "notes": {"type": "string"}
+        "frequency": {
+          "type": "string",
+          "minLength": 2
+        },
+        "freshness_expected": {
+          "type": "string",
+          "minLength": 2
+        },
+        "last_collection_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "gated",
+            "planned",
+            "blocked",
+            "deprecated"
+          ]
+        },
+        "fallback": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reliability": {
+          "type": "string",
+          "enum": [
+            "primary_high",
+            "specialized_high",
+            "secondary",
+            "experimental",
+            "unknown",
+            "sample_observation"
+          ]
+        },
+        "geography": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "commodities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "execution_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "security_class": {
+          "type": "string",
+          "enum": [
+            "PUBLIC",
+            "INTERNAL",
+            "CONFIDENTIAL",
+            "RESTRICTED"
+          ],
+          "default": "PUBLIC"
+        },
+        "auth": {
+          "type": "string",
+          "enum": [
+            "none",
+            "secret_manager",
+            "adc",
+            "oauth",
+            "api_key",
+            "session",
+            "unknown"
+          ]
+        },
+        "trusted_transport": {
+          "type": "boolean",
+          "default": false
+        },
+        "schedule": {
+          "$ref": "#/$defs/schedule"
+        },
+        "notes": {
+          "type": "string"
+        }
       }
     }
   }
