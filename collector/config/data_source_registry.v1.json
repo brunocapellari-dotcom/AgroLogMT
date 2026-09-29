@@ -1460,6 +1460,39 @@
       }
     },
     {
+      "source_id": "sigma_meteorologia_nowcasting",
+      "name": "Sigma Meteorologia - Nowcasting Integrado",
+      "domain": "weather",
+      "type": "web",
+      "endpoint": "https://sigmameteorologia.com/nowcasting/",
+      "method": "HTML",
+      "frequency": "near_real_time",
+      "freshness_expected": "product dependent; stations/GLM/satellite intended for operational nowcasting",
+      "last_collection_at": null,
+      "status": "planned",
+      "fallback": [
+        "inmet_weather",
+        "cptec_weather",
+        "nasa_power_grid",
+        "copernicus_climate"
+      ],
+      "license": "TO_VALIDATE_PROVIDER_TERMS",
+      "reliability": "specialized_high",
+      "security_class": "PUBLIC",
+      "auth": "unknown",
+      "trusted_transport": true,
+      "schedule": {
+        "min_interval_minutes": 60,
+        "retry_minutes": [
+          60,
+          120,
+          240,
+          480
+        ]
+      },
+      "notes": "Complementary operational nowcasting/visual validation layer. Preserve canonical provenance of underlying primary sources such as INMET, ANA, CEMADEN, NOAA/GOES, ECMWF and CPTEC when identifiable. Covers integrated stations, GOES-19 multispectral products, GLM lightning overlay, precipitation/temperature/humidity/wind/pressure/radiation/river-level views, multi-screen comparison and geospatial overlays. Do not automate extraction or premium/history access until provider terms, licensing and any authorized API/export path are validated."
+    },
+    {
       "source_id": "openalex_agrolog_discovery",
       "name": "OpenAlex - knowledge discovery",
       "domain": "knowledge",
