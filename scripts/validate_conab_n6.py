@@ -92,8 +92,8 @@ def main() -> int:
     invalid_geo = int(scalar(client, f"""
         SELECT COUNT(*) FROM `{latest}`
         WHERE uf IS NULL OR LENGTH(uf) != 2 OR municipio IS NULL OR TRIM(municipio)=''
-           OR (latitude IS NOT NULL AND NOT BETWEEN(latitude,-90,90))
-           OR (longitude IS NOT NULL AND NOT BETWEEN(longitude,-180,180))
+           OR (latitude IS NOT NULL AND latitude NOT BETWEEN -90 AND 90)
+           OR (longitude IS NOT NULL AND longitude NOT BETWEEN -180 AND 180)
     """) or 0)
     add("geography_structurally_valid", invalid_geo == 0, invalid_geo, "= 0")
 
