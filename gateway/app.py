@@ -395,7 +395,7 @@ def intelligence_storage_balance(
     ]
     return {
         "source_id": "marts_agrolog360.storage_balance_v1",
-        "evidence_class": "DERIVED_FROM_OBSERVED",
+        "evidence_class": "INFERIDO",
         "filters": {"uf": uf, "limit": limit},
         "data": [_jsonable(row) for row in _query(sql, params)],
     }
