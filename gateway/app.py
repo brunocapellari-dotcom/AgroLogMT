@@ -20,7 +20,10 @@ from .intelligence_queries import (
     build_biomass_sql,
     build_fertilizer_imports_sql,
     build_freight_lanes_sql,
+    build_hydrology_latest_sql,
+    build_imea_freight_reference_sql,
     build_overview_sql,
+    build_ptax_current_sql,
     build_storage_balance_sql,
 )
 from .maritime_queries import (
@@ -469,6 +472,68 @@ def intelligence_biomass(
         "evidence_class": "MIXED_EXPLICIT",
         "filters": {"geo_id": geo_id, "biomass_type": biomass_type, "limit": limit},
         "data": [_jsonable(row) for row in _query(build_biomass_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
+    }
+
+
+@app.get("/v1/intelligence/hydrology")
+def intelligence_hydrology(
+    river: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    try:
+        limit = normalize_limit(limit, maximum=200)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    params = [
+        bigquery.ScalarQueryParameter("river", "STRING", river),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.hydrology_latest_v1",
+        "evidence_class": "DERIVADO_DE_OBSERVADO",
+        "filters": {"river": river, "limit": limit},
+        "data": [_jsonable(row) for row in _query(build_hydrology_latest_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
+    }
+
+
+@app.get("/v1/intelligence/ptax")
+def intelligence_ptax(currency: str | None = "USD") -> dict[str, Any]:
+    normalized = currency.strip().upper() if currency else None
+    if normalized is not None and (len(normalized) != 3 or not normalized.isalpha()):
+        raise HTTPException(status_code=400, detail="currency deve ser código alfabético de 3 letras")
+    params = [bigquery.ScalarQueryParameter("currency", "STRING", normalized)]
+    rows = _query(build_ptax_current_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)
+    return {
+        "source_id": "marts_agrolog360.ptax_current_v1",
+        "evidence_class": "OBSERVADO",
+        "filters": {"currency": normalized},
+        "data": _jsonable(rows[0] if rows else {}),
+    }
+
+
+@app.get("/v1/intelligence/imea-freight-reference")
+def intelligence_imea_freight_reference(
+    origin: str | None = None,
+    destination: str | None = None,
+    product: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    try:
+        limit = normalize_limit(limit, maximum=500)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    params = [
+        bigquery.ScalarQueryParameter("origin", "STRING", origin),
+        bigquery.ScalarQueryParameter("destination", "STRING", destination),
+        bigquery.ScalarQueryParameter("product", "STRING", product),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.imea_freight_reference_v1",
+        "evidence_class": "SOURCE_DECLARED",
+        "route_type": "UNCLASSIFIED",
+        "filters": {"origin": origin, "destination": destination, "product": product, "limit": limit},
+        "data": [_jsonable(row) for row in _query(build_imea_freight_reference_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
     }
 
 
