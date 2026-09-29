@@ -164,8 +164,8 @@ LIMIT 10
     if not matching:
         raise RuntimeError("Snapshot BigQuery não possui manifesto correspondente para a fonte")
     manifest = json.loads(str(matching[0]["manifest_json"]))
-    if not str(matching[0]["raw_artifact_ref"] or "").startswith("drive://"):
-        raise RuntimeError("Manifesto ComexStat não aponta para RAW no Drive")
+    if not str(matching[0]["raw_artifact_ref"] or "").startswith(("gs://", "drive://")):
+        raise RuntimeError("Manifesto ComexStat não aponta para RAW durável (GCS/Drive)")
     if int(manifest.get("records_accepted") or 0) != snapshot.records:
         raise RuntimeError("Tie-out de registros entre manifesto e BigQuery falhou")
     load = (manifest.get("extra") or {}).get("load") or {}
@@ -196,7 +196,7 @@ LIMIT 10
         },
         "latest_view_rows": int(latest_view["rows_total"]),
         "latest_view_max_competencia": str(latest_view["max_competencia"]),
-        "raw_drive_evidence": True,
+        "raw_durable_evidence": True,
         "manifest_tie_out": True,
         "idempotency_proven": idempotent,
     }
