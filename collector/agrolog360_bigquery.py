@@ -12,7 +12,7 @@ _IDENTIFIER = re.compile(r"^[A-Za-z0-9_-]+$")
 
 def _safe(value: str, label: str) -> str:
     if not _IDENTIFIER.fullmatch(value):
-        raise ValueError(f"\${label} inválido: \${value!r}")
+        raise ValueError(f"{label} inválido: {value!r}")
     return value
 
 
@@ -113,13 +113,13 @@ quality_flags ARRAY<STRING>
 def table_ddl(project_id: str, kind: str, *, location: str = "southamerica-east1") -> tuple[str, str]:
     project = _safe(project_id, "project_id")
     if kind not in TABLES:
-        raise ValueError(f"kind inválido: \${kind}")
+        raise ValueError(f"kind inválido: {kind}")
     spec = TABLES[kind]
     dataset = _safe(spec["dataset"], "dataset")
     table = _safe(spec["table"], "table")
     safe_location = location.replace("'", "")
-    dataset_sql = f"CREATE SCHEMA IF NOT EXISTS \`{project}.{dataset}\` OPTIONS(location='{safe_location}')"
-    table_sql = f"""CREATE TABLE IF NOT EXISTS \`{project}.{dataset}.{table}\` (
+    dataset_sql = f"CREATE SCHEMA IF NOT EXISTS `{project}.{dataset}` OPTIONS(location='{safe_location}')"
+    table_sql = f"""CREATE TABLE IF NOT EXISTS `{project}.{dataset}.{table}` (
 {spec['ddl']}
 )
 PARTITION BY data_referencia
@@ -171,7 +171,7 @@ class AgroLog360BigQueryLoader:
 
     def load(self, kind: str, rows: list[dict[str, Any]]) -> CanonicalLoadResult:
         if kind not in TABLES:
-            raise ValueError(f"kind inválido: \${kind}")
+            raise ValueError(f"kind inválido: {kind}")
         prepared = self._prepare(kind, rows)
         started = datetime.now(timezone.utc)
         dataset_sql, table_sql = table_ddl(self.project_id, kind, location=self.location)
@@ -187,8 +187,8 @@ class AgroLog360BigQueryLoader:
             config = self._bigquery.LoadJobConfig(write_disposition="WRITE_TRUNCATE", autodetect=True)
             self.client.load_table_from_json(prepared, stage, job_config=config).result()
             merge = f"""
-MERGE \`{target}\` T
-USING \`{stage}\` S
+MERGE `{target}` T
+USING `{stage}` S
 ON T.record_id=S.record_id
 WHEN NOT MATCHED THEN INSERT ROW
 """.strip()
