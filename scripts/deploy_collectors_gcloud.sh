@@ -11,6 +11,7 @@ AGRO_DATASET="${AGRO_DATASET:-agro}"
 BQ_LOCATION="${BQ_LOCATION:-southamerica-east1}"
 AR_REPOSITORY="${AR_REPOSITORY:-agrolog}"
 BUILD_SOURCE_BUCKET="${BUILD_SOURCE_BUCKET:-${PROJECT_ID}-agrolog-build-source}"
+RAW_BUCKET="${RAW_BUCKET:-${PROJECT_ID}-agrolog-raw}"
 IMAGE_NAME="${IMAGE_NAME:-collector}"
 IMAGE_TAG="${IMAGE_TAG:-$(date +%Y%m%d%H%M%S)}"
 COLLECTOR_SA_NAME="${COLLECTOR_SA_NAME:-agrolog-collector}"
@@ -83,6 +84,10 @@ gcloud storage buckets describe "gs://${BUILD_SOURCE_BUCKET}" --project "$PROJEC
   echo "ERRO: staging bucket ${BUILD_SOURCE_BUCKET} ausente. Execute o bootstrap administrativo." >&2
   exit 3
 }
+gcloud storage buckets describe "gs://${RAW_BUCKET}" --project "$PROJECT_ID" >/dev/null 2>&1 || {
+  echo "ERRO: RAW bucket ${RAW_BUCKET} ausente. Execute scripts/setup_raw_gcs.sh." >&2
+  exit 3
+}
 
 # Cloud Build API exige o nome canônico do recurso da service account.
 # Mantemos BUILD_SERVICE_ACCOUNT como e-mail para IAM/gcloud describe e derivamos
@@ -94,7 +99,7 @@ gcloud builds submit . \
   --config collector/cloudbuild.yaml \
   --substitutions "_IMAGE=${IMAGE}"
 
-common_env="AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_OPS_DATASET=${OPS_DATASET},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_TRADE_DATASET=${TRADE_DATASET},AGROLOG_AGRO_DATASET=${AGRO_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION},AGROLOG_DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID},AGROLOG_CONFIG=/app/collector/config/sources.pilot.json"
+common_env="AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_OPS_DATASET=${OPS_DATASET},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_TRADE_DATASET=${TRADE_DATASET},AGROLOG_AGRO_DATASET=${AGRO_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION},AGROLOG_RAW_BACKEND=gcs,AGROLOG_RAW_BUCKET=${RAW_BUCKET},AGROLOG_DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID},AGROLOG_CONFIG=/app/collector/config/sources.pilot.json"
 
 for group in radar dados conhecimento; do
   job="agrolog-${group}"
@@ -117,10 +122,11 @@ Builder: ${BUILD_SERVICE_ACCOUNT}
 Build staging: gs://${BUILD_SOURCE_BUCKET}
 Collector: ${COLLECTOR_SERVICE_ACCOUNT}
 Datasets: ${OPS_DATASET}, ${LOGISTICA_DATASET}, ${TRADE_DATASET}, ${AGRO_DATASET}
-Pasta RAW/Drive: ${DRIVE_FOLDER_ID}
+RAW operacional: gs://${RAW_BUCKET}
+Drive de referência/arquivos autorizados: ${DRIVE_FOLDER_ID}
 
-Gate externo do Drive:
-- ${COLLECTOR_SERVICE_ACCOUNT} precisa ser Editor da pasta RAW.
+O RAW operacional usa GCS porque service accounts não possuem quota própria no My Drive.
+Drive permanece disponível apenas para entradas autorizadas e fluxos humanos.
 
 Homologação controlada CONAB:
 gcloud run jobs execute agrolog-dados --region ${REGION} --project ${PROJECT_ID} --wait --update-env-vars "AGROLOG_SOURCE_ID=conab_armazens_cadastrados"
