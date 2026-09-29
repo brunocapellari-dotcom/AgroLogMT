@@ -24,6 +24,9 @@ class AgroLog360ExecutionPlanTests(unittest.TestCase):
             "freight_lanes",
             "fertilizer_imports",
             "biomass",
+            "hydrology_latest",
+            "ptax_current",
+            "imea_freight_reference",
             "overview_current",
         }
         self.assertEqual(set(SOURCE_DEPENDENCIES), expected)
