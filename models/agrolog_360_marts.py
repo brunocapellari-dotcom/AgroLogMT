@@ -55,7 +55,8 @@ def storage_balance_sql(project_id: str) -> MartSql:
     sql = f"""CREATE OR REPLACE VIEW {target} AS
 WITH p AS (
   SELECT geo_id AS uf, safra, SUM(producao_mil_t) * 1000 AS producao_t,
-         MAX(data_publicacao) AS data_publicacao, MAX(data_coleta) AS data_coleta
+         MAX(data_publicacao) AS data_publicacao, MAX(data_coleta) AS data_coleta,
+         STRING_AGG(DISTINCT evidence_class, ',' ORDER BY evidence_class) AS source_evidence_classes
   FROM {production}
   WHERE geo_level='UF'
   GROUP BY uf, safra
@@ -70,7 +71,8 @@ SELECT
   SAFE_DIVIDE(p.producao_t, s.capacidade_estatica_t) AS producao_capacidade_ratio,
   s.capacidade_estatica_t - p.producao_t AS gap_capacidade_t,
   p.data_publicacao, p.data_coleta,
-  'DERIVADO_DE_OBSERVADO' AS evidence_class
+  p.source_evidence_classes,
+  'INFERIDO' AS evidence_class
 FROM p
 LEFT JOIN s USING (uf)
 """.strip()
@@ -160,7 +162,7 @@ SELECT
   c.chuva_7d_mm,
   c.chuva_30d_mm,
   c.chuva_90d_mm,
-  GREATEST(s.data_coleta, c.data_coleta) AS data_coleta
+  GREATEST(s.data_coleta, COALESCE(c.data_coleta, s.data_coleta)) AS data_coleta
 FROM latest_storage s
 LEFT JOIN latest_climate c ON c.geo_id=s.uf
 """.strip()
