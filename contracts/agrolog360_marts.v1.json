@@ -1,0 +1,48 @@
+{
+  "version": "1.0.0",
+  "dataset": "marts_agrolog360",
+  "principles": [
+    "BigQuery remains the analytical source of truth",
+    "create datasets and tables/views only when a source enters production",
+    "never promote programmed/informed data to observed realization",
+    "all derived metrics retain reference/publication/collection dates when the upstream data exposes them"
+  ],
+  "marts": [
+    {
+      "mart_id": "climate_rollups",
+      "target": "marts_agrolog360.climate_rollups_v1",
+      "sources": ["clima.daily_observations"],
+      "evidence": "derived_from_observed"
+    },
+    {
+      "mart_id": "storage_balance",
+      "target": "marts_agrolog360.storage_balance_v1",
+      "sources": ["agro.conab_safra_graos", "logistica.v_armazens_conab_latest"],
+      "evidence": "derived_from_observed"
+    },
+    {
+      "mart_id": "freight_lanes",
+      "target": "marts_agrolog360.freight_lanes_v1",
+      "sources": ["logistica.freight_offer_observations"],
+      "evidence": "derived_from_observed_offers_not_executed_freight"
+    },
+    {
+      "mart_id": "fertilizer_imports",
+      "target": "marts_agrolog360.fertilizer_imports_v1",
+      "sources": ["comercio_exterior.comexstat_ncm_import"],
+      "evidence": "observed_customs_aggregate"
+    },
+    {
+      "mart_id": "biomass",
+      "target": "marts_agrolog360.biomass_v1",
+      "sources": ["energia.biomass_observations"],
+      "evidence": "mixed_explicit"
+    },
+    {
+      "mart_id": "overview_current",
+      "target": "marts_agrolog360.overview_current_v1",
+      "sources": ["marts_agrolog360.storage_balance_v1", "marts_agrolog360.climate_rollups_v1"],
+      "evidence": "derived"
+    }
+  ]
+}
