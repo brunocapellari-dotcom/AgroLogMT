@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agrolog.local/contracts/agroclimate_daily.v1.schema.json",
+  "title": "AgroLog daily agroclimate observation",
+  "allOf": [{"$ref": "agrolog_observation.v1.schema.json"}],
+  "type": "object",
+  "required": ["source_id", "geo_id", "data_referencia", "data_coleta", "competencia", "evidence_class"],
+  "properties": {
+    "geo_id": {"type": "string", "minLength": 1},
+    "precipitacao_mm": {"type": ["number", "null"], "minimum": 0},
+    "tmin_c": {"type": ["number", "null"]},
+    "tmax_c": {"type": ["number", "null"]},
+    "umidade_pct": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+    "source_station_id": {"type": ["string", "null"]},
+    "latitude": {"type": ["number", "null"], "minimum": -90, "maximum": 90},
+    "longitude": {"type": ["number", "null"], "minimum": -180, "maximum": 180}
+  }
+}
