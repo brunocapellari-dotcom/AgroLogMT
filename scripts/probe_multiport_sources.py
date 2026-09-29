@@ -8,6 +8,7 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 from collector.port_lifecycle import OFFICIAL_SOURCES
+from collector.transport_security import validate_https_url
 
 PORT_TZ = ZoneInfo("America/Sao_Paulo")
 _DATE_PATTERNS = (
@@ -55,9 +56,11 @@ def classify_page_freshness(text: str, *, collected_at: datetime, freshness_days
 
 
 def probe(url: str, *, collected_at: datetime, timeout: int = 25, freshness_days: int = 4) -> dict[str, object]:
+    validate_https_url(url)
     req = Request(url, headers={"User-Agent": "AgroLogMT/0.1 (+multiport-probe)", "Accept": "text/html,application/xhtml+xml"})
     try:
-        with urlopen(req, timeout=timeout) as response:
+        with urlopen(req, timeout=timeout) as response:  # nosec B310 - HTTPS validated before request and after redirect.
+            validate_https_url(response.geturl())
             sample = response.read(262144)
             text = sample.decode(response.headers.get_content_charset() or "utf-8", errors="replace")
             status = int(response.status)
