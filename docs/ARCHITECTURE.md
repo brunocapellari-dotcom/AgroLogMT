@@ -443,3 +443,26 @@ Detalhes canônicos ficam em `docs/SECURITY.md`.
 - Componentes open source são substituíveis e exigem revisão de licença, segurança, manutenção e estratégia de saída.
 - Não adotar duas plataformas completas para a mesma função sem requisito objetivo.
 - Nenhum status de produção é inferido de documentação: exige runtime real, freshness observada, quality gate e evidência de homologação.
+
+
+## AgroLog 360 analytical layer
+
+`marts_agrolog360` é a camada derivada compartilhada por Gateway, cockpit e agentes. Ela não substitui datasets canônicos de origem.
+
+Primeiros marts:
+- clima rolling 7/15/30/60/90;
+- balanço produção/capacidade estática;
+- corredores/fretes observados;
+- importações de fertilizantes;
+- biomassa com semântica de evidência explícita;
+- overview corrente para o cockpit.
+
+O aplicador `scripts/apply_agrolog360_marts.py` verifica dependências reais antes de criar o dataset/view. Isso preserva a regra de não criar tabelas vazias antecipadamente.
+
+### Biomassa
+
+Biomassa mantém a distinção metodológica entre potencial estimado, geração observada, movimentação florestal observada e consumo industrial declarado. A camada analítica não converte um sinal indireto em consumo físico observado.
+
+### Cockpit
+
+O mesmo AgroLog Gateway serve Maritime Intelligence e o overview AgroLog 360. Falha/ausência de um mart não pode transformar dado inexistente em zero nem derrubar uma capacidade independente já disponível.
