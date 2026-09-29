@@ -8,7 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from shutil import which
