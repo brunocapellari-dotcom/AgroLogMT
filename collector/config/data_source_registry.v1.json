@@ -1775,7 +1775,7 @@
       "license": "authorized_internal_use",
       "reliability": "sample_observation",
       "security_class": "CONFIDENTIAL",
-      "auth": "secret",
+      "auth": "secret_manager",
       "trusted_transport": false,
       "schedule": {
         "min_interval_minutes": 60,
