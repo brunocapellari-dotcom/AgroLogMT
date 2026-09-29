@@ -117,10 +117,10 @@ def main() -> int:
     """).result())
     collector_evidence = [dict(row.items()) for row in collector_evidence_rows]
     has_raw = any(
-        row.get("sha256") and str(row.get("raw_artifact_ref") or "").startswith("drive://")
+        row.get("sha256") and str(row.get("raw_artifact_ref") or "").startswith(("gs://", "drive://"))
         for row in collector_evidence
     )
-    add("raw_manifest_with_hash_exists", has_raw, collector_evidence[:3], "sha256 + drive:// raw_artifact_ref")
+    add("raw_manifest_with_hash_exists", has_raw, collector_evidence[:3], "sha256 + durable RAW artifact ref (gs:// or drive://)")
 
     if latest_snapshot:
         run_statuses = [row[0] for row in client.query(f"""
