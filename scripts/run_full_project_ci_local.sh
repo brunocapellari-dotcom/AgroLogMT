@@ -31,10 +31,23 @@ PY
 python -m pip install --disable-pip-version-check -r /tmp/agrolog-requirements.txt 'PyYAML>=6,<7'
 python -m pip check
 
-echo "===== 2/6 Zizmor ====="
+echo "===== 2/9 Bandit ====="
+set +e
+python -m bandit -q -r collector gateway models scripts ckan_connector socrata_connector cftc_cot usda_agtransport -ll -ii -f json -o outputs/full-project-gate/bandit.json
+bandit_code=$?
+set -e
+python scripts/evaluate_bandit_report.py outputs/full-project-gate/bandit.json
+if [[ "$bandit_code" -ne 0 ]]; then
+  echo "Bandit reported findings; evaluator above is authoritative for Medium/High gate." >&2
+fi
+
+echo "===== 3/9 pip-audit ====="
+python -m pip_audit -r /tmp/agrolog-requirements.txt
+
+echo "===== 4/9 Zizmor ====="
 zizmor --offline --persona=auditor --min-severity=high . | tee outputs/full-project-gate/zizmor.txt
 
-echo "===== 3/6 actionlint ====="
+echo "===== 5/9 actionlint ====="
 ACTIONLINT_URL='https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz'
 ACTIONLINT_SHA='8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
 curl --proto '=https' --tlsv1.2 -fsSLo /tmp/actionlint.tar.gz "$ACTIONLINT_URL"
@@ -42,7 +55,7 @@ echo "${ACTIONLINT_SHA}  /tmp/actionlint.tar.gz" | sha256sum -c -
 tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
 /tmp/actionlint
 
-echo "===== 4/6 Gitleaks ====="
+echo "===== 6/9 Gitleaks ====="
 GITLEAKS_URL='https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz'
 GITLEAKS_SHA='551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'
 curl --proto '=https' --tlsv1.2 -fsSLo /tmp/gitleaks.tar.gz "$GITLEAKS_URL"
@@ -65,10 +78,16 @@ PY
 fi
 printf 'GITLEAKS TREE PASS\nversion=8.30.1\n' > outputs/full-project-gate/gitleaks.txt
 
-echo "===== 5/6 Validador integral ====="
+echo "===== 7/9 Validador integral ====="
 AGROLOG_EVIDENCE_GITLEAKS=outputs/full-project-gate/gitleaks.txt \
   python scripts/validate_full_project.py --mode ci --report outputs/full-project-gate/ci-report.json
 
-echo "===== 6/6 Resultado ====="
+echo "===== 8/9 npm audit ====="
+(
+  cd maritime_ui
+  npm audit --omit=dev --audit-level=high
+)
+
+echo "===== 9/9 Resultado ====="
 echo "AGROLOG MT LOCAL WHOLE-PROJECT CI: PASS"
 echo "report=outputs/full-project-gate/ci-report.json"
