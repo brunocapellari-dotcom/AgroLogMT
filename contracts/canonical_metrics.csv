@@ -39,3 +39,16 @@ remote_sensing.ndvi,remote_sensing,NDVI adimensional,index,observado,fonte_STAC|
 remote_sensing.evi,remote_sensing,EVI adimensional,index,observado,fonte_STAC|NASA_Earthdata,Preservar sensor produto versão aquisição processamento e máscara de nuvem
 remote_sensing.lai,remote_sensing,Índice de área foliar,m2/m2,observado,fonte_STAC|NASA_Earthdata,Registrar algoritmo/produto e quality flags
 remote_sensing.lst,remote_sensing,Temperatura da superfície,°C,observado,fonte_STAC|NASA_Earthdata,Não confundir temperatura de superfície com temperatura do ar
+armazenagem.producao_capacidade_ratio,logistica,Relação produção/capacidade estática,ratio,inferido,AgroLog,Derivada de CONAB Safra e CONAB Armazéns; não inclui giro operacional
+armazenagem.gap_capacidade,logistica,Capacidade estática menos produção,t,inferido,AgroLog,Negativo indica déficit estático teórico; não equivale a falta física instantânea
+logistica.frete_rodoviario_oferta_tkm,logistica,Oferta observada de frete normalizada por tonelada-quilômetro,BRL/t.km,inferido,FreightListener,Derivado de oferta anunciada e distância homologada; não significa frete pago
+clima.chuva_7d,climate,Precipitação acumulada trailing 7 dias,mm,inferido,AgroLog,Não converter dias ausentes em zero
+clima.chuva_30d,climate,Precipitação acumulada trailing 30 dias,mm,inferido,AgroLog,Não converter dias ausentes em zero
+clima.chuva_90d,climate,Precipitação acumulada trailing 90 dias,mm,inferido,AgroLog,Não converter dias ausentes em zero
+mercado.paridade_exportacao,markets,Paridade de exportação no interior,BRL/t,inferido,AgroLog,FOB x câmbio menos frete custos portuários taxas; metodologia versionada
+mercado.relacao_troca_fertilizante_grao,markets,Relação de troca fertilizante por grão,t_grain/t_fertilizer,inferido,AgroLog,Preços precisam compartilhar praça/janela compatível
+portos.pressao_operacional,portos,Índice descritivo de pressão portuária,index,inferido,AgroLog,Combina fila física e dias de throughput programado; não é forecast
+energia.biomassa_potencial,energia,Potencial técnico/econômico de biomassa,source_unit,estimado,EPE_SIEnergia,Preservar metodologia e cenário da fonte
+energia.biomassa_movimentacao_florestal,energia,Movimentação observada de produto florestal,source_unit,observado,SEMA_MT_SISFLORA|IBAMA_DOF,Movimentação não é consumo industrial
+energia.biomassa_geracao_eletrica,energia,Geração elétrica observada por biomassa,MWh,observado,ONS,Sinal de operação; não implica consumo físico conhecido
+energia.biomassa_consumo_industrial,energia,Consumo industrial declarado de biomassa,source_unit,observado,fonte_declarada|licenciamento|relatorio_empresa,Não inferir a partir de geração sem declaração autorizada
