@@ -343,18 +343,18 @@
       "name": "ANP - diesel/importações/biodiesel",
       "domain": "energy",
       "type": "file",
-      "endpoint": null,
+      "endpoint": "https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis",
       "method": "OFFICIAL_DOWNLOAD",
       "frequency": "weekly_monthly",
       "freshness_expected": "same official release cycle",
       "last_collection_at": null,
-      "status": "planned",
+      "status": "gated",
       "fallback": [],
       "license": "ANP_open_data",
       "reliability": "primary_high",
       "security_class": "PUBLIC",
       "auth": "none",
-      "trusted_transport": false,
+      "trusted_transport": true,
       "schedule": {
         "min_interval_minutes": 720,
         "retry_minutes": [
@@ -363,25 +363,26 @@
           480,
           720
         ]
-      }
+      },
+      "execution_ref": "collector/config/sources.public.v1.json#anp_diesel_latest_month"
     },
     {
       "source_id": "aneel_siga",
       "name": "ANEEL SIGA",
       "domain": "industrial",
       "type": "file",
-      "endpoint": null,
+      "endpoint": "https://dadosabertos.aneel.gov.br/dataset/siga-sistema-de-informacoes-de-geracao-da-aneel",
       "method": "OFFICIAL_DOWNLOAD",
       "frequency": "daily_monthly",
       "freshness_expected": "publication dependent",
       "last_collection_at": null,
-      "status": "planned",
+      "status": "gated",
       "fallback": [],
-      "license": "ANEEL_open_data",
+      "license": "ODbL",
       "reliability": "primary_high",
       "security_class": "PUBLIC",
       "auth": "none",
-      "trusted_transport": false,
+      "trusted_transport": true,
       "schedule": {
         "min_interval_minutes": 1440,
         "retry_minutes": [
@@ -389,7 +390,8 @@
           480,
           720
         ]
-      }
+      },
+      "execution_ref": "collector/config/sources.public.v1.json#aneel_siga_daily"
     },
     {
       "source_id": "ons_open_data",
@@ -1524,20 +1526,20 @@
       "name": "ANTT - RNTRC",
       "domain": "logistics",
       "type": "file",
-      "endpoint": null,
+      "endpoint": "https://dados.antt.gov.br/dataset/rntrc",
       "method": "OFFICIAL_DOWNLOAD",
       "frequency": "daily_monthly",
       "freshness_expected": "dataset dependent",
       "last_collection_at": null,
-      "status": "planned",
+      "status": "gated",
       "fallback": [
         "antt_open_data"
       ],
-      "license": "ANTT_open_data",
+      "license": "CC-BY",
       "reliability": "primary_high",
       "security_class": "PUBLIC",
       "auth": "none",
-      "trusted_transport": false,
+      "trusted_transport": true,
       "schedule": {
         "min_interval_minutes": 1440,
         "retry_minutes": [
@@ -1547,7 +1549,8 @@
           720
         ]
       },
-      "notes": "Cadastro/estatísticas RNTRC. Dataset/endpoint exato deve ser homologado antes de status active."
+      "notes": "Cadastro/estatísticas RNTRC. Dataset/endpoint exato deve ser homologado antes de status active.",
+      "execution_ref": "collector/config/sources.public.v1.json#antt_rntrc_transportadores_latest"
     },
     {
       "source_id": "antt_mdfe_public",
