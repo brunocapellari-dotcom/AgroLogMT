@@ -12,6 +12,7 @@ concurrency:
 
 jobs:
   deploy-and-smoke:
+    environment: agrolog-production
     permissions:
       contents: read
       id-token: write
@@ -30,6 +31,8 @@ jobs:
       RECON_JOB_NAME: agrolog-shipping-reconcile
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 pinned
+        with:
+          persist-credentials: false
 
       - name: Fail closed if WIF bootstrap is incomplete
         shell: bash

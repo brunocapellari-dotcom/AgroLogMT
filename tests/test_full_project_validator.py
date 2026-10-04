@@ -34,6 +34,21 @@ class FullProjectValidatorTests(unittest.TestCase):
         self.assertEqual(counts, {"tests": 2, "failures": 0, "errors": 0, "skipped": 1})
         self.assertEqual(problems, ["skipped:tests.test_demo::test_skip: not allowed"])
 
+
+    def test_junit_summary_rejects_xml_entity_expansion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            report = Path(tmp) / "junit-malicious.xml"
+            report.write_text(
+                "<?xml version='1.0'?>"
+                "<!DOCTYPE testsuite [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]>"
+                "<testsuite name='pytest' tests='1' failures='0' errors='0' skipped='0'>"
+                "<testcase classname='tests.test_demo' name='test_xxe'>&xxe;</testcase>"
+                "</testsuite>",
+                encoding="utf-8",
+            )
+            with self.assertRaises(Exception):
+                _junit_summary(report)
+
     def test_pytest_runner_discovers_function_style_tests(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

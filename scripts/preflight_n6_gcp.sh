@@ -17,6 +17,7 @@ BUILD_SA_NAME="${BUILD_SA_NAME:-agrolog-builder}"
 DEPLOYER_SA_NAME="${DEPLOYER_SA_NAME:-agrolog-github-deployer}"
 AR_REPOSITORY="${AR_REPOSITORY:-agrolog}"
 BUILD_SOURCE_BUCKET="${BUILD_SOURCE_BUCKET:-${PROJECT_ID}-agrolog-build-source}"
+RAW_BUCKET="${RAW_BUCKET:-${PROJECT_ID}-agrolog-raw}"
 POOL_ID="${POOL_ID:-github}"
 PROVIDER_ID="${PROVIDER_ID:-agrologmt}"
 GATEWAY_SERVICE_NAME="${GATEWAY_SERVICE_NAME:-agrolog-gateway}"
@@ -151,6 +152,12 @@ if gcloud storage buckets describe "gs://${BUILD_SOURCE_BUCKET}" --project "$PRO
   ok "Build staging bucket: gs://${BUILD_SOURCE_BUCKET}"
 else
   fail "Build staging bucket ausente: gs://${BUILD_SOURCE_BUCKET}"
+fi
+
+if gcloud storage buckets describe "gs://${RAW_BUCKET}" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  ok "RAW operacional bucket: gs://${RAW_BUCKET}"
+else
+  fail "RAW operacional bucket ausente: gs://${RAW_BUCKET}; execute scripts/setup_raw_gcs.sh"
 fi
 
 for job in agrolog-dados agrolog-radar agrolog-conhecimento; do

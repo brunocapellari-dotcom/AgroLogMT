@@ -10,6 +10,7 @@ from statistics import mean
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from collector.transport_security import validate_https_url
 from models.backtest import RegressionMetrics, regression_metrics
 
 TABLE_ID = 1612
@@ -39,12 +40,15 @@ class LaggedFold:
 
 
 def _fetch_json(url: str, *, timeout: int = 90) -> tuple[list[dict], str]:
+    validate_https_url(url, allowed_hosts={"apisidra.ibge.gov.br", "api.sidra.ibge.gov.br"})
     request = Request(url, headers={"User-Agent": "AgroLogMT/0.1 (+ibge-pam-yield-hurdle)"})
-    with urlopen(request, timeout=timeout) as response:
+    with urlopen(request, timeout=timeout) as response:  # nosec B310 - HTTPS and official IBGE hosts validated before/after redirect.
+        observed = response.geturl()
+        validate_https_url(observed, allowed_hosts={"apisidra.ibge.gov.br", "api.sidra.ibge.gov.br"})
         payload = json.loads(response.read().decode("utf-8"))
         if not isinstance(payload, list):
             raise ValueError("SIDRA: resposta nao e lista")
-        return payload, response.geturl()
+        return payload, observed
 
 
 def fetch_sidra() -> tuple[list[dict], str]:

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agrolog.local/contracts/logistics_corridor.v1.schema.json",
+  "title": "AgroLog logistics corridor observation",
+  "type": "object",
+  "required": [
+    "corridor_id",
+    "origin_geo_id",
+    "destination_geo_id",
+    "route_type",
+    "mode",
+    "data_referencia",
+    "data_coleta",
+    "competencia",
+    "evidence_class"
+  ],
+  "properties": {
+    "corridor_id": {"type": "string", "minLength": 1},
+    "origin_geo_id": {"type": "string", "minLength": 1},
+    "destination_geo_id": {"type": "string", "minLength": 1},
+    "route_type": {"enum": ["EXPORT", "DOMESTIC", "IMPORT", "TRANSFER", "UNKNOWN"]},
+    "mode": {"enum": ["ROAD", "RAIL", "WATERWAY", "MULTIMODAL"]},
+    "product_id": {"type": ["string", "null"]},
+    "distance_km": {"type": ["number", "null"], "minimum": 0},
+    "volume_t": {"type": ["number", "null"], "minimum": 0},
+    "freight_brl_per_t": {"type": ["number", "null"], "minimum": 0},
+    "freight_brl_per_t_km": {"type": ["number", "null"], "minimum": 0},
+    "data_referencia": {"type": "string", "format": "date"},
+    "data_publicacao": {"type": ["string", "null"], "format": "date-time"},
+    "data_coleta": {"type": "string", "format": "date-time"},
+    "competencia": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$"},
+    "evidence_class": {"type": "string"},
+    "source_id": {"type": ["string", "null"]},
+    "quality_flags": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  },
+  "additionalProperties": true
+}

@@ -5,9 +5,12 @@ RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY maritime_ui /ui
 RUN npm run build
 
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
 COPY requirements-gateway.txt /app/requirements-gateway.txt
 RUN pip install --no-cache-dir --disable-pip-version-check -r /app/requirements-gateway.txt \
     && groupadd --system agrolog \

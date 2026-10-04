@@ -92,8 +92,8 @@ def main() -> int:
     invalid_geo = int(scalar(client, f"""
         SELECT COUNT(*) FROM `{latest}`
         WHERE uf IS NULL OR LENGTH(uf) != 2 OR municipio IS NULL OR TRIM(municipio)=''
-           OR (latitude IS NOT NULL AND NOT BETWEEN(latitude,-90,90))
-           OR (longitude IS NOT NULL AND NOT BETWEEN(longitude,-180,180))
+           OR (latitude IS NOT NULL AND latitude NOT BETWEEN -90 AND 90)
+           OR (longitude IS NOT NULL AND longitude NOT BETWEEN -180 AND 180)
     """) or 0)
     add("geography_structurally_valid", invalid_geo == 0, invalid_geo, "= 0")
 
@@ -117,10 +117,10 @@ def main() -> int:
     """).result())
     collector_evidence = [dict(row.items()) for row in collector_evidence_rows]
     has_raw = any(
-        row.get("sha256") and str(row.get("raw_artifact_ref") or "").startswith("drive://")
+        row.get("sha256") and str(row.get("raw_artifact_ref") or "").startswith(("gs://", "drive://"))
         for row in collector_evidence
     )
-    add("raw_manifest_with_hash_exists", has_raw, collector_evidence[:3], "sha256 + drive:// raw_artifact_ref")
+    add("raw_manifest_with_hash_exists", has_raw, collector_evidence[:3], "sha256 + durable RAW artifact ref (gs:// or drive://)")
 
     if latest_snapshot:
         run_statuses = [row[0] for row in client.query(f"""

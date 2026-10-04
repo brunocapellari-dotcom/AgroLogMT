@@ -18,6 +18,7 @@ from collector.conab_safra_history import (
 from collector.conab_safra_pipeline import build_canonical_rows
 from collector.models import RunManifest, SourceSpec
 from collector.orchestrator import COLLECTOR_VERSION
+from collector.transport_security import validate_https_url
 
 
 def select_publications(
@@ -87,9 +88,12 @@ def merge_publications(*groups: list[SafraPublication]) -> list[SafraPublication
 
 
 def _download(url: str, timeout: int = 120) -> tuple[bytes, str, str | None, str | None]:
+    validate_https_url(url)
     request = Request(url, headers={"User-Agent": "AgroLogMT/0.1 (+verified-historical-backfill)"})
-    with urlopen(request, timeout=timeout) as response:
-        return response.read(), response.geturl(), response.headers.get("Content-Type"), response.headers.get("Last-Modified")
+    with urlopen(request, timeout=timeout) as response:  # nosec B310 - HTTPS validated before request and after redirect.
+        observed = response.geturl()
+        validate_https_url(observed)
+        return response.read(), observed, response.headers.get("Content-Type"), response.headers.get("Last-Modified")
 
 
 def execute_item(item: SafraPublication, store: DriveBigQueryStore) -> dict[str, object]:

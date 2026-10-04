@@ -20,7 +20,9 @@ concurrency:
 jobs:
   whole-project-ci:
     name: Whole project deterministic gate
-    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    # Ephemeral GCE runner security rationale: private repo, fork guard, no VM service account, one-job lifecycle.
+    runs-on: [self-hosted, linux, x64, agrolog-ci] # zizmor: ignore[self-hosted-runner]
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 pinned
@@ -31,13 +33,10 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0 pinned
         with:
           python-version: "3.12"
-          cache: pip
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0 pinned
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: maritime_ui/package-lock.json
 
       - name: Install Python dependencies once
         shell: bash
@@ -65,6 +64,26 @@ jobs:
 
       - name: Prepare evidence directory
         run: mkdir -p outputs/full-project-gate
+
+      - name: Python static security scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs/full-project-gate
+          set +e
+          python -m bandit -q -r collector gateway models scripts ckan_connector socrata_connector cftc_cot usda_agtransport -ll -ii -f json -o outputs/full-project-gate/bandit.json
+          bandit_code=$?
+          set -e
+          python scripts/evaluate_bandit_report.py outputs/full-project-gate/bandit.json
+          if [[ "$bandit_code" -ne 0 ]]; then
+            echo "Bandit reported findings; evaluator above is authoritative for Medium/High gate." >&2
+          fi
+
+      - name: Audit Python dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip_audit -r /tmp/agrolog-requirements.txt
 
       - name: Audit GitHub Actions with zizmor
         shell: bash
@@ -132,6 +151,13 @@ jobs:
           AGROLOG_EVIDENCE_GITLEAKS: outputs/full-project-gate/gitleaks.txt
         run: python scripts/validate_full_project.py --mode ci --report outputs/full-project-gate/ci-report.json
 
+      - name: Audit production UI dependencies
+        working-directory: maritime_ui
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm audit --omit=dev --audit-level=high
+
       - name: Summary
         if: always()
         shell: bash
@@ -139,16 +165,32 @@ jobs:
           {
             echo '## AgroLog MT — Whole Project CI'
             echo
-            echo 'Automatic PR gate: all deterministic tests, Python compile, dependency consistency, contracts, workflows, registry, frontend npm ci/build, Zizmor, actionlint and Gitleaks tree scan.'
+            echo 'Self-hosted deterministic gate: all deterministic tests, Python compile, dependency consistency, contracts, workflows, registry, frontend npm ci/build, Bandit, pip-audit, npm audit, Zizmor, actionlint and Gitleaks tree scan.'
             echo
             echo 'Docker, Trivy, SBOM, full Git-history scan, LIVE tests and GCP run once in the manual final release gate.'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Upload deterministic gate evidence
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 pinned
+        with:
+          name: full-project-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            outputs/full-project-gate/bandit.json
+            outputs/full-project-gate/ci-report.json
+            outputs/full-project-gate/zizmor.txt
+            outputs/full-project-gate/gitleaks.txt
+          if-no-files-found: ignore
+          retention-days: 3
+
   final-live-release:
+    environment: agrolog-production
     name: Whole project LIVE + GCP final release
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.final_release == true }}
     needs: whole-project-ci
-    runs-on: ubuntu-latest
+    # Ephemeral GCE runner security rationale: private repo, fork guard, no VM service account, one-job lifecycle.
+    runs-on: [self-hosted, linux, x64, agrolog-ci] # zizmor: ignore[self-hosted-runner]
     timeout-minutes: 150
     permissions:
       contents: read
@@ -173,13 +215,10 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0 pinned
         with:
           python-version: "3.12"
-          cache: pip
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0 pinned
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: maritime_ui/package-lock.json
 
       - name: Install Python dependencies once
         shell: bash
@@ -278,27 +317,60 @@ jobs:
           docker build --pull --file gateway/Dockerfile --tag agrolog-gateway:gate .
           printf 'CONTAINERS PASS\nagrolog-collector:gate\nagrolog-gateway:gate\n' > outputs/full-project-gate/containers.txt
 
-      - name: Trivy collector image scan
+      - name: Trivy collector image evidence
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 pinned
         with:
           scan-type: image
           image-ref: agrolog-collector:gate
           severity: HIGH,CRITICAL
           ignore-unfixed: false
+          exit-code: '0'
+          format: table
+          output: outputs/full-project-gate/trivy-collector-all.txt
+
+      - name: Trivy collector fixable-vulnerability gate
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 pinned
+        with:
+          scan-type: image
+          image-ref: agrolog-collector:gate
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
           exit-code: '1'
           format: table
           output: outputs/full-project-gate/trivy-collector.txt
 
-      - name: Trivy gateway image scan
+      - name: Trivy gateway image evidence
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 pinned
         with:
           scan-type: image
           image-ref: agrolog-gateway:gate
           severity: HIGH,CRITICAL
           ignore-unfixed: false
+          exit-code: '0'
+          format: table
+          output: outputs/full-project-gate/trivy-gateway-all.txt
+
+      - name: Trivy gateway fixable-vulnerability gate
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 pinned
+        with:
+          scan-type: image
+          image-ref: agrolog-gateway:gate
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
           exit-code: '1'
           format: table
           output: outputs/full-project-gate/trivy-gateway.txt
+
+      - name: Consolidate vulnerability evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            outputs/full-project-gate/trivy-collector-all.txt \
+            outputs/full-project-gate/trivy-gateway-all.txt \
+            outputs/full-project-gate/trivy-collector.txt \
+            outputs/full-project-gate/trivy-gateway.txt \
+            >> outputs/full-project-gate/trivy-fs.txt
 
       - name: Generate collector image SBOM
         uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2 pinned
@@ -438,3 +510,19 @@ jobs:
               echo 'Final release did not produce PASS evidence.'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload final release evidence
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 pinned
+        with:
+          name: full-project-final-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            outputs/full-project-gate/FINAL.json
+            outputs/full-project-gate/pre-audit.json
+            outputs/full-project-gate/final-auditor.json
+            outputs/full-project-gate/n6-result.txt
+            outputs/full-project-gate/restore-drill.json
+            outputs/full-project-gate/gcp-preflight.txt
+          if-no-files-found: ignore
+          retention-days: 7

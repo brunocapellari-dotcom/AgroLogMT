@@ -20,7 +20,7 @@ A regra principal é: **não instalar ferramentas por antecipação**. Uma tecno
 | RAW | Google Cloud Storage/Drive apropriado | CORE | Artefato original imutável, hash e metadados quando aplicável. |
 | Ingestão Python/API | dlt | POC | Preferencial para fontes novas quando reduzir código; não reescrever coletor homologado só para padronizar. |
 | ETL tabular | Polars | POC | Preferencial para cargas grandes; Pandas apenas onde compatibilidade/simplicidade justificar. |
-| Analytics local/backfill | DuckDB | POC | Inspeção, Parquet, backfill, QA e processamento local de baixo custo. |
+| Analytics local/backfill | DuckDB + DuckDB Spatial | POC | Inspeção, GeoParquet, backfill, QA e processamento tabular/espacial local de baixo custo; nunca segunda fonte de verdade. |
 | Validação Python | Pandera | POC | Quality gate antes da persistência analítica quando DataFrame for a abstração adequada. |
 | Contrato de dados | ODCS + Data Contract CLI | POC | Evoluir os contratos atuais sem criar segunda definição concorrente. |
 | Transformação SQL | SQLMesh | POC | Avaliar sobre BigQuery para backfill seguro, ambientes e controle de mudança. |
@@ -56,17 +56,34 @@ Dolt, lakeFS e XTDB permanecem `REFERENCIA` arquitetural. O conceito de versiona
 |---|---|---:|---|
 | Conversão/ETL geo | GDAL | CORE | Conversão e normalização de formatos geoespaciais. |
 | Arquivo geo analítico | GeoParquet | CORE | Formato preferencial para novos artefatos vetoriais analíticos. |
-| Grade espacial | H3 | POC | Agregação espacial hierárquica para produção, demanda, tráfego e pressão logística; também QA/derivação de geofences AIS. |
+| Grade espacial | H3 (uber/h3 + h3-py) | POC | Grid hierárquico canônico para produção, demanda, tráfego, pressão logística e QA/derivação de geofences AIS; não manter segundo grid padrão sem requisito objetivo. |
 | Banco transacional geo | PostGIS | FUTURO | Só quando surgir necessidade transacional/live que BigQuery não atenda. |
 | Trajetórias | MobilityDB | FUTURO | Extensão preferencial quando PostGIS entrar para objetos móveis históricos. |
 | Geofencing live distribuído | Tile38 | FUTURO | Só promover se geofence em processo não atender escala/latência ou houver múltiplos consumidores de `enter/exit/cross`. |
-| Map matching | FMM | POC | GPS/track → segmento real de rodovia. |
-| Routing | Valhalla | POC | Engine preferencial de rotas e custos de rede. |
+| Rede OSM / QA | OSMnx + PyOsmium | POC | OSMnx para modelagem/análise local-regional; PyOsmium para PBF bulk/reprodutível. Não são routing service de produção. |
+| Map matching | Valhalla/Meili | POC | GPS/track → segmento real de rodovia; FMM fica apenas como benchmark se Valhalla falhar em requisito mensurável. |
+| Routing | Valhalla | POC | Engine preferencial único para rotas, matriz OD, isócronas, alternativas e custos de rede. |
 | Tiles dinâmicos | Martin | POC | PostGIS/PMTiles → vector tiles quando houver necessidade real de camada dinâmica. |
 | Tiles estáticos | PMTiles | CORE | Camadas estáticas em object storage. |
 | Geração de tiles | Tippecanoe | POC | Geração/compactação de vector tiles para grandes camadas. |
 | Frontend cartográfico | MapLibre | CORE | Base preferencial do mapa operacional. |
 | Renderização massiva/replay | deck.gl | POC | Vessel points, trilhas, H3, heading e replay temporal sobre MapLibre. |
+
+## 3.1 Earth Observation e raster cloud-native
+
+| Capacidade | Escolha | Estado | Regra de uso |
+|---|---|---:|---|
+| Descoberta STAC | PySTAC Client | POC | Cliente padrão quando a fonte expuser STAC; não substituir API oficial simples sem benefício. |
+| Carregamento STAC | odc-stac + xarray | POC | Transformar STAC Items em cubos temporais/espaciais para análise e features. |
+| NASA Earthdata | earthaccess | POC | Busca, autenticação e acesso/streaming para produtos NASA aprovados. |
+| Virtualização HDF/NetCDF | VirtualiZarr | POC | Preferir acesso virtual quando evitar cópia integral e preservar provenance; Kerchunk é fallback/reference. |
+| Metadata STAC bulk | STAC-GeoParquet | POC | Snapshot/inventário analítico de Items; não é segundo catálogo de fontes. |
+| Raster client-side | deck.gl-raster | POC preferencial | COG/GeoTIFF/Zarr público ou acessível diretamente no browser; evita serviço de tiles quando segurança e volume permitirem. |
+| Raster tiles backend | TiTiler | POC condicionado | Usar quando houver dado privado, autorização, transformação server-side, mosaico/política de acesso ou limitação objetiva do client-side. |
+| Catálogo/API EO completo | eoAPI | FUTURO / REFERENCIA | Combina pgSTAC/STAC API/raster/vector; não implantar enquanto serviço composto não for necessário. |
+| Catálogo STAC próprio | pgSTAC/stac-fastapi | FUTURO | Não implantar enquanto serviço próprio não for necessário; evita Postgres/PostGIS antecipado. |
+
+Fluxo preferencial: `fonte oficial/STAC/Earthdata → RAW/asset reference → catálogo/metadata versionado → xarray/GeoParquet → features/BigQuery → deck.gl-raster quando client-side for seguro/suficiente → TiTiler somente quando backend raster for objetivamente necessário`.
 
 ## 4. Matriz OD, rodovias e otimização
 
@@ -100,7 +117,7 @@ O Maritime Intelligence é um subprojeto do AgroLog com runtime próprio, compar
 Stack selecionado:
 
 - código AIS existente do AgroLog — ingestão/normalização e geofence em processo (`CORE` para a V1);
-- `pyais` — referência/POC se houver necessidade de ampliar decode AIS além do adapter atual (`POC`);
+- `pyais` — decoder/encoder NMEA AIVDM/AIVDO aprovado como `POC` para receptores próprios, arquivos NMEA e fallback de baixo nível; não inserir no caminho AISStream JSON já normalizado;
 - `MapLibre + deck.gl` — tela operacional, renderização em escala e replay (`CORE/POC`);
 - `PMTiles` — camadas cartográficas estáticas (`CORE`);
 - `H3` — densidade, pressão espacial e apoio à geração/QA de geofences (`POC`);
@@ -128,7 +145,7 @@ O `UNECE/AIS Berth Polygon Cookbook` é `REFERENCIA` metodológica para H3 + DBS
 
 ### Port-call engine
 
-O engine permanece código próprio do AgroLog. `thanderoy/ais-tracker`, `xang1234/neptune` e `Snaporaz6/ais-vessel-tracker` são `REFERENCIA` para detecção de visitas, eventos, fusão multi-fonte, histórico e replay. Não tornam seus modelos uma fonte de verdade do AgroLog.
+O engine permanece código próprio do AgroLog. Os patterns de `thanderoy/ais-tracker` — port-call reconstruction, geofence enter/exit, dwell, ship-to-ship proximity, permanência e jobs idempotentes — são ADOPT como patterns, reimplementados/testados internamente; o repositório não entra como dependência, inclusive por não apresentar licença explícita observada. `xang1234/neptune` e `Snaporaz6/ais-vessel-tracker` permanecem `REFERENCIA`. Nenhum deles é fonte de verdade do AgroLog.
 
 ### ETA e congestionamento
 
@@ -150,13 +167,24 @@ AISdb permanece `REFERENCIA` por utilidade arquitetural; qualquer incorporação
 
 Esses componentes só entram após existir ao menos um modelo operacional com dataset point-in-time homologado. Nenhum modelo é promovido apenas por acurácia aparente: exige benchmark, validação fora da amostra, calibração, estabilidade e auditoria de leakage.
 
-## 8. Orquestração e execução durável
+## 8. Orquestração, agentes e execução durável
 
-- GitHub Actions, Cloud Run/jobs e os mecanismos existentes continuam atendendo o núcleo atual.
-- n8n permanece candidato para gatilhos/webhooks e automações simples, conforme arquitetura atual.
-- LangGraph permanece candidato preferencial para orquestração de agentes analíticos stateful.
-- Temporal fica `FUTURO` para workflows realmente duráveis, longos e com recovery/human-in-the-loop; não instalar enquanto retry/checkpoint dos componentes atuais forem suficientes.
-- Dagster, Airflow e Prefect ficam `NAO_SELECIONADO` no momento para evitar uma segunda plataforma de orquestração sem necessidade comprovada.
+- GitHub Actions, Cloud Run/jobs e os mecanismos existentes continuam atendendo o núcleo operacional.
+- n8n permanece candidato para gatilhos/webhooks e automações simples.
+- **Pydantic AI + Pydantic AI Harness** passa a `POC` preferencial para agentes analíticos: tipagem, tools, subagentes, planejamento, memória operacional, Step Persistence e OpenTelemetry.
+- **LangGraph** fica `REFERENCIA/ALTERNATIVA_CONDICIONAL`; só entra se benchmark mostrar requisito de grafo stateful não atendido adequadamente pelo stack preferencial.
+- **Phoenix** fica `POC` para tracing/evals de agentes sobre OpenTelemetry/OpenInference.
+- **Promptfoo** fica `POC` para regressão e red-team de prompts/agentes/RAG.
+- Temporal permanece `FUTURO`; se durabilidade for necessária, primeiro testar os backends de durable execution já suportados pelo runtime de agentes antes de criar outra camada central.
+- Dagster, Airflow e Prefect continuam `NAO_SELECIONADO` como orquestradores gerais para evitar segunda plataforma sem necessidade comprovada.
+
+## 8.1 Engenharia Python
+
+| Capacidade | Escolha | Estado | Regra |
+|---|---|---:|---|
+| Package/project manager | uv | POC | Benchmark após o primeiro FINAL PASS; não migrar lock/deps durante homologação do PR #187. |
+| Lint/format Python | Ruff | POC | Avaliar como gate rápido adicional; não substituir testes, Bandit ou type checks. |
+| DAG Python de transformação | Apache Hamilton | REFERENCIA | Benchmark apenas se feature pipelines Python crescerem a ponto de exigir DAG explícito/lineage; não duplicar SQLMesh/dlt/OpenLineage. |
 
 ## 9. Tecnologias explicitamente não promovidas ao core agora
 
@@ -166,6 +194,8 @@ As seguintes ferramentas podem ser excelentes, mas não entram no stack principa
 - DataHub;
 - OSRM;
 - VROOM;
+- Soda Core (duplica ODCS/Data Contract CLI + CloudDQ/Pandera e usa Elastic License 2.0);
+- pgRouting enquanto PostGIS não for necessário por motivo independente;
 - NVIDIA cuOpt;
 - Apache Sedona/SedonaDB;
 - Apache Iceberg;
@@ -178,6 +208,16 @@ As seguintes ferramentas podem ser excelentes, mas não entram no stack principa
 - Kepler.gl.
 
 Uma delas pode ser promovida no futuro se o componente preferencial falhar em requisito objetivo ou se a escala justificar.
+
+## 9.1 Benchmarks que não viram segunda ferramenta de produção
+
+- **GraphHopper** — BENCHMARK externo de routing/matrix contra Valhalla; não manter ambos no runtime.
+- **Pyrosm** — BENCHMARK de ergonomia/performance PBF→GeoDataFrame contra PyOsmium; apenas um caminho bulk será promovido.
+- **Overture Maps** — BENCHMARK/fonte secundária para QA global de rede/entidades; licença dos datasets é revisada separadamente da CLI.
+- **MovingPandas** — BENCHMARK offline para trajetórias/stops AIS; não substitui o port-call engine próprio.
+- **FMM** — BENCHMARK de map matching caso Valhalla/Meili não atenda precisão/performance exigidas.
+
+Contratos e qualidade permanecem em **ODCS + Data Contract CLI + Pandera quando aplicável + CloudDQ/Dataplex no BigQuery**. Soda Core não é adicionado como segundo engine.
 
 ## 10. Sequência de ativação
 
@@ -216,12 +256,13 @@ Nenhuma nova plataforma deve atrasar CONAB Armazéns + AgroLog Gateway. Não sub
 
 ### Fase 4 — OD, digital twin e otimização
 
-1. AequilibraE;
-2. Valhalla/FMM;
-3. UXsim;
-4. PyVRP/OR-Tools;
-5. OpenTNSim/OpenCLSim;
-6. OSRD quando a camada ferroviária possuir dados suficientes.
+1. OSMnx/PyOsmium para aquisição, topologia e QA da rede;
+2. Valhalla/Meili para routing, matriz OD, isócronas e map matching;
+3. AequilibraE para assignment/cenários;
+4. UXsim;
+5. PyVRP para VRP/frota, mantendo OR-Tools apenas como otimizador geral;
+6. OpenTNSim/OpenCLSim;
+7. OSRD quando a camada ferroviária possuir dados suficientes.
 
 ### Fase 5 — MLOps
 
@@ -245,3 +286,17 @@ Uma tecnologia só pode ser promovida quando:
 ## 12. Princípio final
 
 O produto é o AgroLog MT. Ferramentas são substituíveis. A infraestrutura deve permanecer mínima, auditável, modular e proporcional ao problema real.
+
+
+## 13. Benchmark operacional unificado
+
+O gate comparativo de routing/GIS/VRP/AIS fica em:
+
+- `benchmarks/logistics_gis/manifest.v1.json`;
+- `scripts/run_logistics_gis_benchmarks.py`;
+- `requirements-benchmarks.txt`;
+- `tests/test_logistics_gis_benchmark.py`.
+
+O benchmark executa o port-call engine próprio e, quando as dependências/serviços estiverem disponíveis, H3, pyais, PyVRP, Valhalla, PyOsmium e OSMnx. O modo `--strict` transforma qualquer `SKIP` em bloqueio e é o único modo válido para promover POC→CORE.
+
+Dependências de benchmark permanecem isoladas do runtime de produção. Resultado de benchmark é evidência de engenharia, não fonte de verdade analítica.

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import tempfile
 from datetime import date
 from urllib.parse import urlsplit
 
@@ -23,8 +24,9 @@ def requests_probe(url: str) -> dict[str, object]:
 
 
 def curl_probe(url: str) -> dict[str, object]:
-    command = ["curl", "--fail", "--silent", "--show-error", "--location", "--max-time", "40", "--range", "0-4095", "--output", "/tmp/comex-sample.bin", "--write-out", "%{http_code} %{url_effective} %{ssl_verify_result}", url]
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    with tempfile.NamedTemporaryFile(prefix="agrolog-comex-", suffix=".bin") as sample:
+        command = ["curl", "--fail", "--silent", "--show-error", "--location", "--max-time", "40", "--range", "0-4095", "--output", sample.name, "--write-out", "%{http_code} %{url_effective} %{ssl_verify_result}", url]
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
     return {"ok": result.returncode == 0, "returncode": result.returncode, "stdout": result.stdout.strip(), "stderr": result.stderr.strip()[:1000]}
 
 
