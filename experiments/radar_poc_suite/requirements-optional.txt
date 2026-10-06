@@ -1,0 +1,7 @@
+# Optional dependencies for isolated Radar PoCs.
+# Intentionally not pinned in the PoC branch; production promotion requires a lock/pin review.
+crawl4ai
+openai-whisper
+langgraph
+vectorbt
+polymarket-client

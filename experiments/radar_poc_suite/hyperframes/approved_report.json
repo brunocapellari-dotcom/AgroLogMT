@@ -1,0 +1,24 @@
+{
+  "fixture": true,
+  "approved_for_render": true,
+  "source": "synthetic_agrolog_poc",
+  "title": "AgroLog MT — exemplo sintético",
+  "subtitle": "Conteúdo demonstrativo; não representa mercado real",
+  "slides": [
+    {
+      "headline": "Indicador sintético de pressão logística",
+      "value": "62/100",
+      "note": "Valor artificial usado apenas para testar publicação."
+    },
+    {
+      "headline": "Variação sintética semanal",
+      "value": "+4 pontos",
+      "note": "Nenhum dado real foi consultado."
+    }
+  ],
+  "governance": {
+    "may_recalculate_indicators": false,
+    "may_change_conclusions": false,
+    "human_review_required_before_external_publication": true
+  }
+}

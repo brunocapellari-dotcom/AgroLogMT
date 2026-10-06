@@ -1,0 +1,72 @@
+{
+  "suite": "agrolog-radar-poc-suite",
+  "issue": 47,
+  "production_authorized": false,
+  "bigquery_write_allowed": false,
+  "real_credentials_allowed": false,
+  "components": [
+    {
+      "name": "Crawl4AI",
+      "role": "public_web_extraction",
+      "entrypoint": "crawl4ai_poc.py",
+      "network": "public_web_only_when_explicitly_run",
+      "promotion_gate": "compare_with_http_and_playwright_and_review_terms"
+    },
+    {
+      "name": "Whisper",
+      "role": "authorized_local_media_transcription",
+      "entrypoint": "whisper_poc.py",
+      "network": "none_except_model_download_if_not_cached",
+      "promotion_gate": "accuracy_on_portuguese_agro_terms_and_timestamp_traceability"
+    },
+    {
+      "name": "LangGraph",
+      "role": "stateful_agent_orchestration",
+      "entrypoint": "langgraph_poc.py",
+      "network": "none_in_deterministic_poc",
+      "promotion_gate": "checkpoint_handoff_stop_condition_and_gateway_permissions"
+    },
+    {
+      "name": "LibreChat",
+      "role": "internal_ai_cockpit",
+      "entrypoint": "librechat/mock_gateway.py",
+      "network": "localhost_in_basic_poc",
+      "promotion_gate": "rbac_auth_logging_and_gateway_only_access"
+    },
+    {
+      "name": "VectorBT",
+      "role": "quantitative_research_lab",
+      "entrypoint": "vectorbt_poc.py",
+      "network": "none",
+      "promotion_gate": "license_review_point_in_time_backtest_and_own_contract_for_production"
+    },
+    {
+      "name": "Polymarket",
+      "role": "external_expectation_signal_read_only",
+      "entrypoint": "polymarket_poc.py",
+      "network": "public_polymarket_read_only",
+      "promotion_gate": "incremental_value_test_and_no_trading_capability"
+    },
+    {
+      "name": "Ollama",
+      "role": "future_local_inference",
+      "entrypoint": "ollama_poc.py",
+      "network": "localhost_only",
+      "promotion_gate": "quality_cost_latency_privacy_benchmark"
+    },
+    {
+      "name": "HyperFrames",
+      "role": "approved_content_publication",
+      "entrypoint": "hyperframes/approved_report.json",
+      "network": "none_in_fixture",
+      "promotion_gate": "fidelity_human_review_and_replaceability"
+    },
+    {
+      "name": "code-server",
+      "role": "optional_engineering_access",
+      "entrypoint": "code_server/config.yaml.example",
+      "network": "localhost_only_by_default",
+      "promotion_gate": "zero_trust_access_and_concrete_operational_need"
+    }
+  ]
+}
