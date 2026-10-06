@@ -7,7 +7,7 @@ Este documento é a fonte canônica para segurança de informação, identidade,
 1. **Least privilege** — cada identidade recebe somente permissões necessárias.
 2. **Fail closed** — ausência de autenticação, secret, hash, lineage ou gate obrigatório bloqueia a operação.
 3. **Zero long-lived credentials in code/CI** — GitHub Actions usa WIF/OIDC; chaves JSON de service account são proibidas.
-4. **Single operational secret origin** — credenciais de fonte ficam no Secret Manager quando consumidas pelo runtime GCP.
+4. **Single operational secret origin** — credenciais e referências operacionais sensíveis consumidas pelo runtime GCP ficam no Secret Manager.
 5. **Segregation of duties** — bootstrap administrativo altera IAM/APIs/datasets; deploy recorrente não amplia privilégio.
 6. **Immutability/provenance** — RAW relevante preserva bytes originais, hash e metadados suficientes para auditoria.
 7. **Minimization** — coletar, persistir, logar e expor somente o necessário.
@@ -16,6 +16,7 @@ Este documento é a fonte canônica para segurança de informação, identidade,
 10. **Privileged changes are auditable** — IAM, secrets, WIF, exposição e retenção exigem evidência/readback.
 11. **External data is untrusted by default** — autenticidade da origem não implica integridade sem validação.
 12. **Recovery must be tested** — backup sem teste de restore não é controle operacional comprovado.
+13. **Public repository means public history** — commits, metadados, Issues e PRs alcançáveis devem ser tratados como informação pública; remover um valor da árvore atual não remove o histórico Git.
 
 ## 2. Classificação de segurança
 
@@ -32,10 +33,11 @@ A classe de segurança é independente da classe epistemológica (`observado`, `
 
 Identidades canônicas:
 
-- `agrolog-github-deployer` — CI/CD federado;
+- `agrolog-github-deployer` — CI/CD federado e validação final;
 - `agrolog-builder` — Cloud Build;
 - `agrolog-collector` — runtime de coleta;
-- `agrolog-gateway` — runtime de leitura.
+- `agrolog-gateway` — runtime de leitura;
+- `agrolog-scheduler` — invocação de jobs agendados, sem escrita analítica ou administração.
 
 Regras:
 
@@ -44,7 +46,8 @@ Regras:
 - preferir grants em dataset/recurso;
 - remover bindings legados excessivos;
 - IAM fica fora do deploy recorrente;
-- service-account key é proibida salvo exceção formal, temporária e auditada.
+- service-account key é proibida salvo exceção formal, temporária e auditada;
+- scheduler recebe somente capacidade de invocar os jobs autorizados e não cria/altera datasets, IAM ou dados.
 
 ## 4. GitHub Actions e WIF
 
@@ -52,22 +55,26 @@ Regras:
 - `id-token: write` somente em jobs que realmente autenticam no GCP;
 - Actions remotas pinadas por SHA completo;
 - PRs não recebem secrets de produção;
+- `pull_request_target` com checkout de código não confiável é proibido;
 - WIF restringe por `repository_id`, `repository_owner_id` e `refs/heads/main` para credencial de produção;
 - provider existente deve ser reconciliado, não apenas criado;
 - nenhum fallback para chave JSON;
 - artifact/output não contém token, cookie, password, authorization header ou payload `RESTRICTED`;
-- `main` deve exigir PR/checks, bloquear force-push/deleção e impedir bypass rotineiro.
+- `main` deve exigir PR/checks, bloquear force-push/deleção e impedir bypass rotineiro;
+- fork/PR público jamais é autoridade de deploy; produção só é acessada pelo job manual final autenticado e restrito a `main`.
 
-## 5. Segredos
+## 5. Segredos e referências operacionais
 
 Origem preferencial: Google Secret Manager.
 
 - ANA, AISStream e futuras credenciais operacionais ficam no Secret Manager;
+- a referência da pasta RAW fica no Secret Manager como `agrolog-drive-folder-id`, em vez de default hard-coded no GitHub;
 - GitHub Secrets guarda somente metadados inevitáveis de federação/deploy, não cópia conveniente de credencial de fonte;
 - secrets não são passados em command line quando houver secret mount/env seguro;
 - exception/log não deve serializar objeto contendo secret;
 - collectors aplicam redaction defensiva a mensagens de erro, sem substituir a proibição de logar segredo;
-- suspeita de exposição exige revogação/rotação e invalidação de versões antigas.
+- suspeita de exposição exige revogação/rotação e invalidação de versões antigas;
+- identificador de recurso que não seja segredo ainda deve ser minimizado quando sua publicação não traz benefício técnico.
 
 ## 6. Git, arquivos locais e build context
 
@@ -81,7 +88,7 @@ Proibido versionar ou copiar para imagem:
 - RAW real, planilhas operacionais/cliente;
 - dump de banco ou Terraform state com segredo.
 
-`.gitignore`, `.dockerignore`, scanners e revisão são camadas complementares.
+`.gitignore`, `.dockerignore`, scanner próprio, Gitleaks e revisão são camadas complementares. Antes de mudança para visibilidade pública, a árvore atual e o histórico completo precisam passar varredura de segredos; caso um segredo histórico seja encontrado, a primeira ação é revogar/rotacionar, não apenas apagar o arquivo atual.
 
 ## 7. Containers e Cloud Run
 
@@ -205,7 +212,7 @@ Anomalia não é corrigida automaticamente por valor “plausível”. O dado fi
 - logs usam correlation/request IDs e metadados mínimos;
 - collectors têm timeout e limites de payload;
 - Gateway permanece read-only por padrão;
-- tool/action de agente deve ter input schema, escopo e autorização explícitos.
+- tool/action de agente deve ter input schema, escopo e autorização explícita.
 
 ## 16. Backup, restore e retenção
 
@@ -238,10 +245,10 @@ Cloud Audit Logs/GitHub logs complementam os manifests e tabelas `agrolog_ops`; 
 
 Uma mudança só é promovida quando aplicável:
 
-1. CI executou e está verde;
+1. CI integral executou no mesmo SHA e está verde;
 2. workflow YAML válido e permissions mínimas;
 3. Actions pinadas por SHA;
-4. nenhum secret/RAW no diff;
+4. nenhum secret/RAW no diff e scan do histórico completo aprovado no release final;
 5. container non-root;
 6. IAM least privilege verificado;
 7. serviço privado sem invoker amplo;
@@ -251,7 +258,7 @@ Uma mudança só é promovida quando aplicável:
 11. logs/evidências não contêm `RESTRICTED`;
 12. backup/restore tem status explícito quando o módulo exigir recuperação operacional.
 
-Se o CI nem recebe runner, o estado é `CI_EXECUTION_BLOCKER`, não “teste verde” nem “falha funcional”.
+Se o CI nem recebe runner, o estado é `CI_EXECUTION_BLOCKER`, não “teste verde” nem “falha funcional”. Visibilidade pública pode aumentar a disponibilidade de GitHub-hosted runners, mas nunca substitui o gate; após qualquer mudança de visibilidade, o gate integral deve ser reexecutado no SHA exato antes de merge/release.
 
 ## 19. Resposta a incidente
 

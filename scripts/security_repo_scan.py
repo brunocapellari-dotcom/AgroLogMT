@@ -34,6 +34,7 @@ DANGEROUS_PULL_REQUEST_TARGET = re.compile(r"\bpull_request_target\s*:")
 CHECKOUT_ACTION = re.compile(r"uses:\s*actions/checkout@")
 WRITE_ALL = re.compile(r"permissions\s*:\s*write-all", re.I)
 PIPE_TO_SHELL = re.compile(r"(?:curl|wget)[^\n|]*\|\s*(?:ba)?sh\b", re.I)
+HARDCODED_DRIVE_FOLDER = re.compile(r'DRIVE_FOLDER_ID="\$\{DRIVE_FOLDER_ID:-(?P<default>[^}]*)\}"')
 
 
 @dataclass(frozen=True)
@@ -98,6 +99,19 @@ def scan_file(path: Path) -> list[Finding]:
     for rule, pattern in SECRET_PATTERNS:
         if pattern.search(text):
             findings.append(Finding("BLOCK", str(path), rule, "assinatura de segredo encontrada"))
+
+    # Referências operacionais de armazenamento não são credenciais, mas não devem
+    # ser publicadas como defaults em scripts versionados. O histórico é tratado
+    # separadamente pelo scan de segredos; esta regra protege a árvore corrente.
+    if path.suffix.lower() == ".sh":
+        for match in HARDCODED_DRIVE_FOLDER.finditer(text):
+            if match.group("default").strip():
+                findings.append(Finding(
+                    "BLOCK",
+                    str(path),
+                    "hardcoded-drive-folder-id",
+                    "DRIVE_FOLDER_ID precisa vir de runtime/Secret Manager, sem default versionado",
+                ))
 
     if path.parts[:2] == (".github", "workflows"):
         findings.extend(_workflow_action_findings(path, text))

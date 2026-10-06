@@ -1,82 +1,118 @@
-# Execução contínua — Drive + BigQuery + Cloud Run Jobs
+# Execução contínua — Drive + BigQuery + Cloud Run
 
-Esta etapa conecta o motor `collector/` a uma execução persistente. Ela complementa a Issue #36: n8n pode orquestrar os jobs, mas a lógica de coleta permanece no código.
+Este documento descreve a execução persistente canônica do AgroLog MT. A regra central é separar **bootstrap administrativo** de **deploy recorrente**.
 
 ## Arquitetura
 
-`Cloud Scheduler/n8n -> Cloud Run Job -> CollectorEngine -> Google Drive (RAW) + BigQuery (state/manifests)`
+`Fonte → Source Registry/config → Cloud Run Job → CollectorEngine → RAW autorizado + BigQuery → validação → AgroLog Gateway`
 
-Frequências alvo:
-- Radar: a cada 2 horas;
-- Dados: a cada 4 horas;
-- Conhecimento: a cada 1 hora.
+Responsabilidades:
+
+- `scripts/setup_github_gcp_wif.sh`: única rotina administrativa de bootstrap para APIs, service accounts, datasets, IAM, WIF, Artifact Registry, staging bucket e segredos canônicos;
+- `scripts/deploy_collectors_gcloud.sh`: build/deploy dos collectors e do job Pecuária, sem criar IAM, APIs ou datasets;
+- `scripts/deploy_p0_connectors_gcloud.sh`: deploy dos workloads P0 sobre a mesma infraestrutura pré-provisionada, sem administrar IAM, APIs, datasets ou Cloud Scheduler;
+- `scripts/deploy_gateway_gcloud.sh`: build/deploy do Gateway privado sobre infraestrutura pré-provisionada;
+- `.github/workflows/full-project-final-gate.yml`: autoridade única de CI/release integral.
 
 ## Persistência
 
-- Google Drive: artefatos RAW por `RAW/<grupo>/<source_id>/AAAA/MM/DD/<sha256>.<ext>`;
-- BigQuery `agrolog_ops.collector_source_state`: último estado/hash por fonte;
-- BigQuery `agrolog_ops.collector_runs`: manifesto de cada execução.
+- armazenamento RAW autorizado: artefatos originais com hash/proveniência;
+- BigQuery `agrolog_ops`: estado, manifests, auditoria e metadados operacionais;
+- datasets temáticos: somente conforme fontes reais entram em produção;
+- GitHub: código, contratos, configuração, SQL, testes e documentação — nunca RAW real ou credenciais.
 
-O hash SHA-256 impede que um artefato idêntico seja gravado novamente.
+## Referência da pasta RAW
 
-## Pré-requisitos mínimos
+O identificador da pasta RAW **não deve ficar hard-coded no repositório público**.
 
-1. `gcloud` autenticado no projeto correto.
-2. Permissão do usuário para habilitar APIs, criar contas de serviço, implantar Cloud Run Jobs e criar Cloud Scheduler.
-3. Após o script criar a service account `agrolog-collector`, compartilhar a pasta `AGROLOG MT/07_AUTOMACAO` como Editor com o e-mail exibido pelo script.
+Fonte canônica em runtime:
 
-O script cria automaticamente as duas contas de serviço do piloto quando ausentes e concede:
-- `roles/bigquery.user` ao coletor, suficiente para jobs e criação do dataset operacional; o criador passa a controlar o dataset criado;
-- `roles/run.invoker` à conta usada pelo Cloud Scheduler para executar os Cloud Run Jobs.
+`Secret Manager: agrolog-drive-folder-id`
 
-## Deploy simplificado
+O bootstrap aceita `DRIVE_FOLDER_ID` apenas como entrada administrativa ou, quando possível, migra o valor já implantado em `agrolog-dados` para o Secret Manager. O valor não deve ser ecoado em logs.
 
-Se o projeto correto já estiver selecionado no `gcloud`, basta executar na raiz do repositório:
+O deploy lê o segredo com a identidade federada/deployer e injeta `AGROLOG_DRIVE_FOLDER_ID` nos jobs. O collector recebe somente o valor necessário ao runtime.
+
+## Bootstrap administrativo
+
+Executar com identidade humana administradora autenticada:
+
+```bash
+PROJECT_ID=<projeto> DRIVE_FOLDER_ID=<id-da-pasta-raw> bash scripts/setup_github_gcp_wif.sh
+```
+
+O bootstrap é idempotente e centraliza:
+
+- APIs Google Cloud necessárias;
+- WIF/OIDC GitHub → GCP sem chave JSON;
+- service accounts dedicadas de deploy, build, collector, gateway e scheduler;
+- datasets e localização BigQuery;
+- permissões mínimas por identidade;
+- Artifact Registry e bucket de staging;
+- `agrolog-drive-folder-id` no Secret Manager;
+- credenciais ANA no Secret Manager quando configuradas.
+
+Depois do bootstrap, compartilhar a pasta RAW como Editor **somente** com a service account do collector indicada pelo script.
+
+## Deploy dos collectors
 
 ```bash
 bash scripts/deploy_collectors_gcloud.sh
 ```
 
-Por padrão, o script usa:
-- região `southamerica-east1`;
-- dataset `agrolog_ops`;
-- pasta Drive `AGROLOG MT/07_AUTOMACAO` (`17AX2iCrQ17Jm86Pp9ijqn3hyEHVaQPqd`);
-- service accounts `agrolog-collector` e `agrolog-scheduler`.
+O script falha fechado quando algum pré-requisito estiver ausente ou em região incorreta. Ele não corrige IAM criando privilégios durante o deploy.
 
-Todos esses valores podem ser sobrescritos por variáveis de ambiente.
+Jobs principais:
 
-O script habilita APIs, cria contas de serviço quando necessário, configura permissões, cria Artifact Registry, constrói a imagem, cria/atualiza os três Cloud Run Jobs e os três agendamentos.
+- `agrolog-radar`;
+- `agrolog-dados`;
+- `agrolog-conhecimento`;
+- `agrolog-pecuaria` em Registry Mode.
 
-## Passo manual do Drive
-
-O Google Cloud IAM não concede acesso ao My Drive. Após a criação da service account do coletor, compartilhe a pasta `07_AUTOMACAO` como Editor com:
-
-`agrolog-collector@<PROJECT_ID>.iam.gserviceaccount.com`
-
-Depois execute um teste manual:
+## Deploy P0
 
 ```bash
-gcloud run jobs execute agrolog-dados --region southamerica-east1 --wait
+bash scripts/deploy_p0_connectors_gcloud.sh
 ```
 
-Valide:
-- Drive: `07_AUTOMACAO/RAW/...`;
-- BigQuery: `agrolog_ops.collector_runs`;
-- BigQuery: `agrolog_ops.collector_source_state`.
+O P0 reutiliza a mesma imagem/infraestrutura canônica e pode implantar:
 
-## Piloto
+- PTAX;
+- ANA/HidroWeb, somente quando os segredos canônicos estiverem disponíveis.
 
-A configuração inicial contém quatro fontes pequenas para validar o ciclo completo:
-- MAPA SIPEAGRO Alimentação Animal (Dados, CKAN/CSV);
-- catálogo ANTT Dados Abertos (Dados, API/JSON);
-- CONAB Notícias (Radar, HTML RAW);
-- OpenAlex (Conhecimento, API/JSON).
+`MANAGE_SCHEDULER` permanece `0`: deploy recorrente não cria nem altera agendamentos. Administração de scheduler é responsabilidade do plano administrativo, não do deploy de workload.
 
-O objetivo é validar execução, Drive, BigQuery, idempotência e logs antes de importar o catálogo completo.
+## Google Drive
 
-## Limites desta etapa
+Google Cloud IAM não concede acesso ao My Drive. O compartilhamento da pasta RAW continua sendo um gate externo explícito.
 
-- Radar ainda preserva HTML RAW; análise semântica/notícia estruturada entra no parser específico.
-- Conhecimento ainda preserva descoberta RAW; a nota Markdown Obsidian precisa do pipeline de triagem/síntese.
-- PDF/XLSX/CSV ficam no Drive quando a fonte expõe o artefato diretamente; parsing em planilha temática/BigQuery é responsabilidade do normalizador da fonte.
-- Detecção de lacuna já existe no núcleo, mas a alimentação automática das referências observadas por fonte será integrada aos normalizadores.
+A service account do collector deve ter apenas o acesso necessário à pasta autorizada; nenhum identificador da pasta, token ou credencial deve ser versionado no GitHub.
+
+## Segurança para repositório público
+
+Ao operar o AgroLog MT como repositório público:
+
+- todo o histórico Git e Issues deve ser tratado como informação pública;
+- nenhum segredo real deve existir em commits antigos ou atuais;
+- `pull_request_target` com checkout de código não confiável é proibido;
+- workflows de PR usam permissões mínimas e não recebem credenciais GCP;
+- WIF é restrito por `repository_id`, `repository_owner_id` e `refs/heads/main`;
+- deploy/release GCP só ocorre no gate manual final a partir de `main`;
+- Gitleaks current-tree roda no gate determinístico e Gitleaks full-history no release final;
+- branch/ruleset de `main` deve exigir o gate integral antes de merge.
+
+## Validação
+
+A versão só é considerada operacional quando o mesmo release candidato comprova:
+
+- Full Project Final Gate determinístico;
+- scan de segredos no histórico completo;
+- dependências/workflows/containers em PASS;
+- preflight GCP;
+- homologação N6 completa;
+- idempotência, data quality e temporalidade;
+- Gateway E2E;
+- restore drill;
+- auditoria independente aplicável.
+
+Documentação ou existência de scripts não substituem essas evidências.

@@ -6,6 +6,8 @@ REGION="${REGION:-southamerica-east1}"
 BQ_LOCATION="${BQ_LOCATION:-southamerica-east1}"
 LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
 MARITIME_DATASET="${MARITIME_DATASET:-agrolog_models}"
+PECUARIA_DATASET="${PECUARIA_DATASET:-pecuaria}"
+TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
 AR_REPOSITORY="${AR_REPOSITORY:-agrolog}"
 BUILD_SOURCE_BUCKET="${BUILD_SOURCE_BUCKET:-${PROJECT_ID}-agrolog-build-source}"
 IMAGE_NAME="${IMAGE_NAME:-gateway}"
@@ -43,6 +45,25 @@ IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/${IMAGE_NAME}:${I
 
 gcloud config set project "$PROJECT_ID" >/dev/null
 
+require_dataset() {
+  local dataset="$1"
+  local tmp actual
+  tmp="/tmp/agrolog-gateway-dataset-${dataset}.json"
+  if ! bq show --project_id="$PROJECT_ID" --format=prettyjson "${PROJECT_ID}:${dataset}" >"$tmp" 2>/dev/null; then
+    echo "ERRO: dataset ${dataset} ausente. Execute o bootstrap administrativo." >&2
+    exit 3
+  fi
+  actual="$(python - "$tmp" <<'PY'
+import json,sys
+print(json.load(open(sys.argv[1])).get('location',''))
+PY
+)"
+  if [[ -n "$actual" && "$actual" != "$BQ_LOCATION" ]]; then
+    echo "ERRO: dataset ${dataset} em ${actual}; esperado ${BQ_LOCATION}" >&2
+    exit 3
+  fi
+}
+
 assert_private_gateway() {
   if ! gcloud run services describe "$SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
     return 0
@@ -78,11 +99,8 @@ for sa in "$GATEWAY_SERVICE_ACCOUNT" "$BUILD_SERVICE_ACCOUNT"; do
     exit 3
   }
 done
-for dataset in "$LOGISTICA_DATASET" "$MARITIME_DATASET"; do
-  bq show --project_id="$PROJECT_ID" "${PROJECT_ID}:${dataset}" >/dev/null 2>&1 || {
-    echo "ERRO: dataset ${dataset} ausente. Execute o bootstrap administrativo." >&2
-    exit 3
-  }
+for dataset in "$LOGISTICA_DATASET" "$MARITIME_DATASET" "$PECUARIA_DATASET" "$TRADE_DATASET"; do
+  require_dataset "$dataset"
 done
 gcloud artifacts repositories describe "$AR_REPOSITORY" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1 || {
   echo "ERRO: Artifact Registry ${AR_REPOSITORY} ausente." >&2
@@ -113,7 +131,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --max-instances "$MAX_INSTANCES" \
   --concurrency "$CONCURRENCY" \
   --timeout "${REQUEST_TIMEOUT}s" \
-  --set-env-vars "AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_MARITIME_DATASET=${MARITIME_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION},AGROLOG_BQ_MAX_BYTES_BILLED=${BQ_MAX_BYTES_BILLED},AGROLOG_BQ_QUERY_TIMEOUT_SECONDS=${BQ_QUERY_TIMEOUT_SECONDS},AGROLOG_ENABLE_DOCS=0"
+  --set-env-vars "AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_LOGISTICA_DATASET=${LOGISTICA_DATASET},AGROLOG_MARITIME_DATASET=${MARITIME_DATASET},AGROLOG_PECUARIA_DATASET=${PECUARIA_DATASET},AGROLOG_TRADE_DATASET=${TRADE_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION},AGROLOG_BQ_MAX_BYTES_BILLED=${BQ_MAX_BYTES_BILLED},AGROLOG_BQ_QUERY_TIMEOUT_SECONDS=${BQ_QUERY_TIMEOUT_SECONDS},AGROLOG_ENABLE_DOCS=0"
 
 assert_private_gateway
 
@@ -123,5 +141,7 @@ echo "Max instances: ${MAX_INSTANCES}; concurrency: ${CONCURRENCY}; timeout: ${R
 echo "BigQuery maximum bytes billed: ${BQ_MAX_BYTES_BILLED}; query timeout: ${BQ_QUERY_TIMEOUT_SECONDS}s"
 echo "Maritime UI: /maritime/"
 echo "Dataset Maritime: ${PROJECT_ID}.${MARITIME_DATASET}"
+echo "Dataset Pecuária: ${PROJECT_ID}.${PECUARIA_DATASET}"
+echo "Dataset Comércio Exterior: ${PROJECT_ID}.${TRADE_DATASET}"
 echo "Build staging: gs://${BUILD_SOURCE_BUCKET}"
 echo "IAM, APIs e datasets permanecem responsabilidade do bootstrap administrativo."

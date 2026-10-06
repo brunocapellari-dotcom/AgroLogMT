@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO="${REPO:-brunocapellari-dotcom/AgroLogMT}"
 RULESET_NAME="${RULESET_NAME:-AgroLog Security Baseline}"
-REQUIRED_CHECK="${REQUIRED_CHECK:-unittest}"
+REQUIRED_CHECK="${REQUIRED_CHECK:-Whole project deterministic gate}"
 API_VERSION="${GITHUB_API_VERSION:-2026-03-10}"
 
 command -v gh >/dev/null 2>&1 || { echo 'ERRO: gh ausente' >&2; exit 2; }
@@ -118,7 +118,7 @@ if obj.get('enforcement') != 'active':
     errors.append('ruleset não está active')
 ref=((obj.get('conditions') or {}).get('ref_name') or {})
 if 'refs/heads/main' not in (ref.get('include') or []):
-    errors.append('main não está explicitamente protegido')
+    errors.append('main não está explicitamente protegida')
 rules={r.get('type'):r for r in obj.get('rules', [])}
 for required in ('deletion','non_fast_forward','pull_request','required_status_checks'):
     if required not in rules:

@@ -13,7 +13,13 @@ from .conab_armazens_pipeline import run_conab_armazens_pipeline
 from .conab_safra import SOURCE_ID as CONAB_SAFRA_SOURCE_ID
 from .conab_safra_pipeline import run_conab_safra_pipeline
 from .ibge_pipeline import SOURCE_ID as IBGE_SOURCE_ID, run_ibge_pipeline
+from .ibge_ppm import SOURCE_ID as IBGE_PPM_SOURCE_ID
+from .ibge_ppm_pipeline import run_ibge_ppm_pipeline
+from .ibge_slaughter import SOURCE_ID as IBGE_SLAUGHTER_SOURCE_ID
+from .ibge_slaughter_pipeline import run_ibge_slaughter_pipeline
 from .imea_operational_pipeline import SOURCE_ID as IMEA_OPERATIONAL_SOURCE_ID, run_imea_operational_pipeline
+from .mapa_sigsif import SOURCE_ID as MAPA_SIGSIF_SOURCE_ID
+from .mapa_sigsif_pipeline import run_mapa_sigsif_pipeline
 from .models import SourceSpec
 from .nasa_power_pipeline import SOURCE_ID as NASA_POWER_SOURCE_ID, run_nasa_power_pipeline
 from .nass_quickstats_pipeline import run_nass_quickstats_pipeline
@@ -44,6 +50,12 @@ def _execute_spec(
         return run_conab_safra_pipeline(spec, store)
     if spec.source_id == IBGE_SOURCE_ID:
         return run_ibge_pipeline(spec, store)
+    if spec.source_id == IBGE_PPM_SOURCE_ID:
+        return run_ibge_ppm_pipeline(spec, store)
+    if spec.source_id == IBGE_SLAUGHTER_SOURCE_ID:
+        return run_ibge_slaughter_pipeline(spec, store)
+    if spec.source_id == MAPA_SIGSIF_SOURCE_ID:
+        return run_mapa_sigsif_pipeline(spec, store)
     if spec.source_id == NASA_POWER_SOURCE_ID:
         return run_nasa_power_pipeline(spec, store)
     if spec.source_id == IMEA_OPERATIONAL_SOURCE_ID:
@@ -120,6 +132,9 @@ def _run_registry_mode(store: DriveBigQueryStore, engine: CollectorEngine) -> in
         for value in os.environ.get("AGROLOG_WAKE_SOURCE_IDS", "").split(",")
         if value.strip()
     }
+    gated_canary = os.environ.get("AGROLOG_GATED_CANARY", "0").strip() == "1"
+    if gated_canary and not registry_source_id:
+        raise SystemExit("AGROLOG_GATED_CANARY=1 exige AGROLOG_SOURCE_ID explícito")
 
     registry = DataSourceRegistry.load(registry_path)
     scheduler = RegistryScheduler(registry, store, repo_root=Path("/app"))
@@ -127,6 +142,7 @@ def _run_registry_mode(store: DriveBigQueryStore, engine: CollectorEngine) -> in
         source_id=registry_source_id,
         domain=domain,
         wake_sources=wake_sources,
+        allow_gated_canary=gated_canary,
     )
     if not plan:
         raise SystemExit(f"Registry scheduler sem fontes para source_id={registry_source_id!r} domain={domain!r}")
@@ -185,6 +201,7 @@ def _run_registry_mode(store: DriveBigQueryStore, engine: CollectorEngine) -> in
             "failed": failed,
             "source_id": registry_source_id,
             "domain": domain,
+            "gated_canary": gated_canary,
             "source_health_alert_count": len(alert_sources),
             "source_health_alert_sources": sorted(alert_sources),
         }

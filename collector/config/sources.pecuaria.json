@@ -1,0 +1,82 @@
+{
+  "sources": [
+    {
+      "source_id": "ibge_sidra_ppm_3939",
+      "name": "IBGE SIDRA PPM - efetivo bovino municipal MT",
+      "group": "pecuaria",
+      "method": "http",
+      "enabled": true,
+      "url": "https://apisidra.ibge.gov.br/values/t/3939/n6/in%20n3%2051/v/105/p/all/c79/2670?formato=json",
+      "expected_frequency": "annual",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "timeout_seconds": 180
+      },
+      "notes": "Histórico municipal completo da PPM para bovinos em Mato Grosso. RAW oficial preservado; disponibilidade/publicação histórica não é inventada e o histórico permanece inelegível como feature point-in-time até reconstrução de vintages."
+    },
+    {
+      "source_id": "ibge_sidra_slaughter_1092",
+      "name": "IBGE SIDRA - Pesquisa Trimestral do Abate bovino MT",
+      "group": "pecuaria",
+      "method": "http",
+      "enabled": true,
+      "url": "https://apisidra.ibge.gov.br/values/t/1092/n3/51/v/284,285/p/all/c12716/115236/c12529/118225/c18/992?formato=json",
+      "expected_frequency": "quarterly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "timeout_seconds": 180
+      },
+      "notes": "Série oficial revisionável de bovinos abatidos e peso total de carcaças em Mato Grosso, total do trimestre, total de inspeção e total do rebanho bovino. Snapshots são preservados; publicação histórica não é inferida e o histórico não é feature point-in-time até reconstrução de vintages."
+    },
+    {
+      "source_id": "mapa_sigsif_slaughter_snapshot",
+      "name": "MAPA PGA/SIGSIF - abate bovino por sexo e UF de procedência",
+      "group": "pecuaria",
+      "method": "ckan_resource",
+      "enabled": true,
+      "expected_frequency": "monthly",
+      "file_extension": "csv",
+      "evidence_class": "observado",
+      "options": {
+        "base_url": "https://dados.agricultura.gov.br",
+        "dataset_id": "062166e3-b515-4274-8e7d-68aadd64b820",
+        "resource_id": "341dc717-4716-42ab-b189-c8d7a9d2a1ba",
+        "timeout_seconds": 120
+      },
+      "notes": "Snapshot oficial SIF atualizado mensalmente, com UF de procedência, categoria, macho e fêmea. O CSV não possui competência/período interno no dicionário oficial; por isso serve como cross-check atual e composição por sexo, nunca como substituto da série histórica IBGE nem como fluxo mensal retroativo."
+    },
+    {
+      "source_id": "mdic_comexstat_beef_mt_export_api",
+      "name": "MDIC/SECEX ComexStat API - exportação carne bovina in natura MT",
+      "group": "pecuaria",
+      "method": "comexstat_api",
+      "enabled": true,
+      "expected_frequency": "monthly",
+      "file_extension": "json",
+      "evidence_class": "observado",
+      "options": {
+        "module": "general",
+        "period_mode": "latest_complete_month",
+        "flow": "export",
+        "month_detail": true,
+        "expected_state_name": "Mato Grosso",
+        "filters": [
+          {
+            "filter": "ncm",
+            "values": [2011000, 2012010, 2012020, 2012090, 2013000, 2021000, 2022010, 2022020, 2022090, 2023000]
+          },
+          {
+            "filter": "state",
+            "values": [52]
+          }
+        ],
+        "details": ["ncm", "state", "country", "via", "urf"],
+        "metrics": ["metricFOB", "metricKG"],
+        "timeout_seconds": 180
+      },
+      "notes": "Fluxo operacional corrente de carne bovina in natura 0201/0202, sem miudezas. Os 10 NCM8 são o contrato corrente; o agregado histórico usa os headings HS4 0201/0202 na tabela canônica anual e nunca retroprojeta cegamente a cesta NCM8 atual."
+    }
+  ]
+}

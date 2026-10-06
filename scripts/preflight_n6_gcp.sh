@@ -8,6 +8,7 @@ OPS_DATASET="${OPS_DATASET:-agrolog_ops}"
 LOGISTICA_DATASET="${LOGISTICA_DATASET:-logistica}"
 TRADE_DATASET="${TRADE_DATASET:-comercio_exterior}"
 AGRO_DATASET="${AGRO_DATASET:-agro}"
+PECUARIA_DATASET="${PECUARIA_DATASET:-pecuaria}"
 MARITIME_DATASET="${MARITIME_DATASET:-agrolog_models}"
 MERCADO_DATASET="${MERCADO_DATASET:-mercado}"
 HIDRO_DATASET="${HIDRO_DATASET:-hidrologia}"
@@ -15,11 +16,13 @@ COLLECTOR_SA_NAME="${COLLECTOR_SA_NAME:-agrolog-collector}"
 GATEWAY_SA_NAME="${GATEWAY_SA_NAME:-agrolog-gateway}"
 BUILD_SA_NAME="${BUILD_SA_NAME:-agrolog-builder}"
 DEPLOYER_SA_NAME="${DEPLOYER_SA_NAME:-agrolog-github-deployer}"
+SCHEDULER_SA_NAME="${SCHEDULER_SA_NAME:-agrolog-scheduler}"
 AR_REPOSITORY="${AR_REPOSITORY:-agrolog}"
 BUILD_SOURCE_BUCKET="${BUILD_SOURCE_BUCKET:-${PROJECT_ID}-agrolog-build-source}"
 POOL_ID="${POOL_ID:-github}"
 PROVIDER_ID="${PROVIDER_ID:-agrologmt}"
 GATEWAY_SERVICE_NAME="${GATEWAY_SERVICE_NAME:-agrolog-gateway}"
+DRIVE_FOLDER_SECRET="${DRIVE_FOLDER_SECRET:-agrolog-drive-folder-id}"
 
 failures=0
 warnings=0
@@ -43,7 +46,8 @@ ok "localização BigQuery esperada: $BQ_LOCATION"
 for api in \
   run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com \
   bigquery.googleapis.com drive.googleapis.com iam.googleapis.com storage.googleapis.com \
-  iamcredentials.googleapis.com sts.googleapis.com logging.googleapis.com secretmanager.googleapis.com; do
+  iamcredentials.googleapis.com sts.googleapis.com logging.googleapis.com secretmanager.googleapis.com \
+  cloudscheduler.googleapis.com; do
   if gcloud services list --enabled --project "$PROJECT_ID" --filter="config.name=$api" --format='value(config.name)' | grep -qx "$api"; then
     ok "API habilitada: $api"
   else
@@ -51,7 +55,7 @@ for api in \
   fi
 done
 
-for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"; do
+for dataset in "$OPS_DATASET" "$LOGISTICA_DATASET" "$TRADE_DATASET" "$AGRO_DATASET" "$PECUARIA_DATASET" "$MARITIME_DATASET" "$MERCADO_DATASET" "$HIDRO_DATASET"; do
   tmp="/tmp/agrolog-dataset-${dataset}.json"
   if bq show --project_id="$PROJECT_ID" --format=prettyjson "${PROJECT_ID}:${dataset}" >"$tmp" 2>/dev/null; then
     actual_location="$(python - "$tmp" <<'PY'
@@ -69,10 +73,14 @@ PY
   fi
 done
 
-SA_EMAILS=()
-for name in "$DEPLOYER_SA_NAME" "$BUILD_SA_NAME" "$COLLECTOR_SA_NAME" "$GATEWAY_SA_NAME"; do
-  sa="${name}@${PROJECT_ID}.iam.gserviceaccount.com"
-  SA_EMAILS+=("$sa")
+DEPLOYER_SA_EMAIL="${DEPLOYER_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+BUILD_SA_EMAIL="${BUILD_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+COLLECTOR_SA_EMAIL="${COLLECTOR_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+GATEWAY_SA_EMAIL="${GATEWAY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+SCHEDULER_SA_EMAIL="${SCHEDULER_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+SA_EMAILS=("$DEPLOYER_SA_EMAIL" "$BUILD_SA_EMAIL" "$COLLECTOR_SA_EMAIL" "$GATEWAY_SA_EMAIL" "$SCHEDULER_SA_EMAIL")
+
+for sa in "${SA_EMAILS[@]}"; do
   if gcloud iam service-accounts describe "$sa" --project "$PROJECT_ID" >/dev/null 2>&1; then
     ok "service account existe: $sa"
     if user_keys="$(gcloud iam service-accounts keys list \
@@ -90,31 +98,48 @@ for name in "$DEPLOYER_SA_NAME" "$BUILD_SA_NAME" "$COLLECTOR_SA_NAME" "$GATEWAY_
   fi
 done
 
-# Runtime identities não podem carregar papéis administrativos genéricos no projeto.
+# Runtime identities não podem carregar papéis administrativos genéricos e as
+# identidades precisam apenas dos papéis mínimos de execução esperados.
 policy_file="/tmp/agrolog-project-iam.json"
 gcloud projects get-iam-policy "$PROJECT_ID" --format=json >"$policy_file"
-python - "$policy_file" "$PROJECT_ID" "${SA_EMAILS[@]}" <<'PY' || failures=$((failures+1))
+python - "$policy_file" "$PROJECT_ID" "$DEPLOYER_SA_EMAIL" "$BUILD_SA_EMAIL" "$COLLECTOR_SA_EMAIL" "$GATEWAY_SA_EMAIL" "$SCHEDULER_SA_EMAIL" <<'PY' || failures=$((failures+1))
 import json,sys
 policy=json.load(open(sys.argv[1], encoding='utf-8'))
 project=sys.argv[2]
-services=set(sys.argv[3:])
+deployer, builder, collector, gateway, scheduler = sys.argv[3:8]
+services={deployer, builder, collector, gateway, scheduler}
 forbidden={
     'roles/owner','roles/editor','roles/bigquery.admin','roles/resourcemanager.projectIamAdmin',
     'roles/iam.serviceAccountAdmin','roles/serviceusage.serviceUsageAdmin','roles/run.admin',
 }
+roles_by_member={service:set() for service in services}
 hits=[]
 for binding in policy.get('bindings', []):
     role=binding.get('role')
-    if role not in forbidden:
-        continue
     for member in binding.get('members', []):
-        if member.startswith('serviceAccount:') and member.split(':',1)[1] in services:
-            hits.append((member, role))
+        if not member.startswith('serviceAccount:'):
+            continue
+        email=member.split(':',1)[1]
+        if email in services:
+            roles_by_member[email].add(role)
+            if role in forbidden:
+                hits.append((member, role))
 if hits:
     for member,role in hits:
         print(f'FAIL privilégio administrativo excessivo no projeto {project}: {member} -> {role}')
     raise SystemExit(1)
-print('OK   nenhuma service account AgroLog possui papel administrativo genérico proibido no projeto')
+required={
+    deployer:'roles/bigquery.jobUser',
+    collector:'roles/bigquery.user',
+    gateway:'roles/bigquery.jobUser',
+    scheduler:'roles/run.invoker',
+}
+missing=[(member,role) for member,role in required.items() if role not in roles_by_member.get(member,set())]
+if missing:
+    for member,role in missing:
+        print(f'FAIL papel mínimo ausente no projeto {project}: serviceAccount:{member} -> {role}')
+    raise SystemExit(1)
+print('OK   IAM do projeto sem papéis administrativos proibidos e com papéis mínimos esperados')
 PY
 
 if gcloud iam workload-identity-pools providers describe "$PROVIDER_ID" \
@@ -142,6 +167,16 @@ else
   fail "WIF provider ausente: ${POOL_ID}/${PROVIDER_ID}"
 fi
 
+if gcloud secrets describe "$DRIVE_FOLDER_SECRET" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  if gcloud secrets versions access latest --secret "$DRIVE_FOLDER_SECRET" --project "$PROJECT_ID" >/dev/null 2>&1; then
+    ok "referência RAW disponível no Secret Manager e legível pela identidade de release"
+  else
+    fail "segredo RAW existe, mas a identidade ativa não consegue ler a versão latest"
+  fi
+else
+  fail "segredo RAW ausente: ${DRIVE_FOLDER_SECRET}; reexecute bootstrap com DRIVE_FOLDER_ID"
+fi
+
 if gcloud artifacts repositories describe "$AR_REPOSITORY" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
   ok "Artifact Registry: $AR_REPOSITORY"
 else
@@ -153,7 +188,7 @@ else
   fail "Build staging bucket ausente: gs://${BUILD_SOURCE_BUCKET}"
 fi
 
-for job in agrolog-dados agrolog-radar agrolog-conhecimento; do
+for job in agrolog-dados agrolog-radar agrolog-conhecimento agrolog-pecuaria; do
   if gcloud run jobs describe "$job" --region "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
     ok "Cloud Run Job existente: $job"
   else
@@ -161,7 +196,6 @@ for job in agrolog-dados agrolog-radar agrolog-conhecimento; do
   fi
 done
 
-GATEWAY_SA_EMAIL="${GATEWAY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 if gcloud run services describe "$GATEWAY_SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
   ok "Cloud Run service existente: $GATEWAY_SERVICE_NAME"
   gateway_sa="$(gcloud run services describe "$GATEWAY_SERVICE_NAME" \
@@ -177,9 +211,9 @@ if gcloud run services describe "$GATEWAY_SERVICE_NAME" --region "$REGION" --pro
     --filter='bindings.role=roles/run.invoker AND (bindings.members=allUsers OR bindings.members=allAuthenticatedUsers)' \
     --format='value(bindings.members)' | head -n1)"
   if [[ "$broad_binding" == "allUsers" || "$broad_binding" == "allAuthenticatedUsers" ]]; then
-    fail "Gateway possui invocação ampla: ${broad_binding}/roles.run.invoker"
+    fail "Gateway possui invocação ampla: ${broad_binding}/roles/run.invoker"
   else
-    ok "Gateway sem allUsers/allAuthenticatedUsers em roles.run.invoker"
+    ok "Gateway sem allUsers/allAuthenticatedUsers em roles/run.invoker"
   fi
 else
   warn 'AgroLog Gateway ainda não implantado'
