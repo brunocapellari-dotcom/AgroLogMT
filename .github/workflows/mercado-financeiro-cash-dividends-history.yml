@@ -1,0 +1,33 @@
+name: Mercado Financeiro Cash Dividends History
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'tools/mercado_financeiro_bridge/download_cash_dividends_history.py'
+      - '.github/workflows/mercado-financeiro-cash-dividends-history.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acquire-cash-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download B3 historical cash dividends
+        working-directory: tools/mercado_financeiro_bridge
+        run: python download_cash_dividends_history.py
+      - name: Upload history bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mf-b3-cash-dividends-history
+          path: tools/mercado_financeiro_bridge/mf_cash_dividends_history/
+          if-no-files-found: error
+          retention-days: 7
