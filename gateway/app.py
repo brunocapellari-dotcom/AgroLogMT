@@ -26,6 +26,8 @@ from .intelligence_queries import (
     build_overview_sql,
     build_ptax_current_sql,
     build_storage_balance_sql,
+    build_imea_market_indicators_sql,
+    build_weather_consensus_sql,
     build_crop_current_sql,
     build_freight_history_sql,
 )
@@ -585,6 +587,47 @@ def intelligence_freight_history(
     }
 
 
+@app.get("/v1/intelligence/market-reference")
+def intelligence_market_reference(
+    product: str | None = None,
+    location: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    params = [
+        bigquery.ScalarQueryParameter("product", "STRING", product),
+        bigquery.ScalarQueryParameter("location", "STRING", location),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.imea_market_indicators_v1",
+        "evidence_class": "SOURCE_DECLARED",
+        "filters": {"product": product, "location": location, "limit": limit},
+        "data": [_jsonable(row) for row in _query(build_imea_market_indicators_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
+    }
+
+
+@app.get("/v1/intelligence/weather-consensus")
+def intelligence_weather_consensus(
+    geo_id: str | None = "MT",
+    variable: str | None = None,
+    hours: int = Query(default=360, ge=1, le=840),
+    limit: int = Query(default=500, ge=1, le=2000),
+) -> dict[str, Any]:
+    params = [
+        bigquery.ScalarQueryParameter("geo_id", "STRING", geo_id),
+        bigquery.ScalarQueryParameter("variable", "STRING", variable),
+        bigquery.ScalarQueryParameter("hours", "INT64", hours),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.weather_consensus_v1",
+        "evidence_class": "PREVISTO",
+        "method": "LATEST_RUN_PER_MODEL_THEN_ROBUST_CROSS_MODEL_DISTRIBUTION",
+        "filters": {"geo_id": geo_id, "variable": variable, "hours": hours, "limit": limit},
+        "data": [_jsonable(row) for row in _query(build_weather_consensus_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
+    }
+
+
 def _optional_component(name: str, source_id: str, sql: str, parameters: list[bigquery.ScalarQueryParameter]) -> dict[str, Any]:
     try:
         rows = [_jsonable(row) for row in _query(sql, parameters)]
@@ -618,6 +661,15 @@ def intelligence_commercial_snapshot(uf: str = "MT") -> dict[str, Any]:
             [bigquery.ScalarQueryParameter("currency", "STRING", "USD")],
         ),
         _optional_component(
+            "market_reference", "marts_agrolog360.imea_market_indicators_v1",
+            build_imea_market_indicators_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("product", "STRING", None),
+                bigquery.ScalarQueryParameter("location", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 200),
+            ],
+        ),
+        _optional_component(
             "crops_mt", "marts_agrolog360.crop_current_v1",
             build_crop_current_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
             [
@@ -647,6 +699,16 @@ def intelligence_commercial_snapshot(uf: str = "MT") -> dict[str, Any]:
                 bigquery.ScalarQueryParameter("destination", "STRING", None),
                 bigquery.ScalarQueryParameter("product", "STRING", None),
                 bigquery.ScalarQueryParameter("limit", "INT64", 100),
+            ],
+        ),
+        _optional_component(
+            "weather", "marts_agrolog360.weather_consensus_v1",
+            build_weather_consensus_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("geo_id", "STRING", uf),
+                bigquery.ScalarQueryParameter("variable", "STRING", None),
+                bigquery.ScalarQueryParameter("hours", "INT64", 360),
+                bigquery.ScalarQueryParameter("limit", "INT64", 1000),
             ],
         ),
         _optional_component(

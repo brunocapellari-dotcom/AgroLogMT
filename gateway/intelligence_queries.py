@@ -175,3 +175,40 @@ ORDER BY data_referencia DESC, unique_offer_clusters DESC
 LIMIT @limit
 """.strip()
 
+
+
+def build_imea_market_indicators_sql(project: str, dataset: str) -> str:
+    project = safe_identifier(project, label="project")
+    dataset = safe_identifier(dataset, label="dataset")
+    return f"""
+SELECT
+  snapshot_id, record_id, source_sheet, data_referencia, produto, metric_name,
+  valor, unidade_origem, unidade_canonica, local,
+  previous_value, avg_7d, avg_30d, historical_percentile,
+  evidence_class, evidence_subtype, negotiated, data_coleta, source_hash, raw_artifact_ref
+FROM `{project}.{dataset}.imea_market_indicators_v1`
+WHERE (@product IS NULL OR LOWER(produto)=LOWER(@product))
+  AND (@location IS NULL OR LOWER(local)=LOWER(@location))
+ORDER BY data_referencia DESC, produto, metric_name, local
+LIMIT @limit
+""".strip()
+
+
+def build_weather_consensus_sql(project: str, dataset: str) -> str:
+    project = safe_identifier(project, label="project")
+    dataset = safe_identifier(dataset, label="dataset")
+    return f"""
+SELECT
+  geo_id, variable, unit, valid_time,
+  model_count, member_count, model_p25, model_median, model_p75,
+  model_min, model_max, model_iqr,
+  models_revised_up, models_revised_down, models_unchanged,
+  models_with_run_comparison, data_coleta, evidence_class
+FROM `{project}.{dataset}.weather_consensus_v1`
+WHERE (@geo_id IS NULL OR geo_id=@geo_id)
+  AND (@variable IS NULL OR variable=@variable)
+  AND valid_time >= CURRENT_TIMESTAMP()
+  AND valid_time <= TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL @hours HOUR)
+ORDER BY valid_time, variable
+LIMIT @limit
+""".strip()

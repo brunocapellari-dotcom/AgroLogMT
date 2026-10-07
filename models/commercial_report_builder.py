@@ -54,6 +54,7 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
 
     overview = _rows(snapshot, "overview")
     ptax = _rows(snapshot, "ptax")
+    market_reference = _rows(snapshot, "market_reference")
     crops_mt = _rows(snapshot, "crops_mt") or _rows(snapshot, "crops")
     crops_br = _rows(snapshot, "crops_br")
     freight = _rows(snapshot, "freight")
@@ -81,25 +82,37 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
         ("marts_agrolog360.crop_current_v1", "marts_agrolog360.freight_history_v1"),
     )
 
-    market_status = "PARTIAL" if ptax else "SOURCE_GAP"
+    market_status = "READY" if ptax and market_reference else ("PARTIAL" if ptax or market_reference else "SOURCE_GAP")
+    market_bullets = [
+        f"PTAX USD venda: R$ {float(row['cotacao_venda']):.4f}"
+        for row in ptax[:1] if row.get("cotacao_venda") is not None
+    ]
+    market_bullets.extend(
+        f"{row.get('produto','—')} · {row.get('metric_name','—')} · {row.get('local','—')}: {row.get('valor','—')} {row.get('unidade_canonica') or row.get('unidade_origem') or ''} · Pctl {row.get('historical_percentile','—')}"
+        for row in market_reference[:8]
+    )
     sections["Mercado"] = ReportSection(
         "Mercado", market_status,
-        "Câmbio oficial disponível; preços físicos/CBOT/B3 precisam estar frescos para elevar esta seção a READY.",
-        tuple(
-            f"PTAX USD venda: R$ {float(row['cotacao_venda']):.4f}"
-            for row in ptax[:1] if row.get("cotacao_venda") is not None
-        ),
-        ("marts_agrolog360.ptax_current_v1",),
+        "Câmbio oficial e referências físicas autorizadas; CBOT/B3/CEPEA entram somente quando a licença/fonte estiver homologada.",
+        tuple(market_bullets),
+        ("marts_agrolog360.ptax_current_v1", "marts_agrolog360.imea_market_indicators_v1"),
     )
 
-    for product_id, title in (("soja", "Soja"), ("milho_total", "Milho")):
+    for product_id, title, market_token in (("soja", "Soja", "soja"), ("milho_total", "Milho", "milho")):
         rows = [row for row in crops_mt if row.get("product_id") == product_id and row.get("vintage_position") == "current"]
+        price_rows = [row for row in market_reference if market_token in str(row.get("produto", "")).lower()]
+        section_status = "READY" if rows and price_rows else ("PARTIAL" if rows or price_rows else "SOURCE_GAP")
+        bullets = [_crop_line(row) for row in rows[:4]]
+        bullets.extend(
+            f"{row.get('metric_name','—')} · {row.get('local','—')}: {row.get('valor','—')} {row.get('unidade_canonica') or ''}"
+            for row in price_rows[:4]
+        )
         sections[title] = ReportSection(
             title,
-            "PARTIAL" if rows else "SOURCE_GAP",
-            "Safra disponível; mercado completo, clima e comércio precisam convergir para READY.",
-            tuple(_crop_line(row) for row in rows[:4]),
-            ("marts_agrolog360.crop_current_v1",),
+            section_status,
+            "Safra e referência física são integradas quando ambas estão disponíveis; clima/exportação permanecem fatores adicionais do Analysis Engine.",
+            tuple(bullets),
+            ("marts_agrolog360.crop_current_v1", "marts_agrolog360.imea_market_indicators_v1"),
         )
 
     sections["Safra Brasil"] = ReportSection(

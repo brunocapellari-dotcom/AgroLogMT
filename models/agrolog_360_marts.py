@@ -91,6 +91,11 @@ SELECT
   COUNT(DISTINCT dedup_cluster_id) AS unique_offer_clusters,
   APPROX_QUANTILES(freight_brl_per_t, 100)[OFFSET(50)] AS freight_brl_per_t_p50,
   APPROX_QUANTILES(freight_brl_per_t_km, 100)[OFFSET(50)] AS freight_brl_per_t_km_p50,
+  APPROX_QUANTILES(distance_km, 100)[OFFSET(50)] AS distance_km_p50,
+  APPROX_QUANTILES(payload_t, 100)[OFFSET(50)] AS payload_t_p50,
+  APPROX_QUANTILES(announced_brl_per_trip, 100)[OFFSET(50)] AS announced_brl_per_trip_p50,
+  APPROX_QUANTILES(SAFE_DIVIDE(announced_brl_per_trip, NULLIF(distance_km,0)), 100)[OFFSET(50)] AS freight_brl_per_km_p50,
+  APPROX_QUANTILES(SAFE_MULTIPLY(payload_t, distance_km), 100)[OFFSET(50)] AS tku_estimated_p50,
   MAX(data_coleta) AS data_coleta,
   'DERIVADO_DE_OFERTAS_OBSERVADAS' AS evidence_class
 FROM {source}
@@ -306,6 +311,108 @@ WINDOW lane AS (
     return MartSql("freight_history", target_name, sql)
 
 
+
+def imea_market_indicators_sql(project_id: str) -> MartSql:
+    source = _q(project_id, "mercado", "imea_indicadores_operacionais")
+    target_name = "marts_agrolog360.imea_market_indicators_v1"
+    target = _q(project_id, "marts_agrolog360", "imea_market_indicators_v1")
+    sql = f"""CREATE OR REPLACE VIEW {target} AS
+SELECT
+  snapshot_id, record_id, source_sheet, data_referencia, produto, metric_name,
+  valor, unidade_origem, unidade_canonica, local,
+  evidence_class, evidence_subtype, negotiated, data_coleta, source_hash, raw_artifact_ref,
+  LAG(valor) OVER series AS previous_value,
+  AVG(valor) OVER (
+    PARTITION BY produto, metric_name, local, unidade_canonica
+    ORDER BY UNIX_DATE(data_referencia) RANGE BETWEEN 6 PRECEDING AND CURRENT ROW
+  ) AS avg_7d,
+  AVG(valor) OVER (
+    PARTITION BY produto, metric_name, local, unidade_canonica
+    ORDER BY UNIX_DATE(data_referencia) RANGE BETWEEN 29 PRECEDING AND CURRENT ROW
+  ) AS avg_30d,
+  PERCENT_RANK() OVER (
+    PARTITION BY produto, metric_name, local, unidade_canonica
+    ORDER BY valor
+  ) * 100 AS historical_percentile
+FROM {source}
+WINDOW series AS (
+  PARTITION BY produto, metric_name, local, unidade_canonica
+  ORDER BY data_referencia, data_coleta, snapshot_id
+)
+""".strip()
+    return MartSql("imea_market_indicators", target_name, sql)
+
+
+def weather_run_summary_sql(project_id: str) -> MartSql:
+    source = _q(project_id, "clima", "forecast_runs")
+    target_name = "marts_agrolog360.weather_run_summary_v1"
+    target = _q(project_id, "marts_agrolog360", "weather_run_summary_v1")
+    sql = f"""CREATE OR REPLACE VIEW {target} AS
+WITH run_values AS (
+  SELECT
+    source_id, model, run_id, initialization_time, forecast_hour, valid_time,
+    geo_id, resolution, variable, unit,
+    COUNT(*) AS member_count,
+    APPROX_QUANTILES(value, 100)[OFFSET(50)] AS run_median_value,
+    MIN(value) AS run_min_value,
+    MAX(value) AS run_max_value,
+    MAX(collection_time) AS collection_time
+  FROM {source}
+  GROUP BY source_id, model, run_id, initialization_time, forecast_hour, valid_time,
+           geo_id, resolution, variable, unit
+)
+SELECT
+  *,
+  LAG(run_median_value) OVER same_valid AS previous_run_median_value,
+  run_median_value - LAG(run_median_value) OVER same_valid AS run_delta_value
+FROM run_values
+WINDOW same_valid AS (
+  PARTITION BY source_id, model, geo_id, variable, unit, valid_time
+  ORDER BY initialization_time
+)
+""".strip()
+    return MartSql("weather_run_summary", target_name, sql)
+
+
+def weather_consensus_sql(project_id: str) -> MartSql:
+    source = _q(project_id, "marts_agrolog360", "weather_run_summary_v1")
+    target_name = "marts_agrolog360.weather_consensus_v1"
+    target = _q(project_id, "marts_agrolog360", "weather_consensus_v1")
+    sql = f"""CREATE OR REPLACE VIEW {target} AS
+WITH latest_model AS (
+  SELECT * EXCEPT(rn)
+  FROM (
+    SELECT *,
+      ROW_NUMBER() OVER (
+        PARTITION BY source_id, model, geo_id, variable, unit, valid_time
+        ORDER BY initialization_time DESC, collection_time DESC
+      ) AS rn
+    FROM {source}
+  )
+  WHERE rn=1
+)
+SELECT
+  geo_id, variable, unit, valid_time,
+  COUNT(DISTINCT CONCAT(source_id, ':', model)) AS model_count,
+  SUM(member_count) AS member_count,
+  APPROX_QUANTILES(run_median_value, 100)[OFFSET(25)] AS model_p25,
+  APPROX_QUANTILES(run_median_value, 100)[OFFSET(50)] AS model_median,
+  APPROX_QUANTILES(run_median_value, 100)[OFFSET(75)] AS model_p75,
+  MIN(run_median_value) AS model_min,
+  MAX(run_median_value) AS model_max,
+  APPROX_QUANTILES(run_median_value, 100)[OFFSET(75)] - APPROX_QUANTILES(run_median_value, 100)[OFFSET(25)] AS model_iqr,
+  COUNTIF(run_delta_value > 0) AS models_revised_up,
+  COUNTIF(run_delta_value < 0) AS models_revised_down,
+  COUNTIF(run_delta_value = 0) AS models_unchanged,
+  COUNTIF(run_delta_value IS NOT NULL) AS models_with_run_comparison,
+  MAX(collection_time) AS data_coleta,
+  'PREVISTO' AS evidence_class
+FROM latest_model
+GROUP BY geo_id, variable, unit, valid_time
+""".strip()
+    return MartSql("weather_consensus", target_name, sql)
+
+
 def build_agrolog360_sql_bundle(project_id: str) -> tuple[MartSql, ...]:
     return (
         climate_rollups_sql(project_id),
@@ -320,4 +427,7 @@ def build_agrolog360_sql_bundle(project_id: str) -> tuple[MartSql, ...]:
         crop_vintages_sql(project_id),
         crop_current_sql(project_id),
         freight_history_sql(project_id),
+        imea_market_indicators_sql(project_id),
+        weather_run_summary_sql(project_id),
+        weather_consensus_sql(project_id),
     )

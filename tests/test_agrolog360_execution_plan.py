@@ -31,6 +31,9 @@ class AgroLog360ExecutionPlanTests(unittest.TestCase):
             "crop_vintages",
             "crop_current",
             "freight_history",
+            "imea_market_indicators",
+            "weather_run_summary",
+            "weather_consensus",
         }
         self.assertEqual(set(SOURCE_DEPENDENCIES), expected)
         self.assertTrue(all(SOURCE_DEPENDENCIES[key] for key in expected))
