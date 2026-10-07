@@ -226,6 +226,86 @@ LEFT JOIN latest_climate c ON c.geo_id=s.uf
     return MartSql("overview_current", target_name, sql)
 
 
+def crop_vintages_sql(project_id: str) -> MartSql:
+    source = _q(project_id, "agro", "conab_safra_graos")
+    target_name = "marts_agrolog360.crop_vintages_v1"
+    target = _q(project_id, "marts_agrolog360", "crop_vintages_v1")
+    sql = f"""CREATE OR REPLACE VIEW {target} AS
+WITH ordered AS (
+  SELECT
+    snapshot_id, source_id, geo_level, geo_id, product_id, safra, vintage_position,
+    area_mil_ha, produtividade_kg_ha, producao_mil_t,
+    data_referencia, data_publicacao, data_coleta, competencia,
+    evidence_class, raw_artifact_ref, source_url, source_hash, source_sheet, source_row,
+    LAG(area_mil_ha) OVER w AS previous_area_mil_ha,
+    LAG(produtividade_kg_ha) OVER w AS previous_produtividade_kg_ha,
+    LAG(producao_mil_t) OVER w AS previous_producao_mil_t
+  FROM {source}
+  WINDOW w AS (
+    PARTITION BY geo_level, geo_id, product_id, safra, vintage_position
+    ORDER BY data_publicacao, data_coleta, snapshot_id
+  )
+)
+SELECT *,
+  area_mil_ha - previous_area_mil_ha AS delta_area_mil_ha,
+  SAFE_MULTIPLY(SAFE_DIVIDE(area_mil_ha - previous_area_mil_ha, NULLIF(ABS(previous_area_mil_ha),0)),100) AS delta_area_pct,
+  produtividade_kg_ha - previous_produtividade_kg_ha AS delta_produtividade_kg_ha,
+  SAFE_MULTIPLY(SAFE_DIVIDE(produtividade_kg_ha - previous_produtividade_kg_ha, NULLIF(ABS(previous_produtividade_kg_ha),0)),100) AS delta_produtividade_pct,
+  producao_mil_t - previous_producao_mil_t AS delta_producao_mil_t,
+  SAFE_MULTIPLY(SAFE_DIVIDE(producao_mil_t - previous_producao_mil_t, NULLIF(ABS(previous_producao_mil_t),0)),100) AS delta_producao_pct
+FROM ordered
+""".strip()
+    return MartSql("crop_vintages", target_name, sql)
+
+
+def crop_current_sql(project_id: str) -> MartSql:
+    source = _q(project_id, "marts_agrolog360", "crop_vintages_v1")
+    target_name = "marts_agrolog360.crop_current_v1"
+    target = _q(project_id, "marts_agrolog360", "crop_current_v1")
+    sql = f"""CREATE OR REPLACE VIEW {target} AS
+SELECT * EXCEPT(rn)
+FROM (
+  SELECT *,
+    ROW_NUMBER() OVER (
+      PARTITION BY geo_level, geo_id, product_id, safra, vintage_position
+      ORDER BY data_publicacao DESC, data_coleta DESC, snapshot_id DESC
+    ) AS rn
+  FROM {source}
+)
+WHERE rn=1
+""".strip()
+    return MartSql("crop_current", target_name, sql)
+
+
+def freight_history_sql(project_id: str) -> MartSql:
+    source = _q(project_id, "marts_agrolog360", "freight_lanes_v1")
+    target_name = "marts_agrolog360.freight_history_v1"
+    target = _q(project_id, "marts_agrolog360", "freight_history_v1")
+    sql = f"""CREATE OR REPLACE VIEW {target} AS
+SELECT
+  *,
+  LAG(freight_brl_per_t_p50) OVER lane AS freight_brl_per_t_previous,
+  AVG(freight_brl_per_t_p50) OVER (
+    PARTITION BY origin_municipality_id, destination_municipality_id, product_id
+    ORDER BY UNIX_DATE(data_referencia) RANGE BETWEEN 6 PRECEDING AND CURRENT ROW
+  ) AS freight_brl_per_t_avg_7d,
+  AVG(freight_brl_per_t_p50) OVER (
+    PARTITION BY origin_municipality_id, destination_municipality_id, product_id
+    ORDER BY UNIX_DATE(data_referencia) RANGE BETWEEN 29 PRECEDING AND CURRENT ROW
+  ) AS freight_brl_per_t_avg_30d,
+  PERCENT_RANK() OVER (
+    PARTITION BY origin_municipality_id, destination_municipality_id, product_id
+    ORDER BY freight_brl_per_t_p50
+  ) * 100 AS historical_percentile
+FROM {source}
+WINDOW lane AS (
+  PARTITION BY origin_municipality_id, destination_municipality_id, product_id
+  ORDER BY data_referencia
+)
+""".strip()
+    return MartSql("freight_history", target_name, sql)
+
+
 def build_agrolog360_sql_bundle(project_id: str) -> tuple[MartSql, ...]:
     return (
         climate_rollups_sql(project_id),
@@ -237,4 +317,7 @@ def build_agrolog360_sql_bundle(project_id: str) -> tuple[MartSql, ...]:
         ptax_current_sql(project_id),
         imea_freight_reference_sql(project_id),
         overview_sql(project_id),
+        crop_vintages_sql(project_id),
+        crop_current_sql(project_id),
+        freight_history_sql(project_id),
     )

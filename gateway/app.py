@@ -25,6 +25,8 @@ from .intelligence_queries import (
     build_overview_sql,
     build_ptax_current_sql,
     build_storage_balance_sql,
+    build_crop_current_sql,
+    build_freight_history_sql,
 )
 from .maritime_queries import (
     build_lineup_reconciliation_sql,
@@ -534,6 +536,122 @@ def intelligence_imea_freight_reference(
         "route_type": "UNCLASSIFIED",
         "filters": {"origin": origin, "destination": destination, "product": product, "limit": limit},
         "data": [_jsonable(row) for row in _query(build_imea_freight_reference_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
+    }
+
+
+@app.get("/v1/intelligence/crops")
+def intelligence_crops(
+    geo_level: str | None = None,
+    geo_id: str | None = None,
+    product: str | None = None,
+    safra: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    params = [
+        bigquery.ScalarQueryParameter("geo_level", "STRING", geo_level),
+        bigquery.ScalarQueryParameter("geo_id", "STRING", geo_id),
+        bigquery.ScalarQueryParameter("product", "STRING", product),
+        bigquery.ScalarQueryParameter("safra", "STRING", safra),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.crop_current_v1",
+        "evidence_class": "DERIVED_FROM_CONAB_VINTAGES",
+        "filters": {"geo_level": geo_level, "geo_id": geo_id, "product": product, "safra": safra, "limit": limit},
+        "data": [_jsonable(row) for row in _query(build_crop_current_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
+    }
+
+
+@app.get("/v1/intelligence/freight-history")
+def intelligence_freight_history(
+    origin: str | None = None,
+    destination: str | None = None,
+    product: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    params = [
+        bigquery.ScalarQueryParameter("origin", "STRING", origin),
+        bigquery.ScalarQueryParameter("destination", "STRING", destination),
+        bigquery.ScalarQueryParameter("product", "STRING", product),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.freight_history_v1",
+        "evidence_class": "DERIVED_FROM_OBSERVED_OFFERS_NOT_EXECUTED_FREIGHT",
+        "filters": {"origin": origin, "destination": destination, "product": product, "limit": limit},
+        "data": [_jsonable(row) for row in _query(build_freight_history_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
+    }
+
+
+def _optional_component(name: str, source_id: str, sql: str, parameters: list[bigquery.ScalarQueryParameter]) -> dict[str, Any]:
+    try:
+        rows = [_jsonable(row) for row in _query(sql, parameters)]
+        return {"component": name, "source_id": source_id, "status": "FRESH_OR_SOURCE_DEFINED", "data": rows}
+    except HTTPException:
+        return {"component": name, "source_id": source_id, "status": "FAILED", "data": []}
+
+
+@app.get("/v1/intelligence/commercial-snapshot")
+def intelligence_commercial_snapshot(uf: str = "MT") -> dict[str, Any]:
+    """Return a failure-tolerant commercial snapshot.
+
+    Each component is isolated: a missing/stale table is exposed as FAILED and does
+    not turn the entire report snapshot into HTTP 5xx. This endpoint does not claim
+    freshness; source-specific freshness remains a separate release gate.
+    """
+    try:
+        uf = normalize_uf(uf) or "MT"
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    components = [
+        _optional_component(
+            "overview", "marts_agrolog360.overview_current_v1",
+            build_overview_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [bigquery.ScalarQueryParameter("uf", "STRING", uf)],
+        ),
+        _optional_component(
+            "ptax", "marts_agrolog360.ptax_current_v1",
+            build_ptax_current_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [bigquery.ScalarQueryParameter("currency", "STRING", "USD")],
+        ),
+        _optional_component(
+            "crops", "marts_agrolog360.crop_current_v1",
+            build_crop_current_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("geo_level", "STRING", "UF"),
+                bigquery.ScalarQueryParameter("geo_id", "STRING", uf),
+                bigquery.ScalarQueryParameter("product", "STRING", None),
+                bigquery.ScalarQueryParameter("safra", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 100),
+            ],
+        ),
+        _optional_component(
+            "freight", "marts_agrolog360.freight_history_v1",
+            build_freight_history_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("origin", "STRING", None),
+                bigquery.ScalarQueryParameter("destination", "STRING", None),
+                bigquery.ScalarQueryParameter("product", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 100),
+            ],
+        ),
+        _optional_component(
+            "hydrology", "marts_agrolog360.hydrology_latest_v1",
+            build_hydrology_latest_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("river", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 50),
+            ],
+        ),
+    ]
+    failed = [item["component"] for item in components if item["status"] == "FAILED"]
+    return {
+        "product": "AGROLOG INTELLIGENCE",
+        "uf": uf,
+        "status": "PARTIAL" if failed else "READY_FOR_ANALYSIS",
+        "failed_components": failed,
+        "components": components,
     }
 
 
