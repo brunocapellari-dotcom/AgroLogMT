@@ -16,8 +16,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from google.cloud import bigquery
 
-from .freight_ingest import create_freight_router
-
 from .maritime_queries import (
     build_lineup_reconciliation_sql,
     build_live_vessels_sql,
@@ -41,9 +39,6 @@ PROJECT_ID = safe_identifier(
 DATASET_ID = safe_identifier(os.environ.get("AGROLOG_LOGISTICA_DATASET", "logistica"), label="dataset")
 MARITIME_DATASET_ID = safe_identifier(
     os.environ.get("AGROLOG_MARITIME_DATASET", "agrolog_models"), label="maritime_dataset"
-)
-FREIGHT_DATASET_ID = safe_identifier(
-    os.environ.get("AGROLOG_FREIGHT_DATASET", "logistica"), label="freight_dataset"
 )
 BQ_LOCATION = os.environ.get("AGROLOG_BQ_LOCATION", "southamerica-east1")
 BQ_MAX_BYTES_BILLED = int(os.environ.get("AGROLOG_BQ_MAX_BYTES_BILLED", "1000000000"))
@@ -122,16 +117,6 @@ if cors_origins:
     )
 
 client = bigquery.Client(project=PROJECT_ID, location=BQ_LOCATION)
-app.include_router(
-    create_freight_router(
-        client,
-        PROJECT_ID,
-        FREIGHT_DATASET_ID,
-        max_bytes_billed=BQ_MAX_BYTES_BILLED,
-        query_timeout_seconds=BQ_QUERY_TIMEOUT_SECONDS,
-    )
-)
-
 
 def _request_id(value: str | None) -> str:
     if value and REQUEST_ID_RE.fullmatch(value):

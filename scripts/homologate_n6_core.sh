@@ -60,11 +60,15 @@ grep -Fq 'COMEXSTAT_HOMOLOGATION_PASS' "${RUN_DIR}/07-comex-homologation.log"
 log_step "8. Deploy Gateway"
 bash scripts/deploy_gateway_gcloud.sh 2>&1 | tee "${RUN_DIR}/08-deploy-gateway.log"
 
-log_step "9. Validação Gateway x BigQuery"
+log_step "9. Deploy Freight Ingest"
+bash scripts/deploy_freight_ingest_gcloud.sh 2>&1 | tee "${RUN_DIR}/09-deploy-freight-ingest.log"
+grep -Fq 'FREIGHT_INGEST_DEPLOY_PASS' "${RUN_DIR}/09-deploy-freight-ingest.log"
+
+log_step "10. Validação Gateway x BigQuery"
 python scripts/validate_gateway_n6.py \
   --project "${PROJECT_ID}" --region "${REGION}" \
-  --out "${RUN_DIR}/09-gateway-validation.json" \
-  2>&1 | tee "${RUN_DIR}/09-gateway-validation.log"
+  --out "${RUN_DIR}/10-gateway-validation.json" \
+  2>&1 | tee "${RUN_DIR}/10-gateway-validation.log"
 
 cat > "${RUN_DIR}/RESULT.txt" <<EOF
 N6 CORE HOMOLOGATION: PASS
@@ -73,6 +77,7 @@ region=${REGION}
 conab_source=${CONAB_SOURCE_ID}
 comex_source=${COMEX_SOURCE_ID}
 comex_gate=PASS
+freight_ingest_gate=PASS
 generated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 evidence_dir=${RUN_DIR}
 EOF

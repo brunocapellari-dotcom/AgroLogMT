@@ -20,6 +20,9 @@ BUILD_SOURCE_BUCKET="${BUILD_SOURCE_BUCKET:-${PROJECT_ID}-agrolog-build-source}"
 POOL_ID="${POOL_ID:-github}"
 PROVIDER_ID="${PROVIDER_ID:-agrologmt}"
 GATEWAY_SERVICE_NAME="${GATEWAY_SERVICE_NAME:-agrolog-gateway}"
+FREIGHT_INGEST_SA_NAME="${FREIGHT_INGEST_SA_NAME:-agrolog-freight-ingest}"
+FREIGHT_SERVICE_NAME="${FREIGHT_SERVICE_NAME:-agrolog-freight-ingest}"
+FREIGHT_SECRET_NAME="${FREIGHT_SECRET_NAME:-agrolog-freight-shared-secret}"
 
 failures=0
 warnings=0
@@ -70,7 +73,7 @@ PY
 done
 
 SA_EMAILS=()
-for name in "$DEPLOYER_SA_NAME" "$BUILD_SA_NAME" "$COLLECTOR_SA_NAME" "$GATEWAY_SA_NAME"; do
+for name in "$DEPLOYER_SA_NAME" "$BUILD_SA_NAME" "$COLLECTOR_SA_NAME" "$GATEWAY_SA_NAME" "$FREIGHT_INGEST_SA_NAME"; do
   sa="${name}@${PROJECT_ID}.iam.gserviceaccount.com"
   SA_EMAILS+=("$sa")
   if gcloud iam service-accounts describe "$sa" --project "$PROJECT_ID" >/dev/null 2>&1; then
@@ -161,6 +164,45 @@ for job in agrolog-dados agrolog-radar agrolog-conhecimento; do
   fi
 done
 
+FREIGHT_INGEST_SA_EMAIL="${FREIGHT_INGEST_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+
+if bq show --project_id="$PROJECT_ID" "${PROJECT_ID}:${LOGISTICA_DATASET}.freight_events" >/dev/null 2>&1; then
+  ok "freight_events existe em ${PROJECT_ID}.${LOGISTICA_DATASET}"
+else
+  fail "tabela freight_events ausente; execute bootstrap administrativo"
+fi
+
+if gcloud secrets describe "$FREIGHT_SECRET_NAME" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  if gcloud secrets versions list "$FREIGHT_SECRET_NAME" --project "$PROJECT_ID" \
+    --filter='state=ENABLED' --format='value(name)' | grep -q .; then
+    ok "secret de HMAC de frete possui versão habilitada"
+  else
+    fail "secret de HMAC de frete não possui versão ENABLED"
+  fi
+  secret_policy="/tmp/agrolog-freight-secret-iam.json"
+  gcloud secrets get-iam-policy "$FREIGHT_SECRET_NAME" --project "$PROJECT_ID" --format=json >"$secret_policy"
+  if python - "$secret_policy" "$FREIGHT_INGEST_SA_EMAIL" <<'PY'
+import json
+import sys
+
+policy = json.load(open(sys.argv[1], encoding="utf-8"))
+principal = "serviceAccount:" + sys.argv[2]
+allowed = any(
+    binding.get("role") == "roles/secretmanager.secretAccessor"
+    and principal in binding.get("members", [])
+    for binding in policy.get("bindings", [])
+)
+raise SystemExit(0 if allowed else 1)
+PY
+  then
+    ok "freight ingest possui acesso ao secret específico"
+  else
+    fail "freight ingest não possui secretAccessor no secret de HMAC"
+  fi
+else
+  fail "secret de HMAC de frete ausente: ${FREIGHT_SECRET_NAME}"
+fi
+
 GATEWAY_SA_EMAIL="${GATEWAY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 if gcloud run services describe "$GATEWAY_SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
   ok "Cloud Run service existente: $GATEWAY_SERVICE_NAME"
@@ -183,6 +225,29 @@ if gcloud run services describe "$GATEWAY_SERVICE_NAME" --region "$REGION" --pro
   fi
 else
   warn 'AgroLog Gateway ainda não implantado'
+fi
+
+if gcloud run services describe "$FREIGHT_SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  ok "Cloud Run service existente: $FREIGHT_SERVICE_NAME"
+  freight_sa="$(gcloud run services describe "$FREIGHT_SERVICE_NAME" \
+    --region "$REGION" --project "$PROJECT_ID" --format='value(spec.template.spec.serviceAccountName)')"
+  if [[ "$freight_sa" == "$FREIGHT_INGEST_SA_EMAIL" ]]; then
+    ok "Freight ingest usa service account dedicada"
+  else
+    fail "Freight ingest usa service account inesperada: ${freight_sa:-<vazia>}"
+  fi
+  broad_binding="$(gcloud run services get-iam-policy "$FREIGHT_SERVICE_NAME" \
+    --region "$REGION" --project "$PROJECT_ID" \
+    --flatten='bindings[].members' \
+    --filter='bindings.role=roles/run.invoker AND (bindings.members=allUsers OR bindings.members=allAuthenticatedUsers)' \
+    --format='value(bindings.members)' | head -n1)"
+  if [[ "$broad_binding" == "allUsers" || "$broad_binding" == "allAuthenticatedUsers" ]]; then
+    fail "Freight ingest possui invocação ampla: ${broad_binding}/roles.run.invoker"
+  else
+    ok "Freight ingest sem invocação pública"
+  fi
+else
+  warn "Freight ingest ainda não implantado"
 fi
 
 printf '\nResumo: failures=%d warnings=%d\n' "$failures" "$warnings"

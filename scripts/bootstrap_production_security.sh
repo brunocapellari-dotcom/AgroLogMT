@@ -37,7 +37,7 @@ fi
 printf 'OK Public Access Prevention=enforced\n'
 
 printf '== 4/5 Long-lived service-account key audit ==\n'
-for name in agrolog-github-deployer agrolog-builder agrolog-collector agrolog-gateway; do
+for name in agrolog-github-deployer agrolog-builder agrolog-collector agrolog-gateway agrolog-freight-ingest; do
   sa="${name}@${PROJECT_ID}.iam.gserviceaccount.com"
   keys="$(gcloud iam service-accounts keys list \
     --iam-account="$sa" --managed-by=user --project="$PROJECT_ID" --format='value(name)' 2>/dev/null || true)"
