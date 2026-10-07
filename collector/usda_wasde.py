@@ -31,6 +31,7 @@ class WasdeArtifact:
 
 @dataclass(frozen=True)
 class WasdeCell:
+    cell_index: int
     path: str
     attributes_json: str
     raw_text: str
@@ -102,22 +103,26 @@ def flatten_xml(payload: bytes) -> list[WasdeCell]:
     root = ET.fromstring(payload)
     rows: list[WasdeCell] = []
 
-    def walk(node: ET.Element, path: str) -> None:
+    def walk(node: ET.Element, path: str, inherited: dict[str, str]) -> None:
         tag = node.tag.split("}", 1)[-1]
         here = f"{path}/{tag}" if path else tag
+        context = dict(inherited)
+        for key, value in sorted(node.attrib.items()):
+            context[f"{tag}.{key}"] = str(value)
         children = list(node)
         text = (node.text or "").strip()
         if not children and (text or node.attrib):
             rows.append(WasdeCell(
+                cell_index=len(rows),
                 path=here,
-                attributes_json=json.dumps(dict(sorted(node.attrib.items())), ensure_ascii=False, sort_keys=True),
+                attributes_json=json.dumps(context, ensure_ascii=False, sort_keys=True),
                 raw_text=text,
                 numeric_value=_number(text),
             ))
         for child in children:
-            walk(child, here)
+            walk(child, here, context)
 
-    walk(root, "")
+    walk(root, "", {})
     if not rows:
         raise ValueError("WASDE XML produced no leaf cells")
     return rows

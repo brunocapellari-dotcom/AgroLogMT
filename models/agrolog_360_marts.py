@@ -413,6 +413,100 @@ GROUP BY geo_id, variable, unit, valid_time
     return MartSql("weather_consensus", target_name, sql)
 
 
+
+def argentina_crop_history_sql(project_id: str) -> MartSql:
+    source = _q(project_id, "agro", "argentina_estimaciones")
+    target_name = "marts_agrolog360.argentina_crop_history_v1"
+    target = _q(project_id, "marts_agrolog360", "argentina_crop_history_v1")
+    sql = f"""CREATE OR REPLACE VIEW {target} AS
+WITH snapshot_country AS (
+  SELECT
+    snapshot_id, source_id, crop_id, season, reference_year,
+    SUM(planted_area_ha) AS planted_area_ha,
+    SUM(harvested_area_ha) AS harvested_area_ha,
+    SUM(production_t) AS production_t,
+    SAFE_MULTIPLY(SAFE_DIVIDE(SUM(production_t), NULLIF(SUM(harvested_area_ha),0)),1000) AS yield_kg_ha,
+    ANY_VALUE(evidence_class) AS evidence_class,
+    ANY_VALUE(source_url) AS source_url,
+    ANY_VALUE(source_hash) AS source_hash,
+    MAX(data_coleta) AS data_coleta
+  FROM {source}
+  WHERE crop_id IN ('soja','milho','trigo','algodao')
+  GROUP BY snapshot_id, source_id, crop_id, season, reference_year
+),
+ordered AS (
+  SELECT *,
+    LAG(planted_area_ha) OVER w AS previous_planted_area_ha,
+    LAG(harvested_area_ha) OVER w AS previous_harvested_area_ha,
+    LAG(production_t) OVER w AS previous_production_t,
+    LAG(yield_kg_ha) OVER w AS previous_yield_kg_ha
+  FROM snapshot_country
+  WINDOW w AS (PARTITION BY crop_id, season ORDER BY data_coleta, snapshot_id)
+)
+SELECT *,
+  production_t - previous_production_t AS delta_production_t,
+  SAFE_MULTIPLY(SAFE_DIVIDE(production_t - previous_production_t, NULLIF(ABS(previous_production_t),0)),100) AS delta_production_pct,
+  yield_kg_ha - previous_yield_kg_ha AS delta_yield_kg_ha
+FROM ordered
+""".strip()
+    return MartSql("argentina_crop_history", target_name, sql)
+
+
+def argentina_crop_current_sql(project_id: str) -> MartSql:
+    source = _q(project_id, "marts_agrolog360", "argentina_crop_history_v1")
+    target_name = "marts_agrolog360.argentina_crop_current_v1"
+    target = _q(project_id, "marts_agrolog360", "argentina_crop_current_v1")
+    sql = f"""CREATE OR REPLACE VIEW {target} AS
+SELECT * EXCEPT(rn)
+FROM (
+  SELECT *, ROW_NUMBER() OVER (
+    PARTITION BY crop_id, season
+    ORDER BY data_coleta DESC, snapshot_id DESC
+  ) rn
+  FROM {source}
+)
+WHERE rn=1
+""".strip()
+    return MartSql("argentina_crop_current", target_name, sql)
+
+
+def usda_wasde_changes_sql(project_id: str) -> MartSql:
+    source = _q(project_id, "global_market", "usda_wasde_cells")
+    target_name = "marts_agrolog360.usda_wasde_changes_v1"
+    target = _q(project_id, "marts_agrolog360", "usda_wasde_changes_v1")
+    sql = f"""CREATE OR REPLACE VIEW {target} AS
+WITH ordered AS (
+  SELECT *,
+    CASE
+      WHEN REGEXP_CONTAINS(LOWER(CONCAT(path,' ',attributes_json)), r'\\bsoy(bean|beans)?\\b') THEN 'soja'
+      WHEN REGEXP_CONTAINS(LOWER(CONCAT(path,' ',attributes_json)), r'\\b(corn|maize)\\b') THEN 'milho'
+      WHEN REGEXP_CONTAINS(LOWER(CONCAT(path,' ',attributes_json)), r'\\bwheat\\b') THEN 'trigo'
+      WHEN REGEXP_CONTAINS(LOWER(CONCAT(path,' ',attributes_json)), r'\\bcotton\\b') THEN 'algodao'
+      ELSE NULL
+    END AS commodity_hint,
+    LAG(numeric_value) OVER (
+      PARTITION BY semantic_key
+      ORDER BY release_year, release_month, COALESCE(publication_date, DATE(release_year, release_month, 1)), data_coleta
+    ) AS previous_numeric_value
+  FROM {source}
+),
+latest_release AS (
+  SELECT MAX(DATE(release_year, release_month, 1)) AS release_month_date FROM ordered
+)
+SELECT
+  snapshot_id, semantic_key, semantic_occurrence, cell_index, source_id,
+  release_year, release_month, publication_date, path, attributes_json,
+  raw_text, numeric_value, previous_numeric_value,
+  numeric_value - previous_numeric_value AS delta_numeric_value,
+  commodity_hint,
+  evidence_class, source_url, source_hash, data_coleta
+FROM ordered
+WHERE DATE(release_year, release_month, 1)=(SELECT release_month_date FROM latest_release)
+  AND commodity_hint IS NOT NULL
+""".strip()
+    return MartSql("usda_wasde_changes", target_name, sql)
+
+
 def build_agrolog360_sql_bundle(project_id: str) -> tuple[MartSql, ...]:
     return (
         climate_rollups_sql(project_id),
@@ -430,4 +524,7 @@ def build_agrolog360_sql_bundle(project_id: str) -> tuple[MartSql, ...]:
         imea_market_indicators_sql(project_id),
         weather_run_summary_sql(project_id),
         weather_consensus_sql(project_id),
+        argentina_crop_history_sql(project_id),
+        argentina_crop_current_sql(project_id),
+        usda_wasde_changes_sql(project_id),
     )

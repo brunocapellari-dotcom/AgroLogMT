@@ -36,7 +36,7 @@ class ArgentinaCropRecord:
     harvested_area_ha: float | None
     production_t: float | None
     yield_kg_ha: float | None
-    evidence_class: str = "OBSERVADO"
+    evidence_class: str = "ESTIMADO"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
