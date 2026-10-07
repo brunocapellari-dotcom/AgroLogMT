@@ -20,9 +20,16 @@ def _rows(snapshot: Mapping[str, Any], name: str) -> list[dict[str, Any]]:
 
 def _source_status(snapshot: Mapping[str, Any], name: str) -> str:
     item = _component(snapshot, name)
-    if not item or item.get("status") == "FAILED":
+    if not item or item.get("status") == "FAILED" or not item.get("data"):
         return "SOURCE_GAP"
-    return "READY" if item.get("data") else "SOURCE_GAP"
+    if item.get("status") == "STALE":
+        return "PARTIAL"
+    return "READY"
+
+
+def _fresh(snapshot: Mapping[str, Any], name: str) -> bool:
+    item = _component(snapshot, name)
+    return bool(item and item.get("status") == "FRESH" and item.get("data"))
 
 
 def _crop_line(row: Mapping[str, Any]) -> str:
@@ -60,8 +67,8 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
     freight = _rows(snapshot, "freight")
     hydrology = _rows(snapshot, "hydrology")
 
-    critical_available = sum(bool(rows) for rows in (overview, ptax, crops_mt, crops_br, freight))
-    executive_status = "READY" if critical_available == 5 else "PARTIAL"
+    critical_fresh = sum(_fresh(snapshot, name) for name in ("overview", "ptax", "crops_mt", "crops_br", "freight"))
+    executive_status = "READY" if critical_fresh == 5 else "PARTIAL"
     sections["Resumo executivo"] = ReportSection(
         "Resumo executivo", executive_status,
         "Leitura integrada construída apenas com componentes presentes no snapshot; gaps permanecem explícitos.",
@@ -82,7 +89,7 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
         ("marts_agrolog360.crop_current_v1", "marts_agrolog360.freight_history_v1"),
     )
 
-    market_status = "READY" if ptax and market_reference else ("PARTIAL" if ptax or market_reference else "SOURCE_GAP")
+    market_status = "READY" if _fresh(snapshot, "ptax") and _fresh(snapshot, "market_reference") else ("PARTIAL" if ptax or market_reference else "SOURCE_GAP")
     market_bullets = [
         f"PTAX USD venda: R$ {float(row['cotacao_venda']):.4f}"
         for row in ptax[:1] if row.get("cotacao_venda") is not None
@@ -101,7 +108,7 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
     for product_id, title, market_token in (("soja", "Soja", "soja"), ("milho_total", "Milho", "milho")):
         rows = [row for row in crops_mt if row.get("product_id") == product_id and row.get("vintage_position") == "current"]
         price_rows = [row for row in market_reference if market_token in str(row.get("produto", "")).lower()]
-        section_status = "READY" if rows and price_rows else ("PARTIAL" if rows or price_rows else "SOURCE_GAP")
+        section_status = "READY" if rows and price_rows and _fresh(snapshot, "crops_mt") and _fresh(snapshot, "market_reference") else ("PARTIAL" if rows or price_rows else "SOURCE_GAP")
         bullets = [_crop_line(row) for row in rows[:4]]
         bullets.extend(
             f"{row.get('metric_name','—')} · {row.get('local','—')}: {row.get('valor','—')} {row.get('unidade_canonica') or ''}"
@@ -116,13 +123,13 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
         )
 
     sections["Safra Brasil"] = ReportSection(
-        "Safra Brasil", "READY" if crops_br else "SOURCE_GAP",
+        "Safra Brasil", _source_status(snapshot, "crops_br"),
         "Área, produtividade e produção preservam vintages oficiais CONAB.",
         tuple(_crop_line(row) for row in crops_br[:8]),
         ("marts_agrolog360.crop_current_v1",),
     )
     sections["Mato Grosso"] = ReportSection(
-        "Mato Grosso", "READY" if crops_mt else "SOURCE_GAP",
+        "Mato Grosso", _source_status(snapshot, "crops_mt"),
         "Leitura estadual derivada dos vintages oficiais e pronta para cruzamento com IMEA/agroclima.",
         tuple(_crop_line(row) for row in crops_mt[:8]),
         ("marts_agrolog360.crop_current_v1",),
@@ -160,16 +167,16 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
         )
 
     sections["Fretes"] = ReportSection(
-        "Fretes", "READY" if freight else "SOURCE_GAP",
+        "Fretes", _source_status(snapshot, "freight"),
         "Ofertas observadas são analisadas separadamente de fretes efetivamente negociados.",
         tuple(
-            f"{row.get('origin_municipality_id','—')} → {row.get('destination_municipality_id','—')} · {row.get('product_id','—')} · R$/t {row.get('freight_brl_per_t_p50','—')} · Pctl {row.get('historical_percentile','—')}"
+            f"{row.get('origin_municipality_id','—')} → {row.get('destination_municipality_id','—')} · {row.get('product_id','—')} · R$/t {row.get('freight_brl_per_t_p50','—')} · R$/km {row.get('freight_brl_per_km_p50','—')} · R$/t.km {row.get('freight_brl_per_t_km_p50','—')} · TKU {row.get('tku_estimated_p50','—')} · viagem R$ {row.get('announced_brl_per_trip_p50','—')} · Pctl {row.get('historical_percentile','—')}"
             for row in freight[:8]
         ),
         ("marts_agrolog360.freight_history_v1",),
     )
     sections["Corredores"] = ReportSection(
-        "Corredores", "READY" if freight else "SOURCE_GAP",
+        "Corredores", _source_status(snapshot, "freight"),
         "Atividade por corredor usa contagem deduplicada de ofertas e estatística histórica.",
         tuple(
             f"{row.get('origin_municipality_id','—')} → {row.get('destination_municipality_id','—')}: {row.get('unique_offer_clusters','—')} clusters"
@@ -178,7 +185,7 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
         ("marts_agrolog360.freight_history_v1",),
     )
     sections["Logística"] = ReportSection(
-        "Logística", "READY" if hydrology or overview else "SOURCE_GAP",
+        "Logística", "READY" if _fresh(snapshot, "hydrology") or _fresh(snapshot, "overview") else ("PARTIAL" if hydrology or overview else "SOURCE_GAP"),
         "Armazenagem, hidrologia e camada portuária permanecem semanticamente separadas entre observado, programado e realizado.",
         tuple(
             [f"{len(hydrology)} estações/leituras hidrológicas no recorte"] if hydrology else []

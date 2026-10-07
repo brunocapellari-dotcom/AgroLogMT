@@ -165,7 +165,9 @@ SELECT
   raw_offer_count, unique_offer_clusters,
   freight_brl_per_t_p50, freight_brl_per_t_previous,
   freight_brl_per_t_avg_7d, freight_brl_per_t_avg_30d,
-  freight_brl_per_t_km_p50, historical_percentile,
+  freight_brl_per_t_km_p50, distance_km_p50, payload_t_p50,
+  announced_brl_per_trip_p50, freight_brl_per_km_p50, tku_estimated_p50,
+  historical_percentile,
   data_coleta, evidence_class
 FROM `{project}.{dataset}.freight_history_v1`
 WHERE (@origin IS NULL OR origin_municipality_id=@origin)

@@ -6,7 +6,7 @@ import os
 import re
 import time
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -628,12 +628,72 @@ def intelligence_weather_consensus(
     }
 
 
+
+_COMPONENT_MAX_AGE_MINUTES = {
+    "overview": 2880,
+    "ptax": 4320,
+    "market_reference": 10080,
+    "crops_mt": 64800,
+    "crops_br": 64800,
+    "freight": 2880,
+    "weather": 720,
+    "weather_3d": 720,
+    "weather_7d": 720,
+    "weather_15d": 720,
+    "hydrology": 2880,
+}
+
+
+def _parse_component_timestamp(value: Any) -> datetime | None:
+    if value in (None, ""):
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _component_freshness(name: str, rows: list[dict[str, Any]]) -> tuple[str, str | None, float | None]:
+    if not rows:
+        return "FAILED", None, None
+    timestamps: list[datetime] = []
+    for row in rows:
+        for key in ("data_coleta", "collection_time", "latest_source_update", "latest_measurement"):
+            parsed = _parse_component_timestamp(row.get(key))
+            if parsed is not None:
+                timestamps.append(parsed)
+                break
+    if not timestamps:
+        return "FAILED", None, None
+    latest = max(timestamps)
+    age_minutes = max(0.0, (datetime.now(timezone.utc) - latest).total_seconds() / 60.0)
+    max_age = _COMPONENT_MAX_AGE_MINUTES.get(name, 1440)
+    return ("FRESH" if age_minutes <= max_age else "STALE"), latest.isoformat(), age_minutes
+
 def _optional_component(name: str, source_id: str, sql: str, parameters: list[bigquery.ScalarQueryParameter]) -> dict[str, Any]:
     try:
         rows = [_jsonable(row) for row in _query(sql, parameters)]
-        return {"component": name, "source_id": source_id, "status": "FRESH_OR_SOURCE_DEFINED", "data": rows}
+        freshness, latest_at, age_minutes = _component_freshness(name, rows)
+        return {
+            "component": name,
+            "source_id": source_id,
+            "status": freshness,
+            "latest_at": latest_at,
+            "age_minutes": age_minutes,
+            "data": rows,
+        }
     except HTTPException:
-        return {"component": name, "source_id": source_id, "status": "FAILED", "data": []}
+        return {
+            "component": name,
+            "source_id": source_id,
+            "status": "FAILED",
+            "latest_at": None,
+            "age_minutes": None,
+            "data": [],
+        }
 
 
 @app.get("/v1/intelligence/commercial-snapshot")
@@ -711,6 +771,37 @@ def intelligence_commercial_snapshot(uf: str = "MT") -> dict[str, Any]:
                 bigquery.ScalarQueryParameter("limit", "INT64", 1000),
             ],
         ),
+
+        _optional_component(
+            "weather_3d", "marts_agrolog360.weather_consensus_v1",
+            build_weather_consensus_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("geo_id", "STRING", uf),
+                bigquery.ScalarQueryParameter("variable", "STRING", None),
+                bigquery.ScalarQueryParameter("hours", "INT64", 72),
+                bigquery.ScalarQueryParameter("limit", "INT64", 500),
+            ],
+        ),
+        _optional_component(
+            "weather_7d", "marts_agrolog360.weather_consensus_v1",
+            build_weather_consensus_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("geo_id", "STRING", uf),
+                bigquery.ScalarQueryParameter("variable", "STRING", None),
+                bigquery.ScalarQueryParameter("hours", "INT64", 168),
+                bigquery.ScalarQueryParameter("limit", "INT64", 750),
+            ],
+        ),
+        _optional_component(
+            "weather_15d", "marts_agrolog360.weather_consensus_v1",
+            build_weather_consensus_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("geo_id", "STRING", uf),
+                bigquery.ScalarQueryParameter("variable", "STRING", None),
+                bigquery.ScalarQueryParameter("hours", "INT64", 360),
+                bigquery.ScalarQueryParameter("limit", "INT64", 1000),
+            ],
+        ),
         _optional_component(
             "hydrology", "marts_agrolog360.hydrology_latest_v1",
             build_hydrology_latest_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
@@ -721,11 +812,15 @@ def intelligence_commercial_snapshot(uf: str = "MT") -> dict[str, Any]:
         ),
     ]
     failed = [item["component"] for item in components if item["status"] == "FAILED"]
+    stale = [item["component"] for item in components if item["status"] == "STALE"]
+    freshness = {str(item["source_id"]): str(item["status"]) for item in components}
     return {
         "product": "AGROLOG INTELLIGENCE",
         "uf": uf,
-        "status": "PARTIAL" if failed else "READY_FOR_ANALYSIS",
+        "status": "READY_FOR_ANALYSIS" if not failed and not stale else "PARTIAL",
         "failed_components": failed,
+        "stale_components": stale,
+        "freshness": freshness,
         "components": components,
     }
 
