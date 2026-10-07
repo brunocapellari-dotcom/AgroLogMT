@@ -127,7 +127,7 @@ def fetch_json(url: str, *, timeout: int = 30) -> dict[str, Any]:
         return json.loads(response.read().decode("utf-8"))
 
 
-def discover_csv_url(package_payload: dict[str, Any], *, resource_id: str = RESOURCE_ID) -> str:
+def discover_csv_resource(package_payload: dict[str, Any], *, resource_id: str = RESOURCE_ID) -> dict[str, str | None]:
     result = package_payload.get("result") if isinstance(package_payload, dict) else None
     resources = result.get("resources", []) if isinstance(result, dict) else []
     for resource in resources:
@@ -140,18 +140,24 @@ def discover_csv_url(package_payload: dict[str, Any], *, resource_id: str = RESO
         if fmt and "csv" not in fmt:
             raise ValueError(f"Argentina resource format is not CSV: {fmt}")
         validate_https_url(url, allowed_hosts=ALLOWED_HOSTS)
-        return url
+        updated = resource.get("last_modified") or resource.get("metadata_modified") or resource.get("created")
+        return {"url": url, "source_updated_at": str(updated).strip() if updated else None}
     raise ValueError(f"Argentina resource not found: {resource_id}")
 
 
-def fetch_official_csv(*, timeout: int = 60) -> tuple[bytes, str]:
+def discover_csv_url(package_payload: dict[str, Any], *, resource_id: str = RESOURCE_ID) -> str:
+    return str(discover_csv_resource(package_payload, resource_id=resource_id)["url"])
+
+
+def fetch_official_csv(*, timeout: int = 60) -> tuple[bytes, str, str | None]:
     metadata = fetch_json(package_url(), timeout=timeout)
-    url = discover_csv_url(metadata)
+    resource = discover_csv_resource(metadata)
+    url = str(resource["url"])
     request = Request(url, headers={"Accept": "text/csv,*/*", "User-Agent": "AgroLogMT/1.0"})
     with urlopen(request, timeout=timeout) as response:  # nosec B310 - HTTPS + allowlist validated.
         validate_https_url(response.geturl(), allowed_hosts=ALLOWED_HOSTS)
         payload = response.read()
-    return payload, url
+    return payload, url, resource.get("source_updated_at")
 
 
 def snapshot_metadata(payload: bytes, *, collected_at: datetime | None = None) -> dict[str, str]:
