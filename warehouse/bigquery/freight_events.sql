@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS `__PROJECT__.__DATASET__.freight_events`
   truth_classification STRING NOT NULL,
   source_event_ids ARRAY<STRING>,
   raw_reference STRING NOT NULL,
+  entities_json STRING,
   metadata_json STRING,
   provenance_json STRING,
   ingested_at TIMESTAMP NOT NULL
