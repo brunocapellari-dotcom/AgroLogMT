@@ -851,12 +851,12 @@
       "name": "USDA WASDE",
       "domain": "global_market",
       "type": "file",
-      "endpoint": null,
+      "endpoint": "https://esmis.nal.usda.gov/publication/world-agricultural-supply-and-demand-estimates",
       "method": "OFFICIAL_DOWNLOAD",
       "frequency": "monthly",
       "freshness_expected": "same release day",
       "last_collection_at": null,
-      "status": "planned",
+      "status": "gated",
       "fallback": [
         "usda_fas_psd"
       ],
@@ -864,7 +864,7 @@
       "reliability": "primary_high",
       "security_class": "PUBLIC",
       "auth": "none",
-      "trusted_transport": false,
+      "trusted_transport": true,
       "schedule": {
         "min_interval_minutes": 360,
         "retry_minutes": [
@@ -873,7 +873,9 @@
           240,
           480
         ]
-      }
+      },
+      "execution_ref": "collector/usda_wasde.py",
+      "notes": "Official ESMIS release history exposes WASDE PDF/TXT/XLS/XML. Collector discovers immutable release artifacts and flattens XML without guessing commodity semantics; promote to active only after live probe/backfill evidence."
     },
     {
       "source_id": "usda_nass_quickstats",
@@ -1213,20 +1215,20 @@
       "name": "Argentina SAGyP",
       "domain": "argentina_crop",
       "type": "api",
-      "endpoint": null,
+      "endpoint": "https://datos.magyp.gob.ar/dataset/estimaciones-agricolas",
       "method": "OFFICIAL_DOWNLOAD",
       "frequency": "release_dependent",
       "freshness_expected": "same official release cycle",
       "last_collection_at": null,
-      "status": "planned",
+      "status": "gated",
       "fallback": [
         "usda_fas_psd"
       ],
-      "license": "TO_VALIDATE",
+      "license": "CC-BY-4.0",
       "reliability": "primary_high",
       "security_class": "PUBLIC",
       "auth": "none",
-      "trusted_transport": false,
+      "trusted_transport": true,
       "schedule": {
         "min_interval_minutes": 720,
         "retry_minutes": [
@@ -1234,7 +1236,9 @@
           240,
           480
         ]
-      }
+      },
+      "execution_ref": "collector/argentina_estimaciones.py",
+      "notes": "Official MAGyP open-data series. Full historical CSV includes crop, season, province/department, planted/harvested area, production and yield. Promote only after CKAN discovery/live download probe."
     },
     {
       "source_id": "bcr_gea",
@@ -1823,6 +1827,96 @@
         "event_driven": true
       },
       "notes": "Oferta observada não implica frete contratado ou executado; PII minimizada/pseudonimizada."
+    },
+    {
+      "source_id": "ecmwf_open_data",
+      "name": "ECMWF Open Data IFS/AIFS",
+      "domain": "weather",
+      "type": "file",
+      "endpoint": "https://data.ecmwf.int/forecasts/",
+      "method": "GRIB2_OPEN_DATA",
+      "frequency": "4x_daily",
+      "freshness_expected": "model-cycle dependent",
+      "last_collection_at": null,
+      "status": "gated",
+      "fallback": [
+        "gfs_nomads"
+      ],
+      "license": "CC-BY-4.0",
+      "reliability": "primary_high",
+      "execution_ref": "collector/weather_forecast_ingest.py",
+      "security_class": "PUBLIC",
+      "auth": "none",
+      "trusted_transport": true,
+      "schedule": {
+        "min_interval_minutes": 180,
+        "retry_minutes": [
+          60,
+          120,
+          240
+        ]
+      },
+      "notes": "Direct decoder/downloader may be separate; canonical intake preserves model/run/init/forecast hour/valid/member. Open subset allows commercial reuse with attribution."
+    },
+    {
+      "source_id": "gfs_nomads",
+      "name": "NOAA/NCEP GFS NOMADS",
+      "domain": "weather",
+      "type": "file",
+      "endpoint": "https://nomads.ncep.noaa.gov/",
+      "method": "GRIB2_FILTER",
+      "frequency": "4x_daily",
+      "freshness_expected": "model-cycle dependent",
+      "last_collection_at": null,
+      "status": "gated",
+      "fallback": [
+        "ecmwf_open_data"
+      ],
+      "license": "NOAA_public_data",
+      "reliability": "primary_high",
+      "execution_ref": "collector/weather_forecast_ingest.py",
+      "security_class": "PUBLIC",
+      "auth": "none",
+      "trusted_transport": true,
+      "schedule": {
+        "min_interval_minutes": 180,
+        "retry_minutes": [
+          60,
+          120,
+          240
+        ]
+      },
+      "notes": "Canonical intake supports GFS run snapshots; NOMADS GRIB Filter is the preferred operational subsetting path."
+    },
+    {
+      "source_id": "gefs_nomads",
+      "name": "NOAA/NCEP GEFS NOMADS",
+      "domain": "weather",
+      "type": "file",
+      "endpoint": "https://nomads.ncep.noaa.gov/",
+      "method": "GRIB2_FILTER",
+      "frequency": "4x_daily",
+      "freshness_expected": "model-cycle dependent",
+      "last_collection_at": null,
+      "status": "gated",
+      "fallback": [
+        "ecmwf_open_data"
+      ],
+      "license": "NOAA_public_data",
+      "reliability": "primary_high",
+      "execution_ref": "collector/weather_forecast_ingest.py",
+      "security_class": "PUBLIC",
+      "auth": "none",
+      "trusted_transport": true,
+      "schedule": {
+        "min_interval_minutes": 180,
+        "retry_minutes": [
+          60,
+          120,
+          240
+        ]
+      },
+      "notes": "Ensemble members must be stored individually; consensus is derived downstream, never a blind mean."
     }
   ]
 }
