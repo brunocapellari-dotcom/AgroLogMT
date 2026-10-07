@@ -243,9 +243,6 @@ if gcloud run services describe "$FREIGHT_SERVICE_NAME" --region "$REGION" --pro
       --region "$REGION" --project "$PROJECT_ID" \
       --member="$broad_member" --role=roles/run.invoker --quiet >/dev/null 2>&1 || true
   done
-  gcloud run services add-iam-policy-binding "$FREIGHT_SERVICE_NAME" \
-    --region "$REGION" --project "$PROJECT_ID" \
-    --member="serviceAccount:${DEPLOYER_SA_EMAIL}" --role=roles/run.invoker --quiet >/dev/null
 fi
 
 if ! gcloud iam workload-identity-pools describe "$POOL_ID" --location=global --project "$PROJECT_ID" >/dev/null 2>&1; then
