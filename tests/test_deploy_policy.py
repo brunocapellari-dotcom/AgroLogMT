@@ -33,6 +33,24 @@ class DeployPolicyTests(unittest.TestCase):
         self.assertIn('AGROLOG_AGRO_DATASET=${AGRO_DATASET}', deploy)
         self.assertIn('AGRO_DATASET="${AGRO_DATASET:-agro}"', preflight)
 
+    def test_freight_ingest_isolated_from_read_only_gateway(self) -> None:
+        gateway = Path("gateway/app.py").read_text(encoding="utf-8")
+        freight_app = Path("gateway/freight_app.py").read_text(encoding="utf-8")
+        bootstrap = Path("scripts/setup_github_gcp_wif.sh").read_text(encoding="utf-8")
+        deploy = Path("scripts/deploy_freight_ingest_gcloud.sh").read_text(encoding="utf-8")
+
+        self.assertNotIn("create_freight_router", gateway)
+        self.assertIn("create_freight_router", freight_app)
+        self.assertIn("agrolog-freight-ingest", bootstrap)
+        self.assertIn("ON TABLE", bootstrap)
+        self.assertIn("roles/bigquery.dataEditor", bootstrap)
+        self.assertIn("--no-allow-unauthenticated", deploy)
+        self.assertIn("AGROLOG_FREIGHT_SHARED_SECRET=", deploy)
+        self.assertIn("--startup-probe", deploy)
+        self.assertIn("--readiness-probe", deploy)
+        self.assertIn("--liveness-probe", deploy)
+        self.assertNotIn("gcloud projects add-iam-policy-binding", deploy)
+
 
 if __name__ == "__main__":
     unittest.main()
