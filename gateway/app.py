@@ -618,11 +618,22 @@ def intelligence_commercial_snapshot(uf: str = "MT") -> dict[str, Any]:
             [bigquery.ScalarQueryParameter("currency", "STRING", "USD")],
         ),
         _optional_component(
-            "crops", "marts_agrolog360.crop_current_v1",
+            "crops_mt", "marts_agrolog360.crop_current_v1",
             build_crop_current_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
             [
-                bigquery.ScalarQueryParameter("geo_level", "STRING", "UF"),
+                bigquery.ScalarQueryParameter("geo_level", "STRING", "uf"),
                 bigquery.ScalarQueryParameter("geo_id", "STRING", uf),
+                bigquery.ScalarQueryParameter("product", "STRING", None),
+                bigquery.ScalarQueryParameter("safra", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 100),
+            ],
+        ),
+        _optional_component(
+            "crops_br", "marts_agrolog360.crop_current_v1",
+            build_crop_current_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("geo_level", "STRING", "country"),
+                bigquery.ScalarQueryParameter("geo_id", "STRING", "BR"),
                 bigquery.ScalarQueryParameter("product", "STRING", None),
                 bigquery.ScalarQueryParameter("safra", "STRING", None),
                 bigquery.ScalarQueryParameter("limit", "INT64", 100),

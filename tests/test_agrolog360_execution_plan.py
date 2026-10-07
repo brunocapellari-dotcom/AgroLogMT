@@ -28,6 +28,9 @@ class AgroLog360ExecutionPlanTests(unittest.TestCase):
             "ptax_current",
             "imea_freight_reference",
             "overview_current",
+            "crop_vintages",
+            "crop_current",
+            "freight_history",
         }
         self.assertEqual(set(SOURCE_DEPENDENCIES), expected)
         self.assertTrue(all(SOURCE_DEPENDENCIES[key] for key in expected))
