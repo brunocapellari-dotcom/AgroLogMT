@@ -57,7 +57,8 @@ CREATE TABLE IF NOT EXISTS `{self.table}` (
  source_url STRING,
  source_hash STRING NOT NULL,
  data_coleta TIMESTAMP NOT NULL,
- raw_artifact_ref STRING
+ raw_artifact_ref STRING,
+ source_updated_at TIMESTAMP
 )
 PARTITION BY DATE(data_coleta)
 CLUSTER BY crop_id, season, province_id, snapshot_id
@@ -72,6 +73,7 @@ CLUSTER BY crop_id, season, province_id, snapshot_id
         data_coleta: str,
         source_url: str,
         raw_artifact_ref: str | None = None,
+        source_updated_at: str | None = None,
     ) -> dict[str, Any]:
         if not records:
             raise ValueError("Argentina loader recusou lote vazio")
@@ -103,6 +105,7 @@ CLUSTER BY crop_id, season, province_id, snapshot_id
                 "source_hash": source_hash,
                 "data_coleta": data_coleta,
                 "raw_artifact_ref": raw_artifact_ref,
+                "source_updated_at": source_updated_at,
             })
 
         expected = len({row["record_id"] for row in payload})
@@ -115,6 +118,7 @@ CLUSTER BY crop_id, season, province_id, snapshot_id
             ("harvested_area_ha","FLOAT","NULLABLE"), ("production_t","FLOAT","NULLABLE"), ("yield_kg_ha","FLOAT","NULLABLE"),
             ("evidence_class","STRING","REQUIRED"), ("source_url","STRING","NULLABLE"), ("source_hash","STRING","REQUIRED"),
             ("data_coleta","TIMESTAMP","REQUIRED"), ("raw_artifact_ref","STRING","NULLABLE"),
+            ("source_updated_at","TIMESTAMP","NULLABLE"),
         )]
         table = self.bq.Table(stage, schema=schema)
         table.expires = datetime.now(timezone.utc) + timedelta(hours=2)
