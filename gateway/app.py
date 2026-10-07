@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from google.cloud import bigquery
 
 from .intelligence_queries import (
@@ -36,6 +37,7 @@ from .maritime_queries import (
     normalize_mmsi,
     normalize_port_id,
 )
+from .dashboard_routes import DASHBOARD_ROUTES, redirect_target
 from .storage_queries import (
     build_latest_summary_sql,
     build_latest_warehouses_sql,
@@ -654,6 +656,18 @@ def intelligence_commercial_snapshot(uf: str = "MT") -> dict[str, Any]:
         "components": components,
     }
 
+
+for dashboard_path, fragment in DASHBOARD_ROUTES:
+    def _dashboard_redirect(_fragment: str = fragment) -> RedirectResponse:
+        return RedirectResponse(url=redirect_target(_fragment), status_code=307)
+
+    app.add_api_route(
+        dashboard_path,
+        _dashboard_redirect,
+        methods=["GET"],
+        include_in_schema=False,
+        name=f"dashboard-{fragment}",
+    )
 
 UI_DIR = Path(os.environ.get("AGROLOG_MARITIME_UI_DIR", "/app/maritime_ui/dist"))
 if UI_DIR.is_dir():

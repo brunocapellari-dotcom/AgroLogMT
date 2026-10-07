@@ -29,6 +29,8 @@ const els = {
   briefBody: document.querySelector('#brief-body'),
   briefGenerated: document.querySelector('#brief-generated'),
   agroOverviewStatus: document.querySelector('#agro-overview-status'),
+  commercialStatus: document.querySelector('#commercial-status'),
+  commercialComponents: document.querySelector('#commercial-components'),
   agro: {
     production: document.querySelector('#agro-production'),
     storage: document.querySelector('#agro-storage'),
@@ -450,6 +452,39 @@ async function refreshAgroOverview() {
     : 'dados ainda gated';
 }
 
+
+async function refreshCommercialSnapshot() {
+  if (!els.commercialStatus || !els.commercialComponents) return;
+  els.commercialStatus.textContent = 'atualizando';
+  try {
+    const response = await getJson('/v1/intelligence/commercial-snapshot?uf=MT');
+    const components = response.components || [];
+    els.commercialComponents.innerHTML = components.map(item => {
+      const failed = item.status === 'FAILED';
+      const count = Array.isArray(item.data) ? item.data.length : (item.data ? 1 : 0);
+      return `<article class="commercial-component">
+        <span>${escapeHtml(item.component || 'componente')}</span>
+        <strong class="${failed ? 'component-failed' : 'component-ready'}">${failed ? 'FAILED' : 'DISPONÍVEL'} · ${escapeHtml(fmtNumber(count))} registro(s)</strong>
+      </article>`;
+    }).join('');
+    const failed = response.failed_components || [];
+    els.commercialStatus.textContent = failed.length ? `parcial · ${failed.length} gap(s)` : 'pronto para análise';
+  } catch (error) {
+    console.warn('Commercial snapshot indisponível', error);
+    els.commercialStatus.textContent = 'snapshot indisponível';
+    els.commercialComponents.innerHTML = '<article class="commercial-component"><span>STATUS</span><strong class="component-failed">Falha controlada; demais telas permanecem disponíveis.</strong></article>';
+  }
+}
+
+function focusDashboardHash() {
+  const id = window.location.hash.replace(/^#/, '');
+  if (!id) return;
+  const target = document.getElementById(id === 'logistics' ? 'logistics-maritime' : id);
+  if (target) target.scrollIntoView({block: 'start', behavior: 'smooth'});
+}
+window.addEventListener('hashchange', focusDashboardHash);
+
+
 async function refreshAll({fit = false} = {}) {
   setStatus('idle', 'atualizando');
   els.refresh.disabled = true;
@@ -599,7 +634,8 @@ els.replaySlider.addEventListener('input', event => {
 map.on('load', async () => {
   try {
     await loadConfig();
-    await Promise.all([refreshAll({fit: true}), refreshAgroOverview()]);
+    await Promise.all([refreshAll({fit: true}), refreshAgroOverview(), refreshCommercialSnapshot()]);
+    focusDashboardHash();
   } catch (error) {
     console.error(error);
     setStatus('error', 'gateway indisponível');
@@ -610,5 +646,6 @@ setInterval(() => {
   if (!document.hidden) {
     refreshAll({fit: false});
     refreshAgroOverview();
+    refreshCommercialSnapshot();
   }
 }, 30000);
