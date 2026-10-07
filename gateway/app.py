@@ -39,7 +39,13 @@ PROJECT_ID = safe_identifier(
     label="project",
 )
 DATASET_ID = safe_identifier(os.environ.get("AGROLOG_LOGISTICA_DATASET", "logistica"), label="dataset")
-MARITIME_DATASET_ID = safe_identifier(\n    os.environ.get("AGROLOG_MARITIME_DATASET", "agrolog_models"), label="maritime_dataset"\n)\nFREIGHT_DATASET_ID = safe_identifier(\n    os.environ.get("AGROLOG_FREIGHT_DATASET", "logistica"), label="freight_dataset"\n)\nBQ_LOCATION = os.environ.get("AGROLOG_BQ_LOCATION", "southamerica-east1")
+MARITIME_DATASET_ID = safe_identifier(
+    os.environ.get("AGROLOG_MARITIME_DATASET", "agrolog_models"), label="maritime_dataset"
+)
+FREIGHT_DATASET_ID = safe_identifier(
+    os.environ.get("AGROLOG_FREIGHT_DATASET", "logistica"), label="freight_dataset"
+)
+BQ_LOCATION = os.environ.get("AGROLOG_BQ_LOCATION", "southamerica-east1")
 BQ_MAX_BYTES_BILLED = int(os.environ.get("AGROLOG_BQ_MAX_BYTES_BILLED", "1000000000"))
 BQ_QUERY_TIMEOUT_SECONDS = int(os.environ.get("AGROLOG_BQ_QUERY_TIMEOUT_SECONDS", "30"))
 ENABLE_DOCS = os.environ.get("AGROLOG_ENABLE_DOCS", "0") == "1"
