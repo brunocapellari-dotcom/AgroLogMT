@@ -174,10 +174,9 @@ def persist_ana_payload(
         exists = runtime.analytics.scalar(
             """
             SELECT COUNT(*) FROM hidrologia.hydro_station_telemetry
-            WHERE station_code=? AND data_hora_medicao=?
-              AND COALESCE(CAST(data_atualizacao AS VARCHAR),'')=COALESCE(CAST(? AS VARCHAR),'')
+            WHERE station_code=? AND data_hora_medicao=? AND snapshot_sha256=?
             """,
-            [row["station_code"], row["data_hora_medicao"], row["data_atualizacao"]],
+            [row["station_code"], row["data_hora_medicao"], row["snapshot_sha256"]],
         )
         if exists:
             continue
