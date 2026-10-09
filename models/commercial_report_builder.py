@@ -91,6 +91,11 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
     overview = _rows(snapshot, "overview")
     ptax = _rows(snapshot, "ptax")
     market_reference = _rows(snapshot, "market_reference")
+    market_sources = tuple(sorted({
+        str(row.get("source_id"))
+        for row in market_reference
+        if row.get("source_id")
+    })) or ("local.mercado.market_reference",)
     crops_mt = _rows(snapshot, "crops_mt") or _rows(snapshot, "crops")
     crops_br = _rows(snapshot, "crops_br")
     freight = _rows(snapshot, "freight")
@@ -131,7 +136,7 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
         "Mercado", market_status,
         "Câmbio oficial e referências físicas autorizadas; CBOT/B3/CEPEA entram somente quando a licença/fonte estiver homologada.",
         tuple(market_bullets),
-        ("marts_agrolog360.ptax_current_v1", "marts_agrolog360.imea_market_indicators_v1"),
+        ("local.mercado.ptax_usd_daily",) + market_sources,
     )
 
     for product_id, title, market_token in (("soja", "Soja", "soja"), ("milho_total", "Milho", "milho")):
@@ -148,7 +153,7 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
             section_status,
             "Safra e referência física são integradas quando ambas estão disponíveis; clima/exportação permanecem fatores adicionais do Analysis Engine.",
             tuple(bullets),
-            ("marts_agrolog360.crop_current_v1", "marts_agrolog360.imea_market_indicators_v1"),
+            ("local.agro.conab_safra_graos",) + market_sources,
         )
 
     sections["Safra Brasil"] = ReportSection(
