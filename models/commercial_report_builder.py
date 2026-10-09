@@ -48,6 +48,35 @@ def _crop_line(row: Mapping[str, Any]) -> str:
     return " · ".join(bits)
 
 
+def _format_brl_per_t(value: Any) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    text = f"{number:,.2f}"
+    return text.replace(",", "_").replace(".", ",").replace("_", ".")
+
+
+def _freight_corridor_lines(rows: list[dict[str, Any]]) -> tuple[str, ...]:
+    grouped: dict[tuple[str, str], dict[str, str]] = {}
+    for row in rows:
+        municipality = str(row.get("municipality_name") or "—")
+        destination = str(row.get("destination_name") or "—")
+        pickup_id = str(row.get("pickup_entity_id") or row.get("pickup_name") or "")
+        pickup_name = str(row.get("pickup_name") or "—")
+        if not pickup_id:
+            continue
+        grouped.setdefault((municipality, destination), {})[pickup_id] = pickup_name
+
+    lines: list[str] = []
+    for (municipality, destination), points in sorted(grouped.items()):
+        names = ", ".join(sorted(points.values()))
+        lines.append(
+            f"{municipality} → {destination}: {len(points)} ponto(s) de embarque — {names}"
+        )
+    return tuple(lines[:12])
+
+
 def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSection]:
     sections = {
         title: ReportSection(
@@ -75,7 +104,7 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
         tuple(filter(None, [
             f"{len(crops_br)} registros de safra Brasil" if crops_br else None,
             f"{len(crops_mt)} registros de safra Mato Grosso" if crops_mt else None,
-            f"{len(freight)} corredores/dias de frete" if freight else None,
+            f"{len(freight)} registros individuais de fretes divulgados" if freight else None,
         ])),
         tuple(sorted({str(item.get("source_id")) for item in snapshot.get("components", []) if item.get("source_id")})),
     )
@@ -166,23 +195,56 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
             tuple({str(row.get("source_id")) for row in rows if row.get("source_id")}),
         )
 
+    individual_freight = [
+        row for row in freight
+        if row.get("pickup_entity_id")
+        and row.get("pickup_name")
+        and row.get("carrier_name")
+        and row.get("destination_name")
+        and row.get("freight_announced_brl_per_t") is not None
+    ]
+    publications_received = (
+        max((int(row.get("publications_received") or 0) for row in individual_freight), default=0)
+        or len({str(row.get("publication_id")) for row in individual_freight if row.get("publication_id")})
+    )
+    carriers = {
+        str(row.get("carrier_id") or row.get("carrier_name"))
+        for row in individual_freight
+        if row.get("carrier_id") or row.get("carrier_name")
+    }
+    pickup_points = {
+        str(row.get("pickup_entity_id"))
+        for row in individual_freight
+        if row.get("pickup_entity_id")
+    }
+    freight_status = _source_status(snapshot, "freight") if individual_freight else "SOURCE_GAP"
+    freight_counts = (
+        f"{publications_received} publicações recebidas",
+        f"{len(individual_freight)} registros individuais de fretes divulgados",
+        f"{len(carriers)} transportadora(s)",
+        f"{len(pickup_points)} ponto(s) de embarque distinto(s)",
+    ) if individual_freight else ()
+
+    freight_lines = tuple(
+        f"{row.get('municipality_name','—')} · {row.get('pickup_name','—')} · "
+        f"{row.get('carrier_name','—')} → {row.get('destination_name','—')} · "
+        f"{row.get('product_id','—')} · frete anunciado R$ "
+        f"{_format_brl_per_t(row.get('freight_announced_brl_per_t'))}/t"
+        for row in individual_freight[:20]
+    )
     sections["Fretes"] = ReportSection(
-        "Fretes", _source_status(snapshot, "freight"),
-        "Ofertas observadas são analisadas separadamente de fretes efetivamente negociados.",
-        tuple(
-            f"{row.get('origin_municipality_id','—')} → {row.get('destination_municipality_id','—')} · {row.get('product_id','—')} · R$/t {row.get('freight_brl_per_t_p50','—')} · R$/km {row.get('freight_brl_per_km_p50','—')} · R$/t.km {row.get('freight_brl_per_t_km_p50','—')} · TKU {row.get('tku_estimated_p50','—')} · viagem R$ {row.get('announced_brl_per_trip_p50','—')} · Pctl {row.get('historical_percentile','—')}"
-            for row in freight[:8]
-        ),
-        ("marts_agrolog360.freight_history_v1",),
+        "Fretes",
+        freight_status,
+        "Divulgações de transportadoras; os valores são fretes anunciados, não valores negociados nem operações realizadas.",
+        freight_counts + freight_lines,
+        ("local.logistica.freight_announcements",),
     )
     sections["Corredores"] = ReportSection(
-        "Corredores", _source_status(snapshot, "freight"),
-        "Atividade por corredor usa contagem deduplicada de ofertas e estatística histórica.",
-        tuple(
-            f"{row.get('origin_municipality_id','—')} → {row.get('destination_municipality_id','—')}: {row.get('unique_offer_clusters','—')} clusters"
-            for row in freight[:8]
-        ),
-        ("marts_agrolog360.freight_history_v1",),
+        "Corredores",
+        freight_status,
+        "Município funciona apenas como agrupador geográfico; cada ponto de embarque permanece individual e nenhum preço é agregado por município.",
+        _freight_corridor_lines(individual_freight),
+        ("local.logistica.freight_announcements",),
     )
     sections["Logística"] = ReportSection(
         "Logística", "READY" if _fresh(snapshot, "hydrology") or _fresh(snapshot, "overview") else ("PARTIAL" if hydrology or overview else "SOURCE_GAP"),
