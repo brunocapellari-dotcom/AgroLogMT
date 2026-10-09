@@ -22,7 +22,7 @@ def main() -> int:
     parser.add_argument("--uf", default="MT")
     parser.add_argument("--output-dir", default="maritime_ui/public/data")
     parser.add_argument("--no-collect", action="store_true")
-    parser.add_argument("--no-global-public", action="store_true", help="Do not collect Argentina/WASDE public sources")
+    parser.add_argument("--no-global-public", action="store_true", help="Do not collect CONAB/Argentina/WASDE public sources")
     args = parser.parse_args()
 
     runtime = ZeroCostRuntime(args.root)
@@ -51,6 +51,7 @@ def main() -> int:
 
         if not args.no_global_public:
             global_sources = (
+                ("conab_safra_graos_xlsx", runtime.run_conab_safra),
                 ("sagyp_argentina", runtime.run_argentina),
                 ("usda_wasde", runtime.run_wasde),
             )
