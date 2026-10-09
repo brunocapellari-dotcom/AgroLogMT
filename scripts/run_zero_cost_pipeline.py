@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 from collector.cli import load_sources
@@ -32,6 +33,7 @@ def main() -> int:
     parser.add_argument("--no-global-public", action="store_true", help="Do not collect Argentina/WASDE public sources")
     parser.add_argument("--pilot-config", default="collector/config/sources.pilot.json")
     parser.add_argument("--no-conab", action="store_true", help="Do not collect the official CONAB crop workbook")
+    parser.add_argument("--imea-file", default=os.environ.get("AGROLOG_IMEA_LOCAL_FILE"), help="Authorized local IMEA XLSX path")
     args = parser.parse_args()
 
     runtime = ZeroCostRuntime(args.root)
@@ -89,6 +91,26 @@ def main() -> int:
                 "exit_code": code,
                 "status": result.get("status"),
                 "result": result,
+            })
+
+        imea_source_id = "imea_operational_xlsx"
+        if args.imea_file and (not selected or imea_source_id in selected):
+            code, result = runtime.run_imea_file(args.imea_file)
+            runs.append({
+                "source_id": imea_source_id,
+                "exit_code": code,
+                "status": result.get("status"),
+                "result": result,
+            })
+        elif selected and imea_source_id in selected:
+            runs.append({
+                "source_id": imea_source_id,
+                "exit_code": 2,
+                "status": "BLOCKED_LOCAL_FILE",
+                "result": {
+                    "status": "BLOCKED_LOCAL_FILE",
+                    "error": "Defina --imea-file ou AGROLOG_IMEA_LOCAL_FILE; Google Drive não é obrigatório no ZERO_COST.",
+                },
             })
 
     runtime_manifest = runtime.write_runtime_manifest()
