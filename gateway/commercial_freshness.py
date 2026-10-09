@@ -15,6 +15,10 @@ COMPONENT_MAX_AGE_MINUTES = {
     "weather_7d": 720,
     "weather_15d": 720,
     "hydrology": 2880,
+    "crop_progress": 10080,
+    "argentina": 43200,
+    "usda": 64800,
+    "exports": 64800,
 }
 
 

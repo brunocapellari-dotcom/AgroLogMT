@@ -53,12 +53,24 @@ def storage_balance_sql(project_id: str) -> MartSql:
     target_name = "marts_agrolog360.storage_balance_v1"
     target = _q(project_id, "marts_agrolog360", "storage_balance_v1")
     sql = f"""CREATE OR REPLACE VIEW {target} AS
-WITH p AS (
+WITH latest_product AS (
+  SELECT * EXCEPT(rn)
+  FROM (
+    SELECT *,
+      ROW_NUMBER() OVER (
+        PARTITION BY geo_id, product_id, safra
+        ORDER BY data_publicacao DESC, data_coleta DESC, snapshot_id DESC
+      ) AS rn
+    FROM {production}
+    WHERE geo_level='uf' AND vintage_position='current'
+  )
+  WHERE rn=1
+),
+p AS (
   SELECT geo_id AS uf, safra, SUM(producao_mil_t) * 1000 AS producao_t,
          MAX(data_publicacao) AS data_publicacao, MAX(data_coleta) AS data_coleta,
          STRING_AGG(DISTINCT evidence_class, ',' ORDER BY evidence_class) AS source_evidence_classes
-  FROM {production}
-  WHERE geo_level='UF'
+  FROM latest_product
   GROUP BY uf, safra
 ),
 s AS (
@@ -507,6 +519,100 @@ WHERE DATE(release_year, release_month, 1)=(SELECT release_month_date FROM lates
     return MartSql("usda_wasde_changes", target_name, sql)
 
 
+
+def crop_progress_current_sql(project_id: str) -> MartSql:
+    source = _q(project_id, "agro", "imea_progresso_cultura")
+    target_name = "marts_agrolog360.crop_progress_current_v1"
+    target = _q(project_id, "marts_agrolog360", "crop_progress_current_v1")
+    sql = f"""CREATE OR REPLACE VIEW {target} AS
+WITH ordered AS (
+  SELECT
+    snapshot_id, record_id, source_sheet, data_referencia, produto, safra, regiao,
+    metric_name, valor, unidade_canonica, evidence_class, evidence_subtype,
+    data_coleta, source_hash, raw_artifact_ref,
+    LAG(valor) OVER series AS previous_value
+  FROM {source}
+  WINDOW series AS (
+    PARTITION BY produto, safra, regiao, metric_name
+    ORDER BY data_referencia, data_coleta, snapshot_id
+  )
+),
+ranked AS (
+  SELECT *,
+    ROW_NUMBER() OVER (
+      PARTITION BY produto, safra, regiao, metric_name
+      ORDER BY data_referencia DESC, data_coleta DESC, snapshot_id DESC
+    ) AS rn
+  FROM ordered
+)
+SELECT * EXCEPT(rn),
+  valor - previous_value AS delta_value
+FROM ranked
+WHERE rn=1
+""".strip()
+    return MartSql("crop_progress_current", target_name, sql)
+
+
+def agricultural_exports_sql(project_id: str) -> MartSql:
+    source = _q(project_id, "comercio_exterior", "comexstat_ncm_export")
+    target_name = "marts_agrolog360.agricultural_exports_v1"
+    target = _q(project_id, "marts_agrolog360", "agricultural_exports_v1")
+    sql = f"""CREATE OR REPLACE VIEW {target} AS
+WITH mapped AS (
+  SELECT
+    competencia, sg_uf_ncm, toneladas, vl_fob, data_publicacao, data_coleta,
+    CASE
+      WHEN co_ncm IN ('12011000','12019000') THEN 'soja_grao'
+      WHEN co_ncm IN ('23040010','23040090') THEN 'farelo_soja'
+      WHEN co_ncm IN ('15071000','15079011','15079019','15079090') THEN 'oleo_soja'
+      WHEN co_ncm='10059010' THEN 'milho_grao'
+      WHEN co_ncm IN ('52010010','52010020','52010090') THEN 'algodao_bruto'
+      ELSE NULL
+    END AS product_id
+  FROM {source}
+),
+uf_rows AS (
+  SELECT
+    'uf' AS geo_level, sg_uf_ncm AS geo_id, competencia, product_id,
+    SUM(toneladas) AS toneladas, SUM(vl_fob) AS vl_fob,
+    SAFE_DIVIDE(SUM(vl_fob), NULLIF(SUM(toneladas),0)) AS usd_por_t,
+    MAX(data_publicacao) AS data_publicacao, MAX(data_coleta) AS data_coleta
+  FROM mapped
+  WHERE product_id IS NOT NULL AND sg_uf_ncm IS NOT NULL
+  GROUP BY geo_id, competencia, product_id
+),
+br_rows AS (
+  SELECT
+    'country' AS geo_level, 'BR' AS geo_id, competencia, product_id,
+    SUM(toneladas) AS toneladas, SUM(vl_fob) AS vl_fob,
+    SAFE_DIVIDE(SUM(vl_fob), NULLIF(SUM(toneladas),0)) AS usd_por_t,
+    MAX(data_publicacao) AS data_publicacao, MAX(data_coleta) AS data_coleta
+  FROM mapped
+  WHERE product_id IS NOT NULL
+  GROUP BY competencia, product_id
+),
+combined AS (
+  SELECT * FROM uf_rows
+  UNION ALL
+  SELECT * FROM br_rows
+)
+SELECT *,
+  LAG(toneladas) OVER series AS previous_toneladas,
+  toneladas - LAG(toneladas) OVER series AS delta_toneladas,
+  SAFE_MULTIPLY(
+    SAFE_DIVIDE(toneladas - LAG(toneladas) OVER series, NULLIF(ABS(LAG(toneladas) OVER series),0)),
+    100
+  ) AS delta_toneladas_pct,
+  'OBSERVADO_COMEXSTAT' AS evidence_class
+FROM combined
+WINDOW series AS (
+  PARTITION BY geo_level, geo_id, product_id
+  ORDER BY competencia
+)
+""".strip()
+    return MartSql("agricultural_exports", target_name, sql)
+
+
 def build_agrolog360_sql_bundle(project_id: str) -> tuple[MartSql, ...]:
     return (
         climate_rollups_sql(project_id),
@@ -527,4 +633,6 @@ def build_agrolog360_sql_bundle(project_id: str) -> tuple[MartSql, ...]:
         argentina_crop_history_sql(project_id),
         argentina_crop_current_sql(project_id),
         usda_wasde_changes_sql(project_id),
+        crop_progress_current_sql(project_id),
+        agricultural_exports_sql(project_id),
     )

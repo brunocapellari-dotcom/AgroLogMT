@@ -46,10 +46,16 @@ CRITICAL_SECTIONS = {
     "Milho",
     "Safra Brasil",
     "Mato Grosso",
+    "USDA/EUA",
+    "Argentina",
     "Meteorologia",
     "Agroclima",
+    "Previsão 3 dias",
+    "Previsão 7 dias",
+    "Previsão 15 dias",
     "Fretes",
     "Logística",
+    "Exportação",
     "Fontes",
 }
 
