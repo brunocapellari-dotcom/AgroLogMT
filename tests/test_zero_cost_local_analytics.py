@@ -7,6 +7,7 @@ from collector.local_analytics_store import LocalAnalyticsStore
 from collector.models import RunManifest, SourceSpec
 from collector.zero_cost_pipeline import ZeroCostRuntime
 from models.zero_cost_snapshot import build_zero_cost_snapshot
+from scripts.build_zero_cost_bundle import build_bundle
 
 
 def _manifest() -> RunManifest:
@@ -64,6 +65,9 @@ def test_ptax_persists_to_duckdb_and_snapshot_without_gcp(tmp_path: Path) -> Non
     assert ptax["data"][0]["cotacao_venda"] == 5.32
     assert snapshot["delivery_mode"] == "ZERO_COST"
     assert snapshot["analytical_backend"] == "duckdb"
+    snapshot_path, manifest_path = build_bundle(snapshot, tmp_path / "static")
+    assert json.loads(snapshot_path.read_text(encoding="utf-8"))["delivery_mode"] == "ZERO_COST"
+    assert json.loads(manifest_path.read_text(encoding="utf-8"))["paid_runtime_required"] is False
 
 
 def test_comex_local_tie_out_and_exports_component(tmp_path: Path) -> None:
