@@ -8,6 +8,23 @@ from models.commercial_analysis import build_derived_components
 
 from collector.local_analytics_store import LocalAnalyticsStore
 
+COMMERCIAL_INPUT_COMPONENTS = (
+    "overview",
+    "ptax",
+    "market_reference",
+    "crops_mt",
+    "crops_br",
+    "argentina",
+    "usda",
+    "exports",
+    "freight",
+    "weather",
+    "weather_3d",
+    "weather_7d",
+    "weather_15d",
+    "hydrology",
+)
+
 BASE_COMPONENTS = (
     ("overview", "local.marts.overview_current"),
     ("ptax", "local.mercado.ptax_usd_daily"),
@@ -476,6 +493,72 @@ def _crops(store: LocalAnalyticsStore, *, geo_level: str, geo_id: str) -> list[d
         [geo_level, geo_id],
     )
 
+def _overview_component(
+    components: list[dict[str, Any]],
+    *,
+    uf: str,
+) -> dict[str, Any]:
+    required_names = ("ptax", "crops_mt", "crops_br", "freight")
+    by_name = {str(item.get("component")): item for item in components}
+    required = [by_name.get(name, {}) for name in required_names]
+
+    if any(not item or not item.get("data") or item.get("status") == "FAILED" for item in required):
+        status = "FAILED"
+        rows: list[dict[str, Any]] = []
+    else:
+        status = "STALE" if any(item.get("status") == "STALE" for item in required) else "FRESH"
+        rows = [{
+            "uf": uf,
+            "critical_components": list(required_names),
+            "component_statuses": {
+                name: str(by_name[name].get("status"))
+                for name in required_names
+            },
+            "crop_mt_records": len(by_name["crops_mt"].get("data") or []),
+            "crop_br_records": len(by_name["crops_br"].get("data") or []),
+            "freight_records": len(by_name["freight"].get("data") or []),
+            "ptax_records": len(by_name["ptax"].get("data") or []),
+            "evidence_class": "DERIVADO",
+        }]
+
+    latest_values = [
+        str(item.get("latest_at"))
+        for item in required
+        if item.get("latest_at")
+    ]
+    age_values = [
+        float(item.get("age_minutes"))
+        for item in required
+        if item.get("age_minutes") is not None
+    ]
+    return {
+        "component": "overview",
+        "source_id": "local.derived.overview_v1",
+        "status": status,
+        "latest_at": min(latest_values) if latest_values else None,
+        "age_minutes": max(age_values) if age_values else None,
+        "data": rows,
+    }
+
+
+def _commercial_input_gate(components: list[dict[str, Any]]) -> dict[str, Any]:
+    by_name = {str(item.get("component")): item for item in components}
+    statuses = {
+        name: str(by_name.get(name, {}).get("status") or "MISSING")
+        for name in COMMERCIAL_INPUT_COMPONENTS
+    }
+    blockers = [
+        f"{name}:{status}"
+        for name, status in statuses.items()
+        if status != "FRESH"
+    ]
+    return {
+        "status": "PASS" if not blockers else "BLOCKED",
+        "component_statuses": statuses,
+        "blockers": blockers,
+    }
+
+
 def build_zero_cost_snapshot(store: LocalAnalyticsStore, *, uf: str = "MT") -> dict[str, Any]:
     loaders = {
         "ptax": lambda: _ptax(store),
@@ -500,7 +583,14 @@ def build_zero_cost_snapshot(store: LocalAnalyticsStore, *, uf: str = "MT") -> d
         except Exception:
             components.append(_component(name, source_id, []))
 
+    overview = _overview_component(components, uf=uf)
+    components = [
+        overview if item.get("component") == "overview" else item
+        for item in components
+    ]
+
     components.extend(build_derived_components(components))
+    commercial_inputs = _commercial_input_gate(components)
     failed = [item["component"] for item in components if item["status"] == "FAILED"]
     stale = [item["component"] for item in components if item["status"] == "STALE"]
     return {
@@ -509,7 +599,12 @@ def build_zero_cost_snapshot(store: LocalAnalyticsStore, *, uf: str = "MT") -> d
         "analytical_backend": "duckdb",
         "uf": uf,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "status": "READY_FOR_ANALYSIS" if not failed and not stale else "PARTIAL",
+        "status": (
+            "READY_FOR_COMMERCIAL_GATE"
+            if commercial_inputs["status"] == "PASS"
+            else "PARTIAL"
+        ),
+        "commercial_input_gate": commercial_inputs,
         "failed_components": failed,
         "stale_components": stale,
         "freshness": {str(item["source_id"]): str(item["status"]) for item in components},
