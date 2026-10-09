@@ -37,6 +37,8 @@ class AgroLog360ExecutionPlanTests(unittest.TestCase):
             "argentina_crop_history",
             "argentina_crop_current",
             "usda_wasde_changes",
+            "crop_progress_current",
+            "agricultural_exports",
         }
         self.assertEqual(set(SOURCE_DEPENDENCIES), expected)
         self.assertTrue(all(SOURCE_DEPENDENCIES[key] for key in expected))
