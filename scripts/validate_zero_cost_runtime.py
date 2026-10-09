@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
+from collector.local_analytics_store import LocalAnalyticsStore
 from collector.storage import LocalStore, sha256_bytes
 from scripts.build_zero_cost_bundle import build_bundle
 
@@ -28,6 +29,12 @@ def validate(output: Path | None = None) -> dict:
     if policy.get("mandatory_cloud_services"):
         failures.append("mandatory_cloud_services must be empty")
 
+    runtime = policy.get("canonical_runtime") or {}
+    if runtime.get("analytics") != "duckdb":
+        failures.append("ZERO_COST canonical analytics must be duckdb")
+    if runtime.get("analytical_export") != "parquet_zstd":
+        failures.append("ZERO_COST analytical export must be parquet_zstd")
+
     with tempfile.TemporaryDirectory(prefix="agrolog-zero-cost-") as tmp:
         root = Path(tmp)
         store = LocalStore(root / "store")
@@ -42,6 +49,15 @@ def validate(output: Path | None = None) -> dict:
         raw_path = Path(artifact.path)
         if not raw_path.is_file() or raw_path.read_bytes() != payload or artifact.sha256 != digest:
             failures.append("LocalStore raw immutable write/read failed")
+
+        analytics = LocalAnalyticsStore(root / "analytics" / "agrolog.duckdb", root / "parquet")
+        analytics.ensure_table("probe", "rows", {"id": "BIGINT", "value": "VARCHAR"})
+        analytics.insert_rows("probe", "rows", [{"id": 1, "value": "ok"}], columns=["id", "value"])
+        if analytics.query("SELECT id, value FROM probe.rows") != [{"id": 1, "value": "ok"}]:
+            failures.append("DuckDB analytical round-trip failed")
+        parquet = analytics.export_table_parquet("probe", "rows")
+        if not parquet.is_file() or parquet.stat().st_size <= 0:
+            failures.append("Parquet analytical export failed")
 
         snapshot = {
             "product": "AGROLOG INTELLIGENCE",
@@ -68,12 +84,24 @@ def validate(output: Path | None = None) -> dict:
     if not static_page.is_file():
         failures.append("zero-cost static dashboard entrypoint missing")
 
+    for relative in (
+        "scripts/run_zero_cost_pipeline.py",
+        "scripts/build_zero_cost_outputs.py",
+        "collector/local_analytics_store.py",
+        "collector/zero_cost_pipeline.py",
+    ):
+        source = (ROOT / relative).read_text(encoding="utf-8").lower()
+        if "gcloud " in source or "bigquery.client" in source:
+            failures.append(f"mandatory cloud command/reference found in ZERO_COST path: {relative}")
+
     result = {
-        "version": "1.0.0",
+        "version": "1.1.0",
         "mode": "ZERO_COST",
         "status": "FAIL" if failures else "PASS",
         "implementation_cost_ceiling_brl": 0,
         "recurring_cost_ceiling_brl": 0,
+        "analytical_backend": "duckdb",
+        "analytical_export": "parquet_zstd",
         "cloud_credentials_required": False,
         "paid_runtime_required": False,
         "failures": failures,
