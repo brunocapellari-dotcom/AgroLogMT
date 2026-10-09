@@ -2,6 +2,7 @@ name: full-project-final-gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
     inputs:
       final_release:
@@ -165,7 +166,7 @@ jobs:
           {
             echo '## AgroLog MT — Whole Project CI'
             echo
-            echo 'Self-hosted deterministic gate: all deterministic tests, Python compile, dependency consistency, contracts, workflows, registry, frontend npm ci/build, Bandit, pip-audit, npm audit, Zizmor, actionlint and Gitleaks tree scan.'
+            echo 'GitHub-hosted deterministic gate: all deterministic tests, Python compile, dependency consistency, contracts, workflows, registry, frontend npm ci/build, Bandit, pip-audit, npm audit, Zizmor, actionlint and Gitleaks tree scan.'
             echo
             echo 'Docker, Trivy, SBOM, full Git-history scan, LIVE tests and GCP run once in the manual final release gate.'
           } >> "$GITHUB_STEP_SUMMARY"
@@ -187,10 +188,10 @@ jobs:
   final-live-release:
     environment: agrolog-production
     name: Whole project LIVE + GCP final release
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.final_release == true }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.final_release == true) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[FINAL-LIVE]')) }}
     needs: whole-project-ci
-    # Ephemeral GCE runner security rationale: private repo, fork guard, no VM service account, one-job lifecycle.
-    runs-on: [self-hosted, linux, x64, agrolog-ci] # zizmor: ignore[self-hosted-runner]
+    # Production gate uses an ephemeral GitHub-hosted runner with OIDC/WIF and protected environment secrets.
+    runs-on: ubuntu-latest
     timeout-minutes: 150
     permissions:
       contents: read
