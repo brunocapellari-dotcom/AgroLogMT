@@ -16,6 +16,8 @@ from typing import Any
 
 from google.cloud import bigquery
 
+from collector.transport_security import validate_https_url
+
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -30,8 +32,10 @@ def gcloud_value(args: list[str]) -> str:
 
 
 def get_json(url: str, token: str) -> dict[str, Any]:
+    validate_https_url(url)
     request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
-    with urllib.request.urlopen(request, timeout=60) as response:
+    with urllib.request.urlopen(request, timeout=60) as response:  # nosec B310 - Cloud Run HTTPS URL validated before/after redirect.
+        validate_https_url(response.geturl())
         return json.loads(response.read().decode("utf-8"))
 
 

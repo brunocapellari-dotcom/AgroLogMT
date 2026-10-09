@@ -1,0 +1,6 @@
+# actionlint project configuration
+# Custom labels used by AgroLog MT ephemeral GCE self-hosted runners.
+self-hosted-runner:
+  labels:
+    - agrolog-ci
+    - gcp-ephemeral

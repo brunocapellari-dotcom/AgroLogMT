@@ -282,6 +282,8 @@ class CkanResourceAdapter:
         dataset_id = spec.options.get("dataset_id")
         resource_id = spec.options.get("resource_id")
         resource_name = spec.options.get("resource_name")
+        resource_name_regex = spec.options.get("resource_name_regex")
+        prefer_latest = bool(spec.options.get("prefer_latest", False))
         if not base_url or not dataset_id:
             raise ValueError("CKAN exige options.base_url e options.dataset_id")
 
@@ -309,8 +311,28 @@ class CkanResourceAdapter:
             if resource_name and str(resource.get("name", "")).strip().lower() == str(resource_name).strip().lower():
                 selected = resource
                 break
+
+        if selected is None and resource_name_regex:
+            pattern = re.compile(str(resource_name_regex), flags=re.IGNORECASE)
+            candidates = [
+                resource for resource in resources
+                if pattern.search(str(resource.get("name", "")))
+            ]
+            if candidates and prefer_latest:
+                candidates.sort(
+                    key=lambda item: (
+                        str(item.get("last_modified") or ""),
+                        str(item.get("created") or ""),
+                        str(item.get("name") or ""),
+                    ),
+                    reverse=True,
+                )
+            if candidates:
+                selected = candidates[0]
+
         if selected is None:
-            raise RuntimeError(f"Recurso CKAN nao encontrado: {resource_id or resource_name}")
+            wanted = resource_id or resource_name or resource_name_regex
+            raise RuntimeError(f"Recurso CKAN nao encontrado: {wanted}")
 
         resource_url = selected.get("url")
         if not resource_url:
@@ -378,6 +400,73 @@ class GovBrLatestAttachmentAdapter:
         )
 
 
+class HtmlLatestAttachmentAdapter:
+    """Discover the first matching HTTPS attachment on an official listing page.
+
+    Listing order is preserved, so newest-first official pages remain deterministic.
+    Same-host download is the default; cross-host downloads require explicit
+    attachment_allowed_hosts configuration.
+    """
+
+    def fetch(self, spec: SourceSpec) -> AcquisitionResult:
+        if not spec.url:
+            raise ValueError(f"Fonte {spec.source_id} sem URL")
+
+        timeout = int(spec.options.get("timeout_seconds", 60))
+        pattern_text = str(spec.options.get("attachment_url_regex", "")).strip()
+        if not pattern_text:
+            raise ValueError("html_latest_attachment exige options.attachment_url_regex")
+
+        headers = spec.options.get("headers", {})
+        max_bytes = _max_response_bytes(spec.options)
+        listing_allowed = _allowed_hosts(spec.url, spec.options)
+        listing = _http_get(
+            spec.url,
+            headers=headers,
+            timeout=timeout,
+            allowed_hosts=listing_allowed,
+            max_bytes=max_bytes,
+        )
+        html = listing.payload.decode("utf-8", errors="replace")
+        pattern = re.compile(pattern_text, flags=re.IGNORECASE)
+        links = extract_html_links(html, listing.observed_url)
+
+        attachment = None
+        for candidate in links:
+            if pattern.search(candidate):
+                attachment = candidate
+                break
+        if not attachment:
+            raise RuntimeError(f"Nenhum anexo compatível com pattern={pattern_text!r}")
+
+        if attachment.endswith("/view"):
+            attachment = attachment[:-5] + "/@@download/file"
+
+        parsed = urlsplit(validate_https_url(attachment))
+        host = (parsed.hostname or "").lower().rstrip(".")
+        allowed = set(listing_allowed)
+        configured = spec.options.get("attachment_allowed_hosts", [])
+        if isinstance(configured, str):
+            configured = [configured]
+        if not isinstance(configured, (list, tuple, set)):
+            raise ValueError("attachment_allowed_hosts deve ser lista/string")
+        allowed.update(str(value).strip().lower().rstrip(".") for value in configured if str(value).strip())
+
+        if host not in allowed:
+            raise ValueError(
+                f"Anexo publicado em host não autorizado: {host}; "
+                "adicione-o explicitamente a attachment_allowed_hosts após revisão"
+            )
+
+        return _http_get(
+            attachment,
+            headers=headers,
+            timeout=timeout,
+            allowed_hosts=allowed,
+            max_bytes=max_bytes,
+        )
+
+
 class ComexStatApiAdapter:
     """Coleta operacional mensal pelo endpoint oficial da API ComexStat."""
 
@@ -434,6 +523,8 @@ def get_adapter(method: str) -> Adapter:
         return CkanResourceAdapter()
     if normalized in {"govbr_latest_attachment", "govbr_attachment"}:
         return GovBrLatestAttachmentAdapter()
+    if normalized in {"html_latest_attachment", "latest_attachment"}:
+        return HtmlLatestAttachmentAdapter()
     if normalized in {"comexstat_api", "mdic_comexstat_api"}:
         return ComexStatApiAdapter()
     if normalized in {"nass_quickstats", "usda_nass_quickstats"}:

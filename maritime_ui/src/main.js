@@ -28,6 +28,20 @@ const els = {
   sourceHealthList: document.querySelector('#source-health-list'),
   briefBody: document.querySelector('#brief-body'),
   briefGenerated: document.querySelector('#brief-generated'),
+  agroOverviewStatus: document.querySelector('#agro-overview-status'),
+  commercialStatus: document.querySelector('#commercial-status'),
+  commercialComponents: document.querySelector('#commercial-components'),
+  agro: {
+    production: document.querySelector('#agro-production'),
+    storage: document.querySelector('#agro-storage'),
+    ratio: document.querySelector('#agro-storage-ratio'),
+    gap: document.querySelector('#agro-storage-gap'),
+    rain7: document.querySelector('#agro-rain-7'),
+    rain30: document.querySelector('#agro-rain-30'),
+    rain90: document.querySelector('#agro-rain-90'),
+    ptax: document.querySelector('#agro-ptax'),
+    hydroStations: document.querySelector('#agro-hydro-stations'),
+  },
   metrics: {
     live: document.querySelector('#metric-live'),
     approach: document.querySelector('#metric-approach'),
@@ -83,6 +97,24 @@ function fmtNumber(value, decimals = 0) {
     maximumFractionDigits: decimals,
     minimumFractionDigits: decimals,
   }).format(number);
+}
+
+function fmtTonnes(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  if (Math.abs(number) >= 1_000_000) return `${fmtNumber(number / 1_000_000, 2)} mi t`;
+  if (Math.abs(number) >= 1_000) return `${fmtNumber(number / 1_000, 1)} mil t`;
+  return `${fmtNumber(number, 0)} t`;
+}
+
+function fmtMm(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${fmtNumber(number, 1)} mm` : '—';
+}
+
+function fmtPercentRatio(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${fmtNumber(number * 100, 1)}%` : '—';
 }
 
 function fmtHours(value) {
@@ -374,6 +406,85 @@ function renderOperationalBrief() {
   )).join('') + divergenceHtml;
 }
 
+async function refreshAgroOverview() {
+  if (!els.agroOverviewStatus) return;
+  els.agroOverviewStatus.textContent = 'atualizando';
+  const [overviewResult, ptaxResult, hydroResult] = await Promise.allSettled([
+    getJson('/v1/intelligence/overview?uf=MT'),
+    getJson('/v1/intelligence/ptax?currency=USD'),
+    getJson('/v1/intelligence/hydrology?limit=50'),
+  ]);
+
+  let available = 0;
+  let newest = null;
+  if (overviewResult.status === 'fulfilled') {
+    const row = overviewResult.value.data || {};
+    els.agro.production.textContent = fmtTonnes(row.producao_t);
+    els.agro.storage.textContent = fmtTonnes(row.capacidade_estatica_t);
+    els.agro.ratio.textContent = fmtPercentRatio(row.producao_capacidade_ratio);
+    els.agro.gap.textContent = fmtTonnes(row.gap_capacidade_t);
+    els.agro.rain7.textContent = fmtMm(row.chuva_7d_mm);
+    els.agro.rain30.textContent = fmtMm(row.chuva_30d_mm);
+    els.agro.rain90.textContent = fmtMm(row.chuva_90d_mm);
+    newest = row.data_coleta || newest;
+    available += 1;
+  }
+  if (ptaxResult.status === 'fulfilled') {
+    const row = ptaxResult.value.data || {};
+    els.agro.ptax.textContent = Number.isFinite(Number(row.cotacao_venda))
+      ? `R$ ${fmtNumber(row.cotacao_venda, 4)}`
+      : '—';
+    newest = row.data_coleta || newest;
+    available += 1;
+  }
+  if (hydroResult.status === 'fulfilled') {
+    const rows = hydroResult.value.data || [];
+    els.agro.hydroStations.textContent = fmtNumber(rows.length);
+    available += 1;
+  }
+
+  if (overviewResult.status === 'rejected') console.warn('Overview 360 indisponível', overviewResult.reason);
+  if (ptaxResult.status === 'rejected') console.warn('PTAX 360 indisponível', ptaxResult.reason);
+  if (hydroResult.status === 'rejected') console.warn('Hidrologia 360 indisponível', hydroResult.reason);
+
+  els.agroOverviewStatus.textContent = available
+    ? (newest ? `parcial · ${fmtDate(newest)}` : `${available}/3 fontes`)
+    : 'dados ainda gated';
+}
+
+
+async function refreshCommercialSnapshot() {
+  if (!els.commercialStatus || !els.commercialComponents) return;
+  els.commercialStatus.textContent = 'atualizando';
+  try {
+    const response = await getJson('/v1/intelligence/commercial-snapshot?uf=MT');
+    const components = response.components || [];
+    els.commercialComponents.innerHTML = components.map(item => {
+      const failed = item.status === 'FAILED';
+      const count = Array.isArray(item.data) ? item.data.length : (item.data ? 1 : 0);
+      return `<article class="commercial-component">
+        <span>${escapeHtml(item.component || 'componente')}</span>
+        <strong class="${failed ? 'component-failed' : 'component-ready'}">${failed ? 'FAILED' : 'DISPONÍVEL'} · ${escapeHtml(fmtNumber(count))} registro(s)</strong>
+      </article>`;
+    }).join('');
+    const failed = response.failed_components || [];
+    els.commercialStatus.textContent = failed.length ? `parcial · ${failed.length} gap(s)` : 'pronto para análise';
+  } catch (error) {
+    console.warn('Commercial snapshot indisponível', error);
+    els.commercialStatus.textContent = 'snapshot indisponível';
+    els.commercialComponents.innerHTML = '<article class="commercial-component"><span>STATUS</span><strong class="component-failed">Falha controlada; demais telas permanecem disponíveis.</strong></article>';
+  }
+}
+
+function focusDashboardHash() {
+  const id = window.location.hash.replace(/^#/, '');
+  if (!id) return;
+  const target = document.getElementById(id === 'logistics' ? 'logistics-maritime' : id);
+  if (target) target.scrollIntoView({block: 'start', behavior: 'smooth'});
+}
+window.addEventListener('hashchange', focusDashboardHash);
+
+
 async function refreshAll({fit = false} = {}) {
   setStatus('idle', 'atualizando');
   els.refresh.disabled = true;
@@ -523,7 +634,8 @@ els.replaySlider.addEventListener('input', event => {
 map.on('load', async () => {
   try {
     await loadConfig();
-    await refreshAll({fit: true});
+    await Promise.all([refreshAll({fit: true}), refreshAgroOverview(), refreshCommercialSnapshot()]);
+    focusDashboardHash();
   } catch (error) {
     console.error(error);
     setStatus('error', 'gateway indisponível');
@@ -531,5 +643,9 @@ map.on('load', async () => {
 });
 
 setInterval(() => {
-  if (!document.hidden) refreshAll({fit: false});
+  if (!document.hidden) {
+    refreshAll({fit: false});
+    refreshAgroOverview();
+    refreshCommercialSnapshot();
+  }
 }, 30000);

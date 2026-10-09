@@ -69,6 +69,17 @@ P0/P1 continuam sendo gates para declarar o núcleo ponta a ponta validado. As f
 - [ ] Garantir rastreabilidade do indicador até fonte/artefato/transformação.
 - [ ] Criar regra transversal de data de corte para impedir look-ahead em estudos históricos, sinais e backtests.
 
+### A5 — Earth Observation cloud-native
+- [x] Registrar NASA CMR-STAC/LPCLOUD como fonte EO oficial `gated`, com MOD09GA_061 e MOD11A1_061 confirmados no catálogo.
+- [ ] Selecionar o primeiro caso operacional MT/Brasil para materialização (prioridade: vegetação/refletância ou temperatura de superfície; umidade do solo em fonte/produto adequado separado).
+- [ ] Comparar acesso via STAC (PySTAC Client + odc-stac) e NASA Earthdata (earthaccess) conforme a fonte escolhida.
+- [x] Criar contrato canônico de asset EO e normalizador STAC dependency-free, preservando item/asset, aquisição, geometria, bandas, licença, cloud cover, quality flags e provenance.
+- [ ] Validar esse normalizador contra uma fonte STAC oficial real e preservar asset/item/vintage, geometria/AOI, timestamps e licença.
+- [ ] Avaliar VirtualiZarr para HDF/NetCDF grandes antes de download/cópia integral.
+- [ ] Materializar inventário STAC em GeoParquet somente se o volume justificar.
+- [ ] Usar TiTiler somente quando houver raster operacional que precise tiles dinâmicos no MapLibre.
+- [ ] Não implantar pgSTAC/stac-fastapi/PostGIS nesta fase.
+
 ## Frente B — inteligência, conhecimento e observabilidade
 
 ### B1 — RAG do Segundo Cérebro
@@ -84,15 +95,26 @@ P0/P1 continuam sendo gates para declarar o núcleo ponta a ponta validado. As f
 - [ ] Avaliar memória de agente sem substituir BigQuery/GitHub/Obsidian.
 - [ ] Verificar se memória/checkpoint do LangGraph cobre a necessidade antes de adicionar mem0 ou camada equivalente.
 
-### B3 — Orquestração multiagente com LangGraph
-- [ ] Usar LangGraph como **primeiro candidato** do benchmark de orquestração analítica.
-- [ ] Definir grafo mínimo com 3 papéis: especialista → cético/contra → auditor/consolidador.
-- [ ] Testar checkpoint/recovery, human-in-the-loop, handoff, condição de parada e rastreabilidade do estado.
-- [ ] Definir permissões e ferramentas por agente via AgroLog Gateway/contratos explícitos.
-- [ ] Adaptar, sem copiar stack, padrões úteis de TradingAgents: especialistas, debate pró/contra, risco e decisão final.
-- [ ] Avaliar padrões de Vibe-Trading para grounding, proveniência, audit ledger, unidade e look-ahead.
-- [ ] Não instalar CrewAI, Agno, Semantic Kernel ou AutoGen em paralelo; testar alternativa somente se LangGraph falhar em requisito documentado.
-- [ ] Manter separação entre LangGraph (agentes) e n8n (pipelines/gatilhos).
+### B3 — Runtime multiagente tipado
+- [ ] Usar Pydantic AI + Harness como primeiro candidato do runtime analítico.
+- [ ] Implementar piloto com 3 papéis: especialista → cético/contra → auditor/consolidador.
+- [ ] Validar outputs tipados, tools autorizadas, Planning, SubAgents/Dynamic Workflow e limites de uso.
+- [ ] Testar Step Persistence/recovery e human approval somente onde o caso exigir.
+- [ ] Definir permissões e ferramentas por agente exclusivamente via AgroLog Gateway/contratos explícitos.
+- [ ] Manter Memory/Conversation Search segregados e sem autoridade sobre Obsidian canônico.
+- [ ] Adaptar padrões úteis de TradingAgents/Vibe-Trading sem importar uma segunda stack.
+- [ ] Manter LangGraph como alternativa condicional; não instalar em paralelo sem falha objetiva do candidato preferencial.
+- [ ] Manter separação entre runtime de agentes e n8n (pipelines/gatilhos).
+
+### B3.1 — Avaliação, tracing e red-team de IA
+- [x] Criar contrato canônico `contracts/agent_evaluation.v1.schema.json`.
+- [x] Adicionar teste de governança para grounding, classificação epistemológica, autorização de tools, prompt injection, exfiltração e cutoff temporal.
+- [x] Implementar gate determinístico fail-closed em `models/agent_evaluation.py`, independente do avaliador externo.
+- [x] Cobrir missing/duplicate checks, tool não autorizada, evidência incompleta e divergência de status em `tests/test_agent_evaluation.py`.
+- [ ] Instrumentar o primeiro piloto com OpenTelemetry/Phoenix.
+- [ ] Construir golden dataset versionado por cenário/agente.
+- [ ] Criar suíte Promptfoo para regressão + red-team.
+- [ ] Bloquear promoção quando houver tool não autorizada, claim sem evidência material, exfiltração, quebra de cutoff ou classificação epistemológica incorreta.
 
 ### B4 — Cockpit interno de IA
 - [ ] PoC de LibreChat como candidato preferencial de cockpit interno.
@@ -138,6 +160,14 @@ P0/P1 continuam sendo gates para declarar o núcleo ponta a ponta validado. As f
 - [ ] Expor IA local por interface controlada, sem espalhar dependência de provider pelo código.
 - [ ] Não manter llama.cpp como servidor paralelo; avaliá-lo somente para requisito específico de hardware/quantização/desempenho.
 - [ ] Definir quais tarefas nunca podem ser rebaixadas para modelo local sem validação adicional.
+
+### B10 — Inteligência comercial evidence-first
+- [x] Implementar vetor de condições de venda do produtor com preço físico, basis, spread de paridade e delta de comercialização.
+- [x] Proibir score composto enquanto não houver metodologia calibrada/backtest.
+- [x] Implementar vetor de demanda 30d separando exportação programada, exportação realizada, demanda industrial de referência e fluxo doméstico.
+- [x] Proibir soma automática de componentes com semântica/período diferentes e preservar `programado != realizado`.
+- [ ] Conectar os vetores às fontes canônicas point-in-time após homologação N6.
+- [ ] Calibrar qualquer futuro score/forecast somente com histórico suficiente, baseline e rolling-origin.
 
 ## Frente C — expansão operacional e comercial
 

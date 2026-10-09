@@ -1,5 +1,21 @@
 # N6 — Estado de Execução
 
+## Atualização executiva — 28/09/2026
+
+Estado auditado no head candidato desta branch:
+
+- **Release candidate formal:** PR #187, aberto como draft contra `main`.
+- **Divergência do candidato:** 35 commits à frente e 0 atrás de `main` no momento da abertura do PR.
+- **Cloud Build:** correção de `--service-account` para resource name canônico aplicada a collector, Gateway e AIS worker, com teste de regressão.
+- **Drive do collector:** gate revalidado como **RESOLVIDO**. O `DRIVE_FOLDER_ID` canônico usado pelo deploy é `17AX2iCrQ17Jm86Pp9ijqn3hyEHVaQPqd` (`AGROLOG MT/07_AUTOMACAO`), e a service account `agrolog-collector@project-61334ffa-ea5c-4c3a-82f.iam.gserviceaccount.com` possui papel `writer` nessa pasta.
+- **Pasta RAW homônima de outro projeto:** não pertence ao AgroLog e não deve ser movida/reutilizada; não há referência a esse ID no código do AgroLog.
+- **Execução sem GitHub-hosted minutes:** o candidato contém runners GCE efêmeros (`agrolog-ci`) para o workflow canônico e também `scripts/run_full_project_ci_local.sh` + `scripts/finalize_agrolog_without_actions.sh` para execução integral direta em Cloud Shell/GCP. O primeiro run após restaurar `self-hosted` ficou `queued`, aguardando runner compatível, sem mascarar falha como PASS.
+- **Evidência de produção FINAL:** **AINDA AUSENTE**. Não foi localizada evidência posterior válida de `N6 CORE HOMOLOGATION: PASS` + `AGROLOG MT FINAL RELEASE: PASS` no SHA candidato. Portanto P0/P1 e release continuam bloqueados para declaração de produção.
+- **Próximo gate físico:** executar o finalizador integral em ambiente GCP autenticado com Docker, `gcloud` e `bq`, registrar o SHA testado e exigir zero skips antes de promover o PR #187.
+- **Ruleset de `main`:** Issue #183 permanece pós-gate; só deve ser ativado após PASS integral e promoção do mesmo SHA validado.
+
+Esta atualização substitui qualquer interpretação anterior de que faltava compartilhar uma pasta Drive do AgroLog; o acesso canônico do collector já foi confirmado.
+
 Este documento registra o estado operacional do caminho crítico N6. `docs/N6_PROGRAM.md` continua sendo a fonte canônica dos critérios científicos; `docs/BACKLOG.md` continua sendo o backlog geral. Este arquivo registra somente execução, gates e evidências.
 
 ## Regra de estado

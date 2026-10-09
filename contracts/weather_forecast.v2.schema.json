@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agrolog.local/contracts/weather_forecast.v2.schema.json",
+  "title": "AgroLog weather forecast run observation v2",
+  "type": "object",
+  "required": [
+    "source_id",
+    "model",
+    "run_id",
+    "initialization_time",
+    "forecast_hour",
+    "valid_time",
+    "collection_time",
+    "variable",
+    "value",
+    "unit",
+    "evidence_class"
+  ],
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "initialization_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "forecast_hour": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "valid_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "collection_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "publication_date": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "resolution": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ensemble_member": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "geo_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "variable": {
+      "type": "string",
+      "minLength": 1
+    },
+    "value": {
+      "type": "number"
+    },
+    "unit": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence_class": {
+      "const": "PREVISTO"
+    },
+    "raw_artifact_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

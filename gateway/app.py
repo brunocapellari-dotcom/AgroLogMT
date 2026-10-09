@@ -14,8 +14,28 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from google.cloud import bigquery
 
+from .commercial_freshness import component_freshness
+from .intelligence_queries import (
+    build_biomass_sql,
+    build_fertilizer_imports_sql,
+    build_freight_lanes_sql,
+    build_hydrology_latest_sql,
+    build_imea_freight_reference_sql,
+    build_overview_sql,
+    build_ptax_current_sql,
+    build_storage_balance_sql,
+    build_imea_market_indicators_sql,
+    build_weather_consensus_sql,
+    build_crop_current_sql,
+    build_freight_history_sql,
+    build_crop_progress_current_sql,
+    build_argentina_current_sql,
+    build_usda_wasde_changes_sql,
+    build_agricultural_exports_sql,
+)
 from .maritime_queries import (
     build_lineup_reconciliation_sql,
     build_live_vessels_sql,
@@ -24,6 +44,8 @@ from .maritime_queries import (
     normalize_mmsi,
     normalize_port_id,
 )
+from .dashboard_routes import DASHBOARD_ROUTES, redirect_target
+from models.commercial_analysis import build_derived_components
 from .storage_queries import (
     build_latest_summary_sql,
     build_latest_warehouses_sql,
@@ -39,6 +61,9 @@ PROJECT_ID = safe_identifier(
 DATASET_ID = safe_identifier(os.environ.get("AGROLOG_LOGISTICA_DATASET", "logistica"), label="dataset")
 MARITIME_DATASET_ID = safe_identifier(
     os.environ.get("AGROLOG_MARITIME_DATASET", "agrolog_models"), label="maritime_dataset"
+)
+INTELLIGENCE_DATASET_ID = safe_identifier(
+    os.environ.get("AGROLOG_INTELLIGENCE_DATASET", "marts_agrolog360"), label="intelligence_dataset"
 )
 BQ_LOCATION = os.environ.get("AGROLOG_BQ_LOCATION", "southamerica-east1")
 BQ_MAX_BYTES_BILLED = int(os.environ.get("AGROLOG_BQ_MAX_BYTES_BILLED", "1000000000"))
@@ -350,6 +375,464 @@ def maritime_summary(
         "data": _jsonable(rows[0] if rows else {}),
     }
 
+
+@app.get("/v1/intelligence/overview")
+def intelligence_overview(uf: str | None = "MT") -> dict[str, Any]:
+    try:
+        uf = normalize_uf(uf)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    sql = build_overview_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID)
+    rows = _query(sql, [bigquery.ScalarQueryParameter("uf", "STRING", uf)])
+    return {
+        "source_id": "marts_agrolog360.overview_current_v1",
+        "evidence_class": "DERIVED",
+        "filters": {"uf": uf},
+        "data": _jsonable(rows[0] if rows else {}),
+    }
+
+
+@app.get("/v1/intelligence/storage-balance")
+def intelligence_storage_balance(
+    uf: str | None = "MT",
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict[str, Any]:
+    try:
+        uf = normalize_uf(uf)
+        limit = normalize_limit(limit, maximum=100)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    sql = build_storage_balance_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID)
+    params = [
+        bigquery.ScalarQueryParameter("uf", "STRING", uf),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.storage_balance_v1",
+        "evidence_class": "INFERIDO",
+        "filters": {"uf": uf, "limit": limit},
+        "data": [_jsonable(row) for row in _query(sql, params)],
+    }
+
+
+@app.get("/v1/intelligence/freight-lanes")
+def intelligence_freight_lanes(
+    origin: str | None = None,
+    destination: str | None = None,
+    product: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    try:
+        limit = normalize_limit(limit, maximum=500)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    params = [
+        bigquery.ScalarQueryParameter("origin", "STRING", origin),
+        bigquery.ScalarQueryParameter("destination", "STRING", destination),
+        bigquery.ScalarQueryParameter("product", "STRING", product),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    rows = [_jsonable(row) for row in _query(build_freight_lanes_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)]
+    return {
+        "source_id": "marts_agrolog360.freight_lanes_v1",
+        "evidence_class": "DERIVED_FROM_OBSERVED_OFFERS_NOT_EXECUTED_FREIGHT",
+        "filters": {"origin": origin, "destination": destination, "product": product, "limit": limit},
+        "data": rows,
+    }
+
+
+@app.get("/v1/intelligence/fertilizers")
+def intelligence_fertilizers(
+    uf: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    try:
+        uf = normalize_uf(uf)
+        limit = normalize_limit(limit, maximum=500)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    params = [
+        bigquery.ScalarQueryParameter("uf", "STRING", uf),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.fertilizer_imports_v1",
+        "evidence_class": "OBSERVED_CUSTOMS_AGGREGATE",
+        "filters": {"uf": uf, "limit": limit},
+        "data": [_jsonable(row) for row in _query(build_fertilizer_imports_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
+    }
+
+
+@app.get("/v1/intelligence/biomass")
+def intelligence_biomass(
+    geo_id: str | None = "MT",
+    biomass_type: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    try:
+        limit = normalize_limit(limit, maximum=500)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    params = [
+        bigquery.ScalarQueryParameter("geo_id", "STRING", geo_id),
+        bigquery.ScalarQueryParameter("biomass_type", "STRING", biomass_type),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.biomass_v1",
+        "evidence_class": "MIXED_EXPLICIT",
+        "filters": {"geo_id": geo_id, "biomass_type": biomass_type, "limit": limit},
+        "data": [_jsonable(row) for row in _query(build_biomass_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
+    }
+
+
+@app.get("/v1/intelligence/hydrology")
+def intelligence_hydrology(
+    river: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    try:
+        limit = normalize_limit(limit, maximum=200)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    params = [
+        bigquery.ScalarQueryParameter("river", "STRING", river),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.hydrology_latest_v1",
+        "evidence_class": "DERIVADO_DE_OBSERVADO",
+        "filters": {"river": river, "limit": limit},
+        "data": [_jsonable(row) for row in _query(build_hydrology_latest_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
+    }
+
+
+@app.get("/v1/intelligence/ptax")
+def intelligence_ptax(currency: str | None = "USD") -> dict[str, Any]:
+    normalized = currency.strip().upper() if currency else None
+    if normalized is not None and (len(normalized) != 3 or not normalized.isalpha()):
+        raise HTTPException(status_code=400, detail="currency deve ser código alfabético de 3 letras")
+    params = [bigquery.ScalarQueryParameter("currency", "STRING", normalized)]
+    rows = _query(build_ptax_current_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)
+    return {
+        "source_id": "marts_agrolog360.ptax_current_v1",
+        "evidence_class": "OBSERVADO",
+        "filters": {"currency": normalized},
+        "data": _jsonable(rows[0] if rows else {}),
+    }
+
+
+@app.get("/v1/intelligence/imea-freight-reference")
+def intelligence_imea_freight_reference(
+    origin: str | None = None,
+    destination: str | None = None,
+    product: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    try:
+        limit = normalize_limit(limit, maximum=500)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    params = [
+        bigquery.ScalarQueryParameter("origin", "STRING", origin),
+        bigquery.ScalarQueryParameter("destination", "STRING", destination),
+        bigquery.ScalarQueryParameter("product", "STRING", product),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.imea_freight_reference_v1",
+        "evidence_class": "SOURCE_DECLARED",
+        "route_type": "UNCLASSIFIED",
+        "filters": {"origin": origin, "destination": destination, "product": product, "limit": limit},
+        "data": [_jsonable(row) for row in _query(build_imea_freight_reference_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
+    }
+
+
+@app.get("/v1/intelligence/crops")
+def intelligence_crops(
+    geo_level: str | None = None,
+    geo_id: str | None = None,
+    product: str | None = None,
+    safra: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    params = [
+        bigquery.ScalarQueryParameter("geo_level", "STRING", geo_level),
+        bigquery.ScalarQueryParameter("geo_id", "STRING", geo_id),
+        bigquery.ScalarQueryParameter("product", "STRING", product),
+        bigquery.ScalarQueryParameter("safra", "STRING", safra),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.crop_current_v1",
+        "evidence_class": "DERIVED_FROM_CONAB_VINTAGES",
+        "filters": {"geo_level": geo_level, "geo_id": geo_id, "product": product, "safra": safra, "limit": limit},
+        "data": [_jsonable(row) for row in _query(build_crop_current_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
+    }
+
+
+@app.get("/v1/intelligence/freight-history")
+def intelligence_freight_history(
+    origin: str | None = None,
+    destination: str | None = None,
+    product: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    params = [
+        bigquery.ScalarQueryParameter("origin", "STRING", origin),
+        bigquery.ScalarQueryParameter("destination", "STRING", destination),
+        bigquery.ScalarQueryParameter("product", "STRING", product),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.freight_history_v1",
+        "evidence_class": "DERIVED_FROM_OBSERVED_OFFERS_NOT_EXECUTED_FREIGHT",
+        "filters": {"origin": origin, "destination": destination, "product": product, "limit": limit},
+        "data": [_jsonable(row) for row in _query(build_freight_history_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
+    }
+
+
+@app.get("/v1/intelligence/market-reference")
+def intelligence_market_reference(
+    product: str | None = None,
+    location: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    params = [
+        bigquery.ScalarQueryParameter("product", "STRING", product),
+        bigquery.ScalarQueryParameter("location", "STRING", location),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.imea_market_indicators_v1",
+        "evidence_class": "SOURCE_DECLARED",
+        "filters": {"product": product, "location": location, "limit": limit},
+        "data": [_jsonable(row) for row in _query(build_imea_market_indicators_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
+    }
+
+
+@app.get("/v1/intelligence/weather-consensus")
+def intelligence_weather_consensus(
+    geo_id: str | None = "MT",
+    variable: str | None = None,
+    hours: int = Query(default=360, ge=1, le=840),
+    limit: int = Query(default=500, ge=1, le=2000),
+) -> dict[str, Any]:
+    params = [
+        bigquery.ScalarQueryParameter("geo_id", "STRING", geo_id),
+        bigquery.ScalarQueryParameter("variable", "STRING", variable),
+        bigquery.ScalarQueryParameter("hours", "INT64", hours),
+        bigquery.ScalarQueryParameter("limit", "INT64", limit),
+    ]
+    return {
+        "source_id": "marts_agrolog360.weather_consensus_v1",
+        "evidence_class": "PREVISTO",
+        "method": "LATEST_RUN_PER_MODEL_THEN_ROBUST_CROSS_MODEL_DISTRIBUTION",
+        "filters": {"geo_id": geo_id, "variable": variable, "hours": hours, "limit": limit},
+        "data": [_jsonable(row) for row in _query(build_weather_consensus_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID), params)],
+    }
+
+
+
+def _optional_component(name: str, source_id: str, sql: str, parameters: list[bigquery.ScalarQueryParameter]) -> dict[str, Any]:
+    try:
+        rows = [_jsonable(row) for row in _query(sql, parameters)]
+        freshness, latest_at, age_minutes = component_freshness(name, rows)
+        return {
+            "component": name,
+            "source_id": source_id,
+            "status": freshness,
+            "latest_at": latest_at,
+            "age_minutes": age_minutes,
+            "data": rows,
+        }
+    except HTTPException:
+        return {
+            "component": name,
+            "source_id": source_id,
+            "status": "FAILED",
+            "latest_at": None,
+            "age_minutes": None,
+            "data": [],
+        }
+
+
+@app.get("/v1/intelligence/commercial-snapshot")
+def intelligence_commercial_snapshot(uf: str = "MT") -> dict[str, Any]:
+    """Return a failure-tolerant commercial snapshot.
+
+    Each component is isolated: a missing/stale table is exposed as FAILED and does
+    not turn the entire report snapshot into HTTP 5xx. This endpoint does not claim
+    freshness; source-specific freshness remains a separate release gate.
+    """
+    try:
+        uf = normalize_uf(uf) or "MT"
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    components = [
+        _optional_component(
+            "overview", "marts_agrolog360.overview_current_v1",
+            build_overview_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [bigquery.ScalarQueryParameter("uf", "STRING", uf)],
+        ),
+        _optional_component(
+            "ptax", "marts_agrolog360.ptax_current_v1",
+            build_ptax_current_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [bigquery.ScalarQueryParameter("currency", "STRING", "USD")],
+        ),
+        _optional_component(
+            "market_reference", "marts_agrolog360.imea_market_indicators_v1",
+            build_imea_market_indicators_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("product", "STRING", None),
+                bigquery.ScalarQueryParameter("location", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 200),
+            ],
+        ),
+        _optional_component(
+            "crops_mt", "marts_agrolog360.crop_current_v1",
+            build_crop_current_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("geo_level", "STRING", "uf"),
+                bigquery.ScalarQueryParameter("geo_id", "STRING", uf),
+                bigquery.ScalarQueryParameter("product", "STRING", None),
+                bigquery.ScalarQueryParameter("safra", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 100),
+            ],
+        ),
+        _optional_component(
+            "crops_br", "marts_agrolog360.crop_current_v1",
+            build_crop_current_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("geo_level", "STRING", "country"),
+                bigquery.ScalarQueryParameter("geo_id", "STRING", "BR"),
+                bigquery.ScalarQueryParameter("product", "STRING", None),
+                bigquery.ScalarQueryParameter("safra", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 100),
+            ],
+        ),
+        _optional_component(
+            "crop_progress", "marts_agrolog360.crop_progress_current_v1",
+            build_crop_progress_current_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("product", "STRING", None),
+                bigquery.ScalarQueryParameter("region", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 200),
+            ],
+        ),
+        _optional_component(
+            "argentina", "marts_agrolog360.argentina_crop_current_v1",
+            build_argentina_current_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("product", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 100),
+            ],
+        ),
+        _optional_component(
+            "usda", "marts_agrolog360.usda_wasde_changes_v1",
+            build_usda_wasde_changes_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("product", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 200),
+            ],
+        ),
+        _optional_component(
+            "exports", "marts_agrolog360.agricultural_exports_v1",
+            build_agricultural_exports_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("geo_level", "STRING", "uf"),
+                bigquery.ScalarQueryParameter("geo_id", "STRING", uf),
+                bigquery.ScalarQueryParameter("product", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 100),
+            ],
+        ),
+        _optional_component(
+            "freight", "marts_agrolog360.freight_history_v1",
+            build_freight_history_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("origin", "STRING", None),
+                bigquery.ScalarQueryParameter("destination", "STRING", None),
+                bigquery.ScalarQueryParameter("product", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 100),
+            ],
+        ),
+        _optional_component(
+            "weather", "marts_agrolog360.weather_consensus_v1",
+            build_weather_consensus_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("geo_id", "STRING", uf),
+                bigquery.ScalarQueryParameter("variable", "STRING", None),
+                bigquery.ScalarQueryParameter("hours", "INT64", 360),
+                bigquery.ScalarQueryParameter("limit", "INT64", 1000),
+            ],
+        ),
+
+        _optional_component(
+            "weather_3d", "marts_agrolog360.weather_consensus_v1",
+            build_weather_consensus_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("geo_id", "STRING", uf),
+                bigquery.ScalarQueryParameter("variable", "STRING", None),
+                bigquery.ScalarQueryParameter("hours", "INT64", 72),
+                bigquery.ScalarQueryParameter("limit", "INT64", 500),
+            ],
+        ),
+        _optional_component(
+            "weather_7d", "marts_agrolog360.weather_consensus_v1",
+            build_weather_consensus_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("geo_id", "STRING", uf),
+                bigquery.ScalarQueryParameter("variable", "STRING", None),
+                bigquery.ScalarQueryParameter("hours", "INT64", 168),
+                bigquery.ScalarQueryParameter("limit", "INT64", 750),
+            ],
+        ),
+        _optional_component(
+            "weather_15d", "marts_agrolog360.weather_consensus_v1",
+            build_weather_consensus_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("geo_id", "STRING", uf),
+                bigquery.ScalarQueryParameter("variable", "STRING", None),
+                bigquery.ScalarQueryParameter("hours", "INT64", 360),
+                bigquery.ScalarQueryParameter("limit", "INT64", 1000),
+            ],
+        ),
+        _optional_component(
+            "hydrology", "marts_agrolog360.hydrology_latest_v1",
+            build_hydrology_latest_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("river", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 50),
+            ],
+        ),
+    ]
+    components.extend(build_derived_components(components))
+    failed = [item["component"] for item in components if item["status"] == "FAILED"]
+    stale = [item["component"] for item in components if item["status"] == "STALE"]
+    freshness = {str(item["source_id"]): str(item["status"]) for item in components}
+    return {
+        "product": "AGROLOG INTELLIGENCE",
+        "uf": uf,
+        "status": "READY_FOR_ANALYSIS" if not failed and not stale else "PARTIAL",
+        "failed_components": failed,
+        "stale_components": stale,
+        "freshness": freshness,
+        "components": components,
+    }
+
+
+for dashboard_path, fragment in DASHBOARD_ROUTES:
+    def _dashboard_redirect(_fragment: str = fragment) -> RedirectResponse:
+        return RedirectResponse(url=redirect_target(_fragment), status_code=307)
+
+    app.add_api_route(
+        dashboard_path,
+        _dashboard_redirect,
+        methods=["GET"],
+        include_in_schema=False,
+        name=f"dashboard-{fragment}",
+    )
 
 UI_DIR = Path(os.environ.get("AGROLOG_MARITIME_UI_DIR", "/app/maritime_ui/dist"))
 if UI_DIR.is_dir():

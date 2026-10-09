@@ -1,0 +1,174 @@
+{
+  "version": "1.0.0",
+  "dataset": "marts_agrolog360",
+  "principles": [
+    "BigQuery remains the analytical source of truth",
+    "create datasets and tables/views only when a source enters production",
+    "never promote programmed/informed data to observed realization",
+    "all derived metrics retain reference/publication/collection dates when the upstream data exposes them"
+  ],
+  "marts": [
+    {
+      "mart_id": "climate_rollups",
+      "target": "marts_agrolog360.climate_rollups_v1",
+      "sources": [
+        "clima.daily_observations"
+      ],
+      "evidence": "derived_from_observed"
+    },
+    {
+      "mart_id": "storage_balance",
+      "target": "marts_agrolog360.storage_balance_v1",
+      "sources": [
+        "agro.conab_safra_graos",
+        "logistica.v_armazens_conab_latest"
+      ],
+      "evidence": "derived_from_mixed_upstream_evidence"
+    },
+    {
+      "mart_id": "freight_lanes",
+      "target": "marts_agrolog360.freight_lanes_v1",
+      "sources": [
+        "logistica.freight_offer_observations"
+      ],
+      "evidence": "derived_from_observed_offers_not_executed_freight"
+    },
+    {
+      "mart_id": "fertilizer_imports",
+      "target": "marts_agrolog360.fertilizer_imports_v1",
+      "sources": [
+        "comercio_exterior.comexstat_ncm_import"
+      ],
+      "evidence": "observed_customs_aggregate"
+    },
+    {
+      "mart_id": "biomass",
+      "target": "marts_agrolog360.biomass_v1",
+      "sources": [
+        "energia.biomass_observations"
+      ],
+      "evidence": "mixed_explicit"
+    },
+    {
+      "mart_id": "overview_current",
+      "target": "marts_agrolog360.overview_current_v1",
+      "sources": [
+        "marts_agrolog360.storage_balance_v1",
+        "marts_agrolog360.climate_rollups_v1"
+      ],
+      "evidence": "derived"
+    },
+    {
+      "mart_id": "hydrology_latest",
+      "target": "marts_agrolog360.hydrology_latest_v1",
+      "sources": [
+        "hidrologia.m04_components_latest"
+      ],
+      "evidence": "derived_from_observed_hydrology"
+    },
+    {
+      "mart_id": "ptax_current",
+      "target": "marts_agrolog360.ptax_current_v1",
+      "sources": [
+        "mercado.ptax_usd_daily"
+      ],
+      "evidence": "observed_official_bcb"
+    },
+    {
+      "mart_id": "imea_freight_reference",
+      "target": "marts_agrolog360.imea_freight_reference_v1",
+      "sources": [
+        "logistica.imea_frete_referencia"
+      ],
+      "evidence": "observed_or_estimated_as_source_row_declares_route_unclassified"
+    },
+    {
+      "mart_id": "crop_vintages",
+      "target": "marts_agrolog360.crop_vintages_v1",
+      "sources": [
+        "agro.conab_safra_graos"
+      ],
+      "evidence": "derived_from_immutable_conab_vintages"
+    },
+    {
+      "mart_id": "crop_current",
+      "target": "marts_agrolog360.crop_current_v1",
+      "sources": [
+        "marts_agrolog360.crop_vintages_v1"
+      ],
+      "evidence": "latest_point_in_time_vintage"
+    },
+    {
+      "mart_id": "freight_history",
+      "target": "marts_agrolog360.freight_history_v1",
+      "sources": [
+        "marts_agrolog360.freight_lanes_v1"
+      ],
+      "evidence": "derived_from_observed_offers_not_executed_freight"
+    },
+    {
+      "mart_id": "imea_market_indicators",
+      "target": "marts_agrolog360.imea_market_indicators_v1",
+      "sources": [
+        "mercado.imea_indicadores_operacionais"
+      ],
+      "evidence": "source_declared_market_reference"
+    },
+    {
+      "mart_id": "weather_run_summary",
+      "target": "marts_agrolog360.weather_run_summary_v1",
+      "sources": [
+        "clima.forecast_runs"
+      ],
+      "evidence": "forecast_run_preserving"
+    },
+    {
+      "mart_id": "weather_consensus",
+      "target": "marts_agrolog360.weather_consensus_v1",
+      "sources": [
+        "marts_agrolog360.weather_run_summary_v1"
+      ],
+      "evidence": "forecast_multimodel_latest_run_per_model"
+    },
+    {
+      "mart_id": "argentina_crop_history",
+      "target": "marts_agrolog360.argentina_crop_history_v1",
+      "sources": [
+        "agro.argentina_estimaciones"
+      ],
+      "evidence": "official_estimate_vintage_history"
+    },
+    {
+      "mart_id": "argentina_crop_current",
+      "target": "marts_agrolog360.argentina_crop_current_v1",
+      "sources": [
+        "marts_agrolog360.argentina_crop_history_v1"
+      ],
+      "evidence": "latest_official_estimate_vintage"
+    },
+    {
+      "mart_id": "usda_wasde_changes",
+      "target": "marts_agrolog360.usda_wasde_changes_v1",
+      "sources": [
+        "global_market.usda_wasde_cells"
+      ],
+      "evidence": "official_wasde_reported_vintage_change"
+    },
+    {
+      "mart_id": "crop_progress_current",
+      "target": "marts_agrolog360.crop_progress_current_v1",
+      "sources": [
+        "agro.imea_progresso_cultura"
+      ],
+      "evidence": "source_declared_estimated_progress"
+    },
+    {
+      "mart_id": "agricultural_exports",
+      "target": "marts_agrolog360.agricultural_exports_v1",
+      "sources": [
+        "comercio_exterior.comexstat_ncm_export"
+      ],
+      "evidence": "observed_customs_aggregate"
+    }
+  ]
+}

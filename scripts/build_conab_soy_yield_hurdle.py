@@ -10,14 +10,17 @@ from urllib.request import Request, urlopen
 
 from collector.conab_safra import parse_conab_safra_workbook
 from collector.conab_safra_history import _publication_from_item
+from collector.transport_security import validate_https_url
 from models.first_backtests import yield_backtest
 
 DEFAULT_REGISTRY = Path("contracts/conab_vintage_registry.v1.json")
 
 
 def _download(url: str, timeout: int = 120) -> bytes:
+    validate_https_url(url)
     request = Request(url, headers={"User-Agent": "AgroLogMT/0.1 (+conab-yield-hurdle)"})
-    with urlopen(request, timeout=timeout) as response:
+    with urlopen(request, timeout=timeout) as response:  # nosec B310 - HTTPS validated before request and after redirect.
+        validate_https_url(response.geturl())
         return response.read()
 
 

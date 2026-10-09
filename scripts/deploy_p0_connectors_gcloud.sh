@@ -8,6 +8,7 @@ OPS_DATASET="${OPS_DATASET:-agrolog_ops}"
 MERCADO_DATASET="${MERCADO_DATASET:-mercado}"
 HIDRO_DATASET="${HIDRO_DATASET:-hidrologia}"
 DRIVE_FOLDER_ID="${DRIVE_FOLDER_ID:-17AX2iCrQ17Jm86Pp9ijqn3hyEHVaQPqd}"
+RAW_BUCKET="${RAW_BUCKET:-${PROJECT_ID}-agrolog-raw}"
 AR_REPOSITORY="${AR_REPOSITORY:-agrolog}"
 IMAGE_NAME="${IMAGE_NAME:-collector}"
 IMAGE_TAG="${IMAGE_TAG:-p0-$(date +%Y%m%d%H%M%S)}"
@@ -31,7 +32,7 @@ ANA_JOB="agrolog-ana-hidro"
 gcloud config set project "${PROJECT_ID}" >/dev/null
 
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com \
-  cloudscheduler.googleapis.com bigquery.googleapis.com drive.googleapis.com iam.googleapis.com secretmanager.googleapis.com
+  cloudscheduler.googleapis.com bigquery.googleapis.com drive.googleapis.com storage.googleapis.com iam.googleapis.com secretmanager.googleapis.com
 
 for account in "${COLLECTOR_SA_NAME}" "${SCHEDULER_SA_NAME}"; do
   email="${account}@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -60,7 +61,7 @@ if ! gcloud artifacts repositories describe "${AR_REPOSITORY}" --location "${REG
 fi
 gcloud builds submit --tag "${IMAGE}" --project "${PROJECT_ID}" .
 
-common_env="AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_OPS_DATASET=${OPS_DATASET},AGROLOG_MERCADO_DATASET=${MERCADO_DATASET},AGROLOG_HIDRO_DATASET=${HIDRO_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION},AGROLOG_DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID},AGROLOG_CONFIG=/app/collector/config/sources.p0.json"
+common_env="AGROLOG_GCP_PROJECT=${PROJECT_ID},AGROLOG_OPS_DATASET=${OPS_DATASET},AGROLOG_MERCADO_DATASET=${MERCADO_DATASET},AGROLOG_HIDRO_DATASET=${HIDRO_DATASET},AGROLOG_BQ_LOCATION=${BQ_LOCATION},AGROLOG_RAW_BACKEND=gcs,AGROLOG_RAW_BUCKET=${RAW_BUCKET},AGROLOG_DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID},AGROLOG_CONFIG=/app/collector/config/sources.p0.json"
 
 # PTAX é independente e nunca deve ficar bloqueada pela configuração dos secrets ANA.
 gcloud run jobs deploy "${PTAX_JOB}" --image "${IMAGE}" --region "${REGION}" --project "${PROJECT_ID}" \

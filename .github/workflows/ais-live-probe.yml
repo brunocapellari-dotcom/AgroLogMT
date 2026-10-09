@@ -8,6 +8,7 @@ permissions:
 
 jobs:
   probe:
+    environment: agrolog-production
     permissions:
       contents: read
       id-token: write

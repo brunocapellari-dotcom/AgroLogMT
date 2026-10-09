@@ -1,0 +1,6 @@
+# Dependencias exclusivas de benchmark/POC. Nao entram no runtime de producao.
+h3>=4.5,<5
+pyais>=3.2,<4
+pyvrp>=0.14,<1
+osmium>=4.3,<5
+osmnx>=2,<3

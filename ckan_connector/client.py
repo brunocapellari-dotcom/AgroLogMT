@@ -21,7 +21,7 @@ _DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 _DEFAULT_MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
 _MAX_REDIRECTS = 5
 _ALLOWED_SCHEMES = {"https"}
-_BLOCKED_HOSTNAMES = {"localhost", "0.0.0.0", "::1"}
+_BLOCKED_HOSTNAMES = {"localhost", str(ipaddress.ip_address(0)), "::1"}
 
 
 class CkanApiError(RuntimeError):

@@ -4,14 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#07121f" />
-    <title>AgroLog Maritime Intelligence</title>
+    <title>AgroLog Intelligence</title>
   </head>
   <body>
     <div id="app">
       <header class="topbar">
         <div>
-          <div class="eyebrow">AGROLOG MT</div>
-          <h1>Maritime Intelligence</h1>
+          <div class="eyebrow">AGROLOG MT · INTELLIGENCE</div>
+          <h1>AgroLog Intelligence</h1>
         </div>
         <div class="toolbar">
           <label>
@@ -25,7 +25,68 @@
         </div>
       </header>
 
-      <section class="metrics" aria-label="Resumo operacional">
+
+      <nav class="product-nav" aria-label="Navegação AgroLog Intelligence">
+        <a href="/overview">Visão geral</a>
+        <a href="/market">Mercado</a>
+        <a href="/soybean">Soja</a>
+        <a href="/crops">Safra</a>
+        <a href="/weather">Meteorologia</a>
+        <a href="/agroclimate">Agroclima</a>
+        <a href="/freight">Fretes</a>
+        <a href="/logistics">Logística</a>
+        <a href="/history">Histórico</a>
+        <a href="/reports">Relatórios</a>
+        <a href="/sources">Fontes</a>
+      </nav>
+
+      <section id="commercial-overview" class="commercial-shell card" aria-label="AgroLog Intelligence status">
+        <div class="card-title-row">
+          <div>
+            <h2>Vertical comercial integrada</h2>
+            <p>Mercado + safra + clima + fretes + logística. Uma fonte indisponível permanece visível sem derrubar o conjunto.</p>
+          </div>
+          <span id="commercial-status" class="count-pill">carregando</span>
+        </div>
+        <div id="commercial-components" class="commercial-components"></div>
+      </section>
+
+      <section id="overview" class="card intelligence-overview" aria-label="Resumo AgroLog 360">
+        <div class="card-title-row">
+          <div>
+            <h2>Visão geral</h2>
+            <p>Produção, armazenagem e agroclima derivados das fontes canônicas. Campos indisponíveis permanecem explícitos.</p>
+          </div>
+          <span id="agro-overview-status" class="count-pill">carregando</span>
+        </div>
+        <section class="metrics" aria-label="Indicadores AgroLog 360">
+          <article><span>Produção</span><strong id="agro-production">—</strong></article>
+          <article><span>Capacidade estática</span><strong id="agro-storage">—</strong></article>
+          <article><span>Produção / capacidade</span><strong id="agro-storage-ratio">—</strong></article>
+          <article><span>Gap armazenagem</span><strong id="agro-storage-gap">—</strong></article>
+          <article><span>Chuva 7d</span><strong id="agro-rain-7">—</strong></article>
+          <article><span>Chuva 30d</span><strong id="agro-rain-30">—</strong></article>
+          <article><span>Chuva 90d</span><strong id="agro-rain-90">—</strong></article>
+          <article><span>PTAX USD venda</span><strong id="agro-ptax">—</strong></article>
+          <article><span>Estações hídricas</span><strong id="agro-hydro-stations">—</strong></article>
+        </section>
+      </section>
+
+
+      <section class="commercial-domain-grid" aria-label="Domínios AgroLog Intelligence">
+        <article id="market" class="domain-card"><span>MERCADO</span><strong>Preços + câmbio</strong><p>PTAX e referências autorizadas. Gaps permanecem explícitos.</p></article>
+        <article id="soybean" class="domain-card"><span>SOJA</span><strong>Mercado + safra + clima</strong><p>Chicago/prêmio/basis entram somente quando fonte autorizada estiver fresca.</p></article>
+        <article id="crops" class="domain-card"><span>SAFRA</span><strong>Área · produtividade · produção</strong><p>Vintages CONAB preservados e comparáveis; IBGE/IMEA entram conforme disponibilidade.</p></article>
+        <article id="weather" class="domain-card"><span>METEOROLOGIA</span><strong>Observado · previsão · ensemble</strong><p>Runs não são sobrescritos; mudanças entre rodadas são tratadas separadamente.</p></article>
+        <article id="agroclimate" class="domain-card"><span>AGROCLIMA</span><strong>Cultura × fase × clima</strong><p>Impacto potencial, sem converter correlação em causalidade.</p></article>
+        <article id="freight" class="domain-card"><span>FRETES</span><strong>R$/t · R$/km · R$/t.km</strong><p>Ofertas observadas são distintas de fretes efetivamente negociados.</p></article>
+        <article id="logistics" class="domain-card"><span>LOGÍSTICA</span><strong>Corredores · portos · armazenagem</strong><p>Programado, observado e realizado permanecem separados.</p></article>
+        <article id="history" class="domain-card"><span>HISTÓRICO</span><strong>Sazonalidade · percentis · anomalias</strong><p>Backfill e vintages point-in-time preservam a informação conhecida em cada data.</p></article>
+        <article id="reports" class="domain-card"><span>RELATÓRIOS</span><strong>Relatório Integrado AgroLog</strong><p>30 seções com gate comercial e limitações explícitas.</p></article>
+        <article id="sources" class="domain-card"><span>FONTES</span><strong>Freshness · provenance</strong><p>FRESH, STALE e FAILED; uma falha isolada não mascara as demais fontes.</p></article>
+      </section>
+
+      <section class="metrics" aria-label="Resumo marítimo operacional">
         <article><span>Navios recentes</span><strong id="metric-live">—</strong></article>
         <article><span>Aproximando</span><strong id="metric-approach">—</strong></article>
         <article><span>Aguardando</span><strong id="metric-waiting">—</strong></article>
@@ -38,7 +99,7 @@
         <article><span>Berço médio</span><strong id="metric-berth">—</strong></article>
       </section>
 
-      <main class="workspace">
+      <main id="logistics-maritime" class="workspace">
         <section class="map-panel">
           <div id="map"></div>
           <div class="map-legend">

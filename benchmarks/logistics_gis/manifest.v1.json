@@ -1,0 +1,53 @@
+{
+  "version": "1.0",
+  "purpose": "Benchmark unico para routing, GIS, VRP, AIS e port-call sem promover ferramenta por antecipacao.",
+  "coordinate_policy": "Pontos cidade/porto sao seeds de benchmark e nao geofences/terminais operacionais.",
+  "route_thresholds": {
+    "min_road_to_geodesic_ratio": 1.0,
+    "max_road_to_geodesic_ratio": 2.25
+  },
+  "route_cases": [
+    {
+      "id": "lucas_do_rio_verde_to_santos",
+      "origin": {"name": "Lucas do Rio Verde/MT", "lat": -13.05, "lon": -55.91},
+      "destination": {"name": "Santos/SP", "lat": -23.96, "lon": -46.33}
+    },
+    {
+      "id": "sorriso_to_paranagua",
+      "origin": {"name": "Sorriso/MT", "lat": -12.54, "lon": -55.71},
+      "destination": {"name": "Paranagua/PR", "lat": -25.52, "lon": -48.51}
+    },
+    {
+      "id": "lucas_do_rio_verde_to_miritituba",
+      "origin": {"name": "Lucas do Rio Verde/MT", "lat": -13.05, "lon": -55.91},
+      "destination": {"name": "Miritituba/PA", "lat": -4.28, "lon": -55.99}
+    }
+  ],
+  "osmnx_probe": {
+    "lat": -13.05,
+    "lon": -55.91,
+    "radius_m": 3000
+  },
+  "h3_cases": [
+    {"id": "lucas_do_rio_verde", "lat": -13.05, "lon": -55.91, "resolution": 7},
+    {"id": "santos", "lat": -23.96, "lon": -46.33, "resolution": 7},
+    {"id": "miritituba", "lat": -4.28, "lon": -55.99, "resolution": 7}
+  ],
+  "ais_nmea_samples": [
+    "!AIVDM,1,1,,B,15NG6V0P01G?cFhE\u0060R2IU?wn28R>,0*05",
+    "!AIVDM,1,1,,A,13HOI:0P0000VOHLCnHQKwvL05Ip,0*23"
+  ],
+  "vrp_case": {
+    "depot": [51.0, 51.0],
+    "vehicles": 2,
+    "capacity": 20,
+    "seed": 42,
+    "max_runtime_seconds": 1,
+    "clients": [
+      {"x": 39.0, "y": 76.5, "demand": 5, "tw_early": 0, "tw_late": 120},
+      {"x": 64.2, "y": 47.0, "demand": 3, "tw_early": 0, "tw_late": 120},
+      {"x": 73.0, "y": 61.0, "demand": 7, "tw_early": 0, "tw_late": 120},
+      {"x": 32.0, "y": 38.8, "demand": 2, "tw_early": 0, "tw_late": 120}
+    ]
+  }
+}

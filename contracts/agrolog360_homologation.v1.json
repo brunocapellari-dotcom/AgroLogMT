@@ -1,0 +1,26 @@
+{
+  "version": "1.0.0",
+  "contract_id": "agrolog360_homologation.v1",
+  "terminal_pass_line": "AGROLOG 360 OPERATIONAL HOMOLOGATION: PASS",
+  "mandatory": [
+    "source_readiness_report",
+    "mart_plan",
+    "dependency_ready_marts_applied",
+    "climate_rollups_available",
+    "storage_balance_available",
+    "overview_current_available",
+    "gateway_health_pass",
+    "gateway_overview_has_collection_timestamp"
+  ],
+  "non_blocking_until_source_promotion": [
+    "freight_lanes",
+    "fertilizer_imports",
+    "biomass"
+  ],
+  "rules": [
+    "a planned/gated source is not promoted by homologation",
+    "missing source data is never replaced by zero",
+    "PASS applies to the exact project/runtime tested",
+    "this gate supplements and never replaces N6 CORE and FINAL RELEASE gates"
+  ]
+}

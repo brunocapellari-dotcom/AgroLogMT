@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agrolog.local/contracts/freight_offer_observation.v1.schema.json",
+  "title": "AgroLog observed freight offer",
+  "type": "object",
+  "required": [
+    "observation_id",
+    "source_channel_type",
+    "source_provider",
+    "source_channel_id_hash",
+    "source_message_id_hash",
+    "dedup_cluster_id",
+    "requires_review",
+    "data_referencia",
+    "data_publicacao",
+    "data_coleta",
+    "competencia",
+    "evidence_class",
+    "evidence_subtype",
+    "contracted_status",
+    "executed_status"
+  ],
+  "properties": {
+    "observation_id": {"type": "string", "minLength": 16},
+    "source_channel_type": {"type": "string"},
+    "source_provider": {"type": "string"},
+    "source_channel_id_hash": {"type": "string", "minLength": 1},
+    "source_message_id_hash": {"type": "string", "minLength": 1},
+    "origin_municipality_id": {"type": ["string", "null"]},
+    "destination_municipality_id": {"type": ["string", "null"]},
+    "product_id": {"type": ["string", "null"]},
+    "freight_brl_per_t": {"type": ["number", "null"], "minimum": 0},
+    "freight_brl_per_t_km": {"type": ["number", "null"], "minimum": 0},
+    "announced_brl_per_trip": {"type": ["number", "null"], "minimum": 0},
+    "distance_km": {"type": ["number", "null"], "minimum": 0},
+    "payload_t": {"type": ["number", "null"], "minimum": 0},
+    "dedup_cluster_id": {"type": "string", "minLength": 16},
+    "requires_review": {"type": "boolean"},
+    "data_referencia": {"type": "string", "format": "date"},
+    "data_publicacao": {"type": "string", "format": "date-time"},
+    "data_coleta": {"type": "string", "format": "date-time"},
+    "competencia": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$"},
+    "evidence_class": {"const": "OBSERVADO"},
+    "evidence_subtype": {"const": "OFERTA_FRETE_OBSERVADA"},
+    "contracted_status": {"const": "DESCONHECIDO"},
+    "executed_status": {"const": "DESCONHECIDO"}
+  },
+  "not": {
+    "anyOf": [
+      {"required": ["phone_number"]},
+      {"required": ["sender_name"]},
+      {"required": ["raw_contact"]}
+    ]
+  },
+  "additionalProperties": true
+}
