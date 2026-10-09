@@ -19,10 +19,10 @@ BASE_COMPONENTS = (
     ("usda", "local.marts.usda_wasde_changes"),
     ("exports", "local.marts.agricultural_exports"),
     ("freight", "local.logistica.freight_announcements"),
-    ("weather", "local.marts.weather_consensus"),
-    ("weather_3d", "local.marts.weather_consensus"),
-    ("weather_7d", "local.marts.weather_consensus"),
-    ("weather_15d", "local.marts.weather_consensus"),
+    ("weather", "local.clima.gfs_forecast_points"),
+    ("weather_3d", "local.clima.gfs_forecast_points"),
+    ("weather_7d", "local.clima.gfs_forecast_points"),
+    ("weather_15d", "local.clima.gfs_forecast_points"),
     ("hydrology", "local.marts.hydrology_latest"),
 )
 
@@ -135,6 +135,54 @@ def _freight(store: LocalAnalyticsStore) -> list[dict[str, Any]]:
                  a.carrier_name, a.freight_announced_brl_per_t
         LIMIT 500
         """
+    )
+
+
+def _weather(store: LocalAnalyticsStore, horizon_hour: int | None = None) -> list[dict[str, Any]]:
+    if not store.table_exists("clima", "gfs_forecast_points"):
+        return []
+    horizon_filter = "" if horizon_hour is None else "AND forecast_hour=?"
+    params: list[Any] = [] if horizon_hour is None else [horizon_hour]
+    return store.query(
+        f"""
+        WITH latest_run AS (
+          SELECT MAX(initialization_time) AS initialization_time
+          FROM clima.gfs_forecast_points
+        )
+        SELECT
+          source_id,
+          model,
+          run_id,
+          initialization_time,
+          forecast_hour,
+          valid_time,
+          collection_time,
+          geo_id,
+          latitude,
+          longitude,
+          grid_latitude,
+          grid_longitude,
+          variable,
+          value,
+          value AS model_median,
+          0.0 AS model_iqr,
+          0 AS models_revised_up,
+          0 AS models_revised_down,
+          model_count,
+          unit,
+          interval_start_hour,
+          interval_end_hour,
+          resolution,
+          evidence_class,
+          raw_artifact_ref,
+          source_hash,
+          source_url
+        FROM clima.gfs_forecast_points
+        WHERE initialization_time=(SELECT initialization_time FROM latest_run)
+          {horizon_filter}
+        ORDER BY forecast_hour, geo_id, variable
+        """,
+        params,
     )
 
 
@@ -370,6 +418,10 @@ def build_zero_cost_snapshot(store: LocalAnalyticsStore, *, uf: str = "MT") -> d
         "crops_mt": lambda: _crops(store, geo_level="uf", geo_id=uf),
         "crops_br": lambda: _crops(store, geo_level="country", geo_id="BR"),
         "freight": lambda: _freight(store),
+        "weather": lambda: _weather(store),
+        "weather_3d": lambda: _weather(store, 72),
+        "weather_7d": lambda: _weather(store, 168),
+        "weather_15d": lambda: _weather(store, 360),
         "hydrology": lambda: _hydrology(store),
         "argentina": lambda: _argentina(store),
         "usda": lambda: _usda(store),

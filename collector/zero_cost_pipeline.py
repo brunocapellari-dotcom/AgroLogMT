@@ -15,6 +15,7 @@ from .p0_adapters import BcbPtaxDailyAdapter
 from .storage import LocalStore, sha256_bytes
 from .zero_cost_conab import run_conab_source
 from .zero_cost_public_sources import run_ana_source, run_argentina_source, run_wasde_source
+from .zero_cost_weather import run_gfs
 
 PTAX_COLUMNS = {
     "data_referencia": "DATE NOT NULL",
@@ -272,6 +273,9 @@ class ZeroCostRuntime:
 
     def run_wasde(self) -> tuple[int, dict[str, Any]]:
         return run_wasde_source(self)
+
+    def run_gfs(self) -> tuple[int, dict[str, Any]]:
+        return run_gfs(self)
 
     def run_conab(self, spec: SourceSpec) -> tuple[int, dict[str, Any]]:
         return run_conab_source(self, spec)
