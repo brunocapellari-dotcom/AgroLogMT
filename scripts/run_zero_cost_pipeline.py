@@ -14,6 +14,13 @@ from scripts.build_zero_cost_bundle import build_bundle
 SUPPORTED_METHODS = {"bcb_ptax_daily", "comexstat_api", "mdic_comexstat_api", "ana_hidroweb_adopted"}
 
 
+def _source_by_id(config: str, source_id: str):
+    for spec in load_sources(config):
+        if spec.source_id == source_id:
+            return spec
+    raise ValueError(f"source_id não encontrado em {config}: {source_id}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run AgroLog ZERO_COST public-source pipeline")
     parser.add_argument("--root", default=".agrolog-zero-cost")
@@ -23,6 +30,8 @@ def main() -> int:
     parser.add_argument("--output-dir", default="maritime_ui/public/data")
     parser.add_argument("--no-collect", action="store_true")
     parser.add_argument("--no-global-public", action="store_true", help="Do not collect Argentina/WASDE public sources")
+    parser.add_argument("--pilot-config", default="collector/config/sources.pilot.json")
+    parser.add_argument("--no-conab", action="store_true", help="Do not collect the official CONAB crop workbook")
     args = parser.parse_args()
 
     runtime = ZeroCostRuntime(args.root)
@@ -64,6 +73,23 @@ def main() -> int:
                     "status": result.get("status"),
                     "result": result,
                 })
+
+        conab_source_id = "conab_safra_graos_xlsx"
+        if not args.no_conab and (not selected or conab_source_id in selected):
+            try:
+                conab_spec = _source_by_id(args.pilot_config, conab_source_id)
+                code, result = runtime.run_conab(conab_spec)
+            except Exception as exc:
+                code, result = 2, {
+                    "status": "blocked_by_quality_gate",
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            runs.append({
+                "source_id": conab_source_id,
+                "exit_code": code,
+                "status": result.get("status"),
+                "result": result,
+            })
 
     runtime_manifest = runtime.write_runtime_manifest()
     snapshot = build_zero_cost_snapshot(runtime.analytics, uf=args.uf.upper())
