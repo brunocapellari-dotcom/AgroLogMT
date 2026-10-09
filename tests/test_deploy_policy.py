@@ -33,6 +33,18 @@ class DeployPolicyTests(unittest.TestCase):
         self.assertIn('AGROLOG_AGRO_DATASET=${AGRO_DATASET}', deploy)
         self.assertIn('AGRO_DATASET="${AGRO_DATASET:-agro}"', preflight)
 
+    def test_final_live_release_runs_only_from_trusted_main(self) -> None:
+        import yaml
+
+        workflow = yaml.safe_load(Path(".github/workflows/full-project-final-gate.yml").read_text(encoding="utf-8"))
+        jobs = workflow["jobs"]
+        condition = jobs["final-live-release"]["if"]
+        self.assertIn("github.ref == 'refs/heads/main'", condition)
+        self.assertIn("github.event_name == 'push'", condition)
+        self.assertIn("[FINAL-LIVE]", condition)
+        self.assertNotIn("github.event.pull_request.title", condition)
+        self.assertIn("main", workflow[True]["push"]["branches"] if True in workflow else workflow["on"]["push"]["branches"])
+
     def test_freight_ingest_isolated_from_read_only_gateway(self) -> None:
         gateway = Path("gateway/app.py").read_text(encoding="utf-8")
         freight_app = Path("gateway/freight_app.py").read_text(encoding="utf-8")
