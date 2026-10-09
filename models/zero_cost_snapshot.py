@@ -262,10 +262,86 @@ def _usda(store: LocalAnalyticsStore) -> list[dict[str, Any]]:
     )
 
 
+
+def _crops(store: LocalAnalyticsStore, *, geo_level: str, geo_id: str) -> list[dict[str, Any]]:
+    if not store.table_exists("agro", "conab_safra_graos"):
+        return []
+    return store.query(
+        """
+        WITH ordered AS (
+          SELECT
+            snapshot_id,
+            source_id,
+            geo_level,
+            geo_id,
+            product_id,
+            produto_origem,
+            safra,
+            vintage_position,
+            area_mil_ha,
+            produtividade_kg_ha,
+            producao_mil_t,
+            data_referencia,
+            data_publicacao,
+            data_coleta,
+            competencia,
+            evidence_class,
+            source_hash,
+            source_url,
+            LAG(area_mil_ha) OVER w AS previous_area_mil_ha,
+            LAG(produtividade_kg_ha) OVER w AS previous_produtividade_kg_ha,
+            LAG(producao_mil_t) OVER w AS previous_producao_mil_t
+          FROM agro.conab_safra_graos
+          WHERE geo_level=? AND geo_id=? AND vintage_position='current'
+          WINDOW w AS (
+            PARTITION BY geo_level, geo_id, product_id, safra, vintage_position
+            ORDER BY data_publicacao, data_coleta, snapshot_id
+          )
+        ),
+        enriched AS (
+          SELECT *,
+            area_mil_ha - previous_area_mil_ha AS delta_area_mil_ha,
+            CASE
+              WHEN ABS(previous_area_mil_ha) > 0
+              THEN 100.0 * (area_mil_ha - previous_area_mil_ha) / ABS(previous_area_mil_ha)
+              ELSE NULL
+            END AS delta_area_pct,
+            produtividade_kg_ha - previous_produtividade_kg_ha AS delta_produtividade_kg_ha,
+            CASE
+              WHEN ABS(previous_produtividade_kg_ha) > 0
+              THEN 100.0 * (produtividade_kg_ha - previous_produtividade_kg_ha) / ABS(previous_produtividade_kg_ha)
+              ELSE NULL
+            END AS delta_produtividade_pct,
+            producao_mil_t - previous_producao_mil_t AS delta_producao_mil_t,
+            CASE
+              WHEN ABS(previous_producao_mil_t) > 0
+              THEN 100.0 * (producao_mil_t - previous_producao_mil_t) / ABS(previous_producao_mil_t)
+              ELSE NULL
+            END AS delta_producao_pct
+          FROM ordered
+        )
+        SELECT * EXCLUDE (rn)
+        FROM (
+          SELECT *,
+            ROW_NUMBER() OVER (
+              PARTITION BY geo_level, geo_id, product_id, safra, vintage_position
+              ORDER BY data_publicacao DESC, data_coleta DESC, snapshot_id DESC
+            ) AS rn
+          FROM enriched
+        )
+        WHERE rn=1
+        ORDER BY product_id, safra DESC
+        LIMIT 100
+        """,
+        [geo_level, geo_id],
+    )
+
 def build_zero_cost_snapshot(store: LocalAnalyticsStore, *, uf: str = "MT") -> dict[str, Any]:
     loaders = {
         "ptax": lambda: _ptax(store),
         "exports": lambda: _exports(store, uf),
+        "crops_mt": lambda: _crops(store, geo_level="uf", geo_id=uf),
+        "crops_br": lambda: _crops(store, geo_level="country", geo_id="BR"),
         "hydrology": lambda: _hydrology(store),
         "argentina": lambda: _argentina(store),
         "usda": lambda: _usda(store),
