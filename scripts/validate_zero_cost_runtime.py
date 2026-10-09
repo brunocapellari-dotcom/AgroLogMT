@@ -89,6 +89,8 @@ def validate(output: Path | None = None) -> dict:
         "scripts/build_zero_cost_outputs.py",
         "collector/local_analytics_store.py",
         "collector/zero_cost_pipeline.py",
+        "collector/zero_cost_public_sources.py",
+        "collector/zero_cost_conab.py",
     ):
         source = (ROOT / relative).read_text(encoding="utf-8").lower()
         if "gcloud " in source or "bigquery.client" in source:
