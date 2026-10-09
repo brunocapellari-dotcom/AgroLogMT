@@ -143,6 +143,7 @@ if cors_origins:
 
 client = bigquery.Client(project=PROJECT_ID, location=BQ_LOCATION)
 
+
 def _request_id(value: str | None) -> str:
     if value and REQUEST_ID_RE.fullmatch(value):
         return value

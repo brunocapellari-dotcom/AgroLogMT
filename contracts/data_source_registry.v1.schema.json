@@ -145,8 +145,8 @@
             "DOCUMENT",
             "AUTHORIZED_WEBHOOK",
             "AUTHORIZED_OR_OFFICIAL_DOWNLOAD",
-            "GRIB2_FILTER",
-            "GRIB2_OPEN_DATA"
+            "GRIB2_OPEN_DATA",
+            "GRIB2_FILTER"
           ]
         },
         "frequency": {
