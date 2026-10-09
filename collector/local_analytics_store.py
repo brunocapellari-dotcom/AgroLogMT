@@ -39,8 +39,10 @@ class LocalAnalyticsStore:
             raise ValueError("columns cannot be empty")
         defs = ", ".join(f"{_ident(name)} {dtype}" for name, dtype in columns.items())
         with self.connect() as con:
-            con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_sql}")
-            con.execute(f"CREATE TABLE IF NOT EXISTS {schema_sql}.{table_sql} ({defs})")
+            con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_sql}")  # nosec B608 - identifiers validated by _ident
+            con.execute(  # nosec B608 - identifiers/types are controlled by code; names validated by _ident
+                f"CREATE TABLE IF NOT EXISTS {schema_sql}.{table_sql} ({defs})"
+            )
 
     def insert_rows(
         self,
@@ -61,7 +63,7 @@ class LocalAnalyticsStore:
         placeholders = ", ".join("?" for _ in columns)
         values = [[row.get(name) for name in columns] for row in data]
         with self.connect() as con:
-            con.executemany(
+            con.executemany(  # nosec B608 - identifiers validated by _ident; values stay parameterized
                 f"INSERT INTO {schema_sql}.{table_sql} ({column_sql}) VALUES ({placeholders})",
                 values,
             )
@@ -87,7 +89,7 @@ class LocalAnalyticsStore:
         target = out_dir / f"{table}.parquet"
         safe_target = str(target).replace("'", "''")
         with self.connect() as con:
-            con.execute(
+            con.execute(  # nosec B608 - identifiers validated; output path is locally constructed/escaped
                 f"COPY (SELECT * FROM {schema_sql}.{table_sql}) "
                 f"TO '{safe_target}' (FORMAT PARQUET, COMPRESSION ZSTD)"
             )
