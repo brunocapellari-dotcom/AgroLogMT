@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, TYPE_CHECKING
@@ -113,7 +114,7 @@ def canonical_conab_row(
         "source_hash": snapshot_id,
         "collector_version": COLLECTOR_VERSION,
         "parser_version": PARSER_VERSION,
-        "quality_flags_json": __import__("json").dumps(list(record.quality_flags), ensure_ascii=False),
+        "quality_flags_json": json.dumps(list(record.quality_flags), ensure_ascii=False),
     })
     return row
 
