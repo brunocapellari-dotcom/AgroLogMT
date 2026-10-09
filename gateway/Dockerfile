@@ -1,4 +1,4 @@
-FROM node:22-alpine AS maritime-ui
+FROM node:25-alpine AS maritime-ui
 WORKDIR /ui
 COPY maritime_ui/package.json maritime_ui/package-lock.json /ui/
 RUN npm ci --ignore-scripts --no-audit --no-fund
