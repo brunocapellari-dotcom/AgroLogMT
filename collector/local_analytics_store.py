@@ -38,11 +38,13 @@ class LocalAnalyticsStore:
         if not columns:
             raise ValueError("columns cannot be empty")
         defs = ", ".join(f"{_ident(name)} {dtype}" for name, dtype in columns.items())
+        create_schema_sql = f"CREATE SCHEMA IF NOT EXISTS {schema_sql}"  # nosec B608 - identifier validated by _ident
+        create_table_sql = (  # nosec B608 - identifiers validated; column types are code-owned constants
+            f"CREATE TABLE IF NOT EXISTS {schema_sql}.{table_sql} ({defs})"
+        )
         with self.connect() as con:
-            con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_sql}")  # nosec B608 - identifiers validated by _ident
-            con.execute(  # nosec B608 - identifiers/types are controlled by code; names validated by _ident
-                f"CREATE TABLE IF NOT EXISTS {schema_sql}.{table_sql} ({defs})"
-            )
+            con.execute(create_schema_sql)
+            con.execute(create_table_sql)
 
     def insert_rows(
         self,
@@ -62,11 +64,11 @@ class LocalAnalyticsStore:
         column_sql = ", ".join(_ident(name) for name in columns)
         placeholders = ", ".join("?" for _ in columns)
         values = [[row.get(name) for name in columns] for row in data]
+        insert_sql = (  # nosec B608 - identifiers validated by _ident; all row values are placeholders
+            f"INSERT INTO {schema_sql}.{table_sql} ({column_sql}) VALUES ({placeholders})"
+        )
         with self.connect() as con:
-            con.executemany(  # nosec B608 - identifiers validated by _ident; values stay parameterized
-                f"INSERT INTO {schema_sql}.{table_sql} ({column_sql}) VALUES ({placeholders})",
-                values,
-            )
+            con.executemany(insert_sql, values)
         return len(data)
 
     def query(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> list[dict[str, Any]]:
@@ -88,11 +90,12 @@ class LocalAnalyticsStore:
         out_dir.mkdir(parents=True, exist_ok=True)
         target = out_dir / f"{table}.parquet"
         safe_target = str(target).replace("'", "''")
+        copy_sql = (  # nosec B608 - identifiers validated; target is a locally constructed path with quotes escaped
+            f"COPY (SELECT * FROM {schema_sql}.{table_sql}) "
+            f"TO '{safe_target}' (FORMAT PARQUET, COMPRESSION ZSTD)"
+        )
         with self.connect() as con:
-            con.execute(  # nosec B608 - identifiers validated; output path is locally constructed/escaped
-                f"COPY (SELECT * FROM {schema_sql}.{table_sql}) "
-                f"TO '{safe_target}' (FORMAT PARQUET, COMPRESSION ZSTD)"
-            )
+            con.execute(copy_sql)
         return target
 
     def table_exists(self, schema: str, table: str) -> bool:
