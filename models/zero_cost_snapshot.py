@@ -111,6 +111,109 @@ def _exports(store: LocalAnalyticsStore, uf: str) -> list[dict[str, Any]]:
     )
 
 
+
+def _market_reference(store: LocalAnalyticsStore) -> list[dict[str, Any]]:
+    if not store.table_exists("mercado", "imea_indicadores_operacionais"):
+        return []
+    return store.query(
+        """
+        WITH series AS (
+          SELECT
+            snapshot_id,
+            record_id,
+            source_sheet,
+            data_referencia,
+            produto,
+            metric_name,
+            valor,
+            unidade_origem,
+            unidade_canonica,
+            local,
+            evidence_class,
+            evidence_subtype,
+            negotiated,
+            data_coleta,
+            source_hash,
+            LAG(valor) OVER (
+              PARTITION BY produto, metric_name, local, unidade_canonica
+              ORDER BY data_referencia, data_coleta, snapshot_id
+            ) AS previous_value,
+            PERCENT_RANK() OVER (
+              PARTITION BY produto, metric_name, local, unidade_canonica
+              ORDER BY valor
+            ) * 100.0 AS historical_percentile
+          FROM mercado.imea_indicadores_operacionais
+        )
+        SELECT
+          s.*,
+          (
+            SELECT AVG(x.valor)
+            FROM mercado.imea_indicadores_operacionais x
+            WHERE x.produto=s.produto
+              AND x.metric_name=s.metric_name
+              AND COALESCE(x.local,'')=COALESCE(s.local,'')
+              AND COALESCE(x.unidade_canonica,'')=COALESCE(s.unidade_canonica,'')
+              AND x.data_referencia BETWEEN s.data_referencia - INTERVAL 6 DAY AND s.data_referencia
+          ) AS avg_7d,
+          (
+            SELECT AVG(x.valor)
+            FROM mercado.imea_indicadores_operacionais x
+            WHERE x.produto=s.produto
+              AND x.metric_name=s.metric_name
+              AND COALESCE(x.local,'')=COALESCE(s.local,'')
+              AND COALESCE(x.unidade_canonica,'')=COALESCE(s.unidade_canonica,'')
+              AND x.data_referencia BETWEEN s.data_referencia - INTERVAL 29 DAY AND s.data_referencia
+          ) AS avg_30d
+        FROM series s
+        ORDER BY data_referencia DESC, produto, metric_name, local
+        LIMIT 200
+        """
+    )
+
+
+def _crop_progress(store: LocalAnalyticsStore) -> list[dict[str, Any]]:
+    if not store.table_exists("agro", "imea_progresso_cultura"):
+        return []
+    return store.query(
+        """
+        WITH ordered AS (
+          SELECT
+            snapshot_id,
+            record_id,
+            source_sheet,
+            data_referencia,
+            produto,
+            safra,
+            regiao,
+            metric_name,
+            valor,
+            unidade_canonica,
+            evidence_class,
+            evidence_subtype,
+            data_coleta,
+            source_hash,
+            LAG(valor) OVER (
+              PARTITION BY produto, safra, regiao, metric_name
+              ORDER BY data_referencia, data_coleta, snapshot_id
+            ) AS previous_value
+          FROM agro.imea_progresso_cultura
+        )
+        SELECT * EXCLUDE (rn),
+          valor - previous_value AS delta_value
+        FROM (
+          SELECT *,
+            ROW_NUMBER() OVER (
+              PARTITION BY produto, safra, regiao, metric_name
+              ORDER BY data_referencia DESC, data_coleta DESC, snapshot_id DESC
+            ) AS rn
+          FROM ordered
+        )
+        WHERE rn=1
+        ORDER BY produto, metric_name, regiao
+        LIMIT 200
+        """
+    )
+
 def _hydrology(store: LocalAnalyticsStore) -> list[dict[str, Any]]:
     if not store.table_exists("hidrologia", "hydro_station_telemetry"):
         return []
@@ -339,6 +442,8 @@ def _crops(store: LocalAnalyticsStore, *, geo_level: str, geo_id: str) -> list[d
 def build_zero_cost_snapshot(store: LocalAnalyticsStore, *, uf: str = "MT") -> dict[str, Any]:
     loaders = {
         "ptax": lambda: _ptax(store),
+        "market_reference": lambda: _market_reference(store),
+        "crop_progress": lambda: _crop_progress(store),
         "exports": lambda: _exports(store, uf),
         "crops_mt": lambda: _crops(store, geo_level="uf", geo_id=uf),
         "crops_br": lambda: _crops(store, geo_level="country", geo_id="BR"),
