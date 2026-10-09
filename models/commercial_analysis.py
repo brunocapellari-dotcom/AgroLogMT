@@ -114,7 +114,7 @@ def build_derived_components(components: list[dict[str, Any]]) -> list[dict[str,
         claims.append({
             "kind": "trend", "trend_type": "ESTATISTICA", "evidence_class": "OBSERVADO",
             "summary": f"{row.get('produto','—')} · {row.get('metric_name','—')} · {row.get('local','—')}: {pct:+.2f}% vs leitura anterior.",
-            "source_ids": ["marts_agrolog360.imea_market_indicators_v1"],
+            "source_ids": [str(row.get("source_id") or "local.mercado.market_reference")],
         })
 
     seed=claims[:6]
