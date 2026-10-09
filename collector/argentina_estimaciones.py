@@ -153,6 +153,7 @@ def fetch_official_csv(*, timeout: int = 60) -> tuple[bytes, str, str | None]:
     metadata = fetch_json(package_url(), timeout=timeout)
     resource = discover_csv_resource(metadata)
     url = str(resource["url"])
+    validate_https_url(url, allowed_hosts=ALLOWED_HOSTS)
     request = Request(url, headers={"Accept": "text/csv,*/*", "User-Agent": "AgroLogMT/1.0"})
     with urlopen(request, timeout=timeout) as response:  # nosec B310 - HTTPS + allowlist validated.
         validate_https_url(response.geturl(), allowed_hosts=ALLOWED_HOSTS)

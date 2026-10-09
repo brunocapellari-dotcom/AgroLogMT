@@ -144,7 +144,9 @@
             "DRIVE_WORKBOOK",
             "DOCUMENT",
             "AUTHORIZED_WEBHOOK",
-            "AUTHORIZED_OR_OFFICIAL_DOWNLOAD"
+            "AUTHORIZED_OR_OFFICIAL_DOWNLOAD",
+            "GRIB2_FILTER",
+            "GRIB2_OPEN_DATA"
           ]
         },
         "frequency": {

@@ -18,8 +18,6 @@ from fastapi.responses import RedirectResponse
 from google.cloud import bigquery
 
 from .commercial_freshness import component_freshness
-from .freight_ingest import create_freight_router
-
 from .intelligence_queries import (
     build_biomass_sql,
     build_fertilizer_imports_sql,
@@ -63,9 +61,6 @@ PROJECT_ID = safe_identifier(
 DATASET_ID = safe_identifier(os.environ.get("AGROLOG_LOGISTICA_DATASET", "logistica"), label="dataset")
 MARITIME_DATASET_ID = safe_identifier(
     os.environ.get("AGROLOG_MARITIME_DATASET", "agrolog_models"), label="maritime_dataset"
-)
-FREIGHT_DATASET_ID = safe_identifier(
-    os.environ.get("AGROLOG_FREIGHT_DATASET", "logistica"), label="freight_dataset"
 )
 INTELLIGENCE_DATASET_ID = safe_identifier(
     os.environ.get("AGROLOG_INTELLIGENCE_DATASET", "marts_agrolog360"), label="intelligence_dataset"
@@ -147,16 +142,6 @@ if cors_origins:
     )
 
 client = bigquery.Client(project=PROJECT_ID, location=BQ_LOCATION)
-app.include_router(
-    create_freight_router(
-        client,
-        PROJECT_ID,
-        FREIGHT_DATASET_ID,
-        max_bytes_billed=BQ_MAX_BYTES_BILLED,
-        query_timeout_seconds=BQ_QUERY_TIMEOUT_SECONDS,
-    )
-)
-
 
 def _request_id(value: str | None) -> str:
     if value and REQUEST_ID_RE.fullmatch(value):
