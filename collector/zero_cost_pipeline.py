@@ -13,6 +13,7 @@ from .models import RunManifest, SourceSpec
 from .orchestrator import COLLECTOR_VERSION, CollectorEngine
 from .p0_adapters import BcbPtaxDailyAdapter
 from .storage import LocalStore, sha256_bytes
+from .zero_cost_public_sources import run_ana_source, run_argentina_source, run_wasde_source
 
 PTAX_COLUMNS = {
     "data_referencia": "DATE NOT NULL",
@@ -257,11 +258,19 @@ class ZeroCostRuntime:
             return self.run_ptax(spec)
         if spec.method in {"comexstat_api", "mdic_comexstat_api"}:
             return self.run_comex(spec)
+        if spec.method == "ana_hidroweb_adopted":
+            return run_ana_source(self, spec)
         return 3, {
             "status": "unsupported_zero_cost_normalizer",
             "source_id": spec.source_id,
             "method": spec.method,
         }
+
+    def run_argentina(self) -> tuple[int, dict[str, Any]]:
+        return run_argentina_source(self)
+
+    def run_wasde(self) -> tuple[int, dict[str, Any]]:
+        return run_wasde_source(self)
 
     def write_runtime_manifest(self) -> Path:
         return self.analytics.write_manifest(self.root / "runtime-manifest.json")
