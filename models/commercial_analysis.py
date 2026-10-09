@@ -36,12 +36,22 @@ def build_derived_components(components: list[dict[str, Any]]) -> list[dict[str,
         up = int(row.get("models_revised_up") or 0)
         down = int(row.get("models_revised_down") or 0)
         direction = "mais úmido" if up > down else "mais seco" if down > up else "sem direção dominante"
+        model_count = int(row.get("model_count") or 1)
+        if model_count > 1:
+            weather_label = (
+                f"precipitação multimodelo {row.get('model_median','—')} {row.get('unit','')} "
+                f"· IQR {row.get('model_iqr','—')}"
+            )
+        else:
+            weather_label = (
+                f"precipitação prevista {row.get('model') or 'modelo único'} "
+                f"{row.get('model_median','—')} {row.get('unit','')}"
+            )
         agro.append({
-            "source_id": "marts_agrolog360.weather_consensus_v1",
+            "source_id": str(row.get("source_id") or "weather_forecast"),
             "evidence_class": "PREVISTO",
             "summary": (
-                f"{row.get('geo_id','—')} · {row.get('valid_time','—')}: precipitação multimodelo "
-                f"{row.get('model_median','—')} {row.get('unit','')} · IQR {row.get('model_iqr','—')} · "
+                f"{row.get('geo_id','—')} · {row.get('valid_time','—')}: {weather_label} · "
                 f"revisão entre runs: {direction}. Impacto depende de cultura e fase."
             ),
         })
