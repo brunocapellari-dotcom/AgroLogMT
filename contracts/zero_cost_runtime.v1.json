@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "mode": "ZERO_COST",
   "max_implementation_cost_brl": 0,
   "max_recurring_cost_brl": 0,
@@ -7,6 +7,8 @@
   "mandatory_cloud_services": [],
   "canonical_runtime": {
     "raw_store": "local_filesystem",
+    "analytics": "duckdb",
+    "analytical_export": "parquet_zstd",
     "analytical_delivery": "static_json_bundle",
     "dashboard": "static_site",
     "scheduler": "os_or_manual",
@@ -22,9 +24,11 @@
   "rules": [
     "No paid service may be required to collect, process, store, build, serve or read the Sellable V1.",
     "Any optional provider with a free quota must fail closed or stop before paid overage.",
-    "Cloud credentials must not be required for ZERO_COST validation or bundle generation.",
+    "Cloud credentials must not be required for ZERO_COST validation, local analytics, report generation or bundle generation.",
     "Historical raw artifacts and manifests remain immutable and content-addressed where applicable.",
+    "Normalized analytical data is stored locally in DuckDB and can be exported to Parquet with ZSTD compression.",
     "Static client bundles must contain no secrets, tokens, passwords, private keys or service credentials.",
-    "GCP remains an optional backend and must not block ZERO_COST release."
+    "GCP remains an optional backend and must not block ZERO_COST release.",
+    "A source gap must remain explicit and must never be filled with invented or silently inferred data."
   ]
 }
