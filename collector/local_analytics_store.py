@@ -2,12 +2,22 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable
 
 import duckdb
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    return value
 
 
 def _ident(value: str) -> str:
@@ -75,7 +85,10 @@ class LocalAnalyticsStore:
         with self.connect() as con:
             cursor = con.execute(sql, params or [])
             names = [item[0] for item in cursor.description or []]
-            return [dict(zip(names, row)) for row in cursor.fetchall()]
+            return [
+                {name: _jsonable(value) for name, value in zip(names, row)}
+                for row in cursor.fetchall()
+            ]
 
     def scalar(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> Any:
         rows = self.query(sql, params)
