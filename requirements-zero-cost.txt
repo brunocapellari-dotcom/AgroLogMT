@@ -1,1 +1,2 @@
 duckdb>=1,<2
+eccodes>=2.49,<3
