@@ -30,6 +30,7 @@ def main() -> int:
     parser.add_argument("--output-dir", default="maritime_ui/public/data")
     parser.add_argument("--no-collect", action="store_true")
     parser.add_argument("--no-global-public", action="store_true", help="Do not collect Argentina/WASDE public sources")
+    parser.add_argument("--no-weather", action="store_true", help="Do not collect NOAA GFS weather horizons")
     parser.add_argument("--pilot-config", default="collector/config/sources.pilot.json")
     parser.add_argument("--no-conab", action="store_true", help="Do not collect the official CONAB crop workbook")
     args = parser.parse_args()
@@ -73,6 +74,16 @@ def main() -> int:
                     "status": result.get("status"),
                     "result": result,
                 })
+
+        gfs_source_id = "gfs_nomads"
+        if not args.no_weather and (not selected or gfs_source_id in selected):
+            code, result = runtime.run_gfs()
+            runs.append({
+                "source_id": gfs_source_id,
+                "exit_code": code,
+                "status": result.get("status"),
+                "result": result,
+            })
 
         conab_source_id = "conab_safra_graos_xlsx"
         if not args.no_conab and (not selected or conab_source_id in selected):
