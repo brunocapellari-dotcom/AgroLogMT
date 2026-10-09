@@ -11,7 +11,7 @@ from collector.local_analytics_store import LocalAnalyticsStore
 BASE_COMPONENTS = (
     ("overview", "local.marts.overview_current"),
     ("ptax", "local.mercado.ptax_usd_daily"),
-    ("market_reference", "local.marts.market_reference"),
+    ("market_reference", "local.mercado.market_reference"),
     ("crops_mt", "local.marts.crop_current"),
     ("crops_br", "local.marts.crop_current"),
     ("crop_progress", "local.marts.crop_progress_current"),
@@ -37,6 +37,71 @@ def _component(name: str, source_id: str, rows: list[dict[str, Any]]) -> dict[st
         "age_minutes": age_minutes,
         "data": rows,
     }
+
+
+def _market_reference(store: LocalAnalyticsStore) -> list[dict[str, Any]]:
+    if not store.table_exists("mercado", "market_reference"):
+        return []
+    return store.query(
+        """
+        WITH revised AS (
+          SELECT *,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY series_key, data_referencia
+                   ORDER BY data_coleta DESC, record_id DESC
+                 ) AS revision_rank
+          FROM mercado.market_reference
+        ),
+        history AS (
+          SELECT *
+          FROM revised
+          WHERE revision_rank=1
+        ),
+        scored AS (
+          SELECT *,
+                 LAG(valor) OVER (
+                   PARTITION BY series_key
+                   ORDER BY data_referencia
+                 ) AS previous_value,
+                 100.0 * PERCENT_RANK() OVER (
+                   PARTITION BY series_key
+                   ORDER BY valor
+                 ) AS historical_percentile,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY series_key
+                   ORDER BY data_referencia DESC, data_coleta DESC
+                 ) AS latest_rank
+          FROM history
+        )
+        SELECT
+          record_id,
+          series_key,
+          source_id,
+          source_name,
+          usage_rights,
+          authorization_basis,
+          product_id,
+          produto,
+          metric_name,
+          local,
+          valor,
+          unidade_origem,
+          unidade_canonica,
+          data_referencia,
+          data_publicacao,
+          competencia,
+          evidence_class,
+          previous_value,
+          historical_percentile,
+          COALESCE(
+            CAST(data_publicacao AS VARCHAR),
+            CAST(data_referencia AS VARCHAR)
+          ) AS latest_source_update
+        FROM scored
+        WHERE latest_rank=1
+        ORDER BY product_id, metric_name, local
+        """
+    )
 
 
 def _ptax(store: LocalAnalyticsStore) -> list[dict[str, Any]]:
@@ -414,6 +479,7 @@ def _crops(store: LocalAnalyticsStore, *, geo_level: str, geo_id: str) -> list[d
 def build_zero_cost_snapshot(store: LocalAnalyticsStore, *, uf: str = "MT") -> dict[str, Any]:
     loaders = {
         "ptax": lambda: _ptax(store),
+        "market_reference": lambda: _market_reference(store),
         "exports": lambda: _exports(store, uf),
         "crops_mt": lambda: _crops(store, geo_level="uf", geo_id=uf),
         "crops_br": lambda: _crops(store, geo_level="country", geo_id="BR"),
