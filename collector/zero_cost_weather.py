@@ -184,7 +184,7 @@ def decode_gfs_file(
                     nearest = codes_grib_find_nearest(
                         gid,
                         float(point["latitude"]),
-                        float(point["longitude"]),
+                        _lon_360(float(point["longitude"])),
                     )[0]
                     value = float(nearest.value)
                     variable = "temperature_2m"
@@ -267,8 +267,10 @@ def persist_gfs_rows(runtime: "ZeroCostRuntime", rows: list[dict[str, Any]]) -> 
 def _probe_latest_run(now: datetime | None = None) -> tuple[str, int, datetime]:
     last_error: Exception | None = None
     for run_date, cycle, run_init in candidate_runs(now):
+        # Probe the farthest required horizon, not f003. NOMADS publishes a
+        # cycle progressively; a run with f003 available may still lack f360.
         url = build_gfs_filter_url(
-            run_date=run_date, cycle=cycle, forecast_hour=3
+            run_date=run_date, cycle=cycle, forecast_hour=max(GFS_HORIZONS)
         )
         try:
             _fetch_grib(url, timeout=30)
