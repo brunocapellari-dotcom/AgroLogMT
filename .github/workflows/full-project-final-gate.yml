@@ -2,7 +2,8 @@ name: full-project-final-gate
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       final_release:
@@ -188,7 +189,7 @@ jobs:
   final-live-release:
     environment: agrolog-production
     name: Whole project LIVE + GCP final release
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.final_release == true) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[FINAL-LIVE]')) }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.final_release == true) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[FINAL-LIVE]')) }}
     needs: whole-project-ci
     # Production gate uses an ephemeral GitHub-hosted runner with OIDC/WIF and protected environment secrets.
     runs-on: ubuntu-latest
