@@ -6,7 +6,7 @@ import os
 import re
 import time
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from google.cloud import bigquery
 
+from .commercial_freshness import component_freshness
 from .freight_ingest import create_freight_router
 
 from .intelligence_queries import (
@@ -46,7 +47,6 @@ from .maritime_queries import (
     normalize_port_id,
 )
 from .dashboard_routes import DASHBOARD_ROUTES, redirect_target
-from .freshness import component_freshness
 from models.commercial_analysis import build_derived_components
 from .storage_queries import (
     build_latest_summary_sql,
