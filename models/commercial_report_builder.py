@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from typing import Any, Mapping
 
 from .agrolog_intelligence_report import ReportSection, SECTION_ORDER
@@ -48,6 +50,100 @@ def _crop_line(row: Mapping[str, Any]) -> str:
     return " · ".join(bits)
 
 
+def _million(value: Any) -> str:
+    if value is None:
+        return "—"
+    return f"{float(value) / 1_000_000:,.2f} mi"
+
+
+def _percent(value: Any, *, signed: bool = False) -> str:
+    if value is None:
+        return "—"
+    return f"{float(value):+,.2f}%" if signed else f"{float(value):,.2f}%"
+
+
+def _wasde_line(row: Mapping[str, Any]) -> str:
+    try:
+        attrs = json.loads(str(row.get("attributes_json") or "{}"))
+    except json.JSONDecodeError:
+        attrs = {}
+    context = [
+        str(value)
+        for key, value in attrs.items()
+        if str(key).endswith(".name") and value not in (None, "")
+    ][:3]
+    commodity = str(row.get("commodity_hint") or "commodity")
+    if not context:
+        context = [commodity]
+    metric = str(row.get("path") or "valor").rsplit("/", 1)[-1]
+    value = row.get("numeric_value")
+    raw = row.get("raw_text")
+    shown = f"{float(value):,.2f}" if value is not None else str(raw or "—")
+    unit = next(
+        (str(value) for key, value in attrs.items() if str(key).endswith(".unit") and value not in (None, "")),
+        "",
+    )
+    delta = row.get("delta_numeric_value")
+    delta_text = f" · Δ release {float(delta):+,.2f}" if delta is not None else ""
+    return f"{' · '.join(context)} · {metric}: {shown}{(' ' + unit) if unit else ''}{delta_text}"
+
+
+def _argentina_line(row: Mapping[str, Any]) -> str:
+    bits = [f"{row.get('crop_id','produto')} {row.get('season','—')}"]
+    if row.get("planted_area_ha") is not None:
+        bits.append(f"área semeada {_million(row.get('planted_area_ha'))} ha")
+    if row.get("production_t") is not None:
+        bits.append(f"produção {_million(row.get('production_t'))} t")
+    if row.get("yield_kg_ha") is not None:
+        bits.append(f"produtividade {float(row['yield_kg_ha']):,.0f} kg/ha")
+    if row.get("delta_production_pct") is not None:
+        bits.append(f"Δ vintage {_percent(row.get('delta_production_pct'), signed=True)}")
+    return " · ".join(bits)
+
+
+def _export_line(row: Mapping[str, Any]) -> str:
+    bits = [f"{row.get('product_id','produto')} · {row.get('competencia','—')}"]
+    if row.get("toneladas") is not None:
+        bits.append(f"{_million(row.get('toneladas'))} t")
+    if row.get("delta_toneladas_pct") is not None:
+        bits.append(f"Δ {_percent(row.get('delta_toneladas_pct'), signed=True)}")
+    if row.get("vl_fob") is not None:
+        bits.append(f"FOB US$ {float(row['vl_fob']) / 1_000_000:,.1f} mi")
+    if row.get("usd_por_t") is not None:
+        bits.append(f"US$ {float(row['usd_por_t']):,.2f}/t")
+    return " · ".join(bits)
+
+
+def _weather_line(row: Mapping[str, Any]) -> str:
+    median = row.get("model_median")
+    iqr = row.get("model_iqr")
+    unit = str(row.get("unit") or "")
+    bits = [
+        f"{row.get('valid_time','—')} · {row.get('variable','—')}",
+        f"mediana {float(median):,.2f} {unit}" if median is not None else "mediana —",
+        f"IQR {float(iqr):,.2f}" if iqr is not None else "IQR —",
+        f"{row.get('model_count','—')} modelos",
+    ]
+    compared = int(row.get("models_with_run_comparison") or 0)
+    if compared:
+        bits.append(
+            f"revisões ↑{int(row.get('models_revised_up') or 0)} / ↓{int(row.get('models_revised_down') or 0)}"
+        )
+    return " · ".join(bits)
+
+
+def _progress_line(row: Mapping[str, Any]) -> str:
+    value = row.get("valor")
+    delta = row.get("delta_value")
+    bits = [
+        f"{row.get('produto','—')} · {row.get('regiao','—')} · {row.get('metric_name','—')}",
+        f"{float(value) * 100:.1f}%" if value is not None else "—",
+    ]
+    if delta is not None:
+        bits.append(f"Δ {float(delta) * 100:+.1f} p.p.")
+    return " · ".join(bits)
+
+
 def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSection]:
     sections = {
         title: ReportSection(
@@ -66,6 +162,11 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
     crops_br = _rows(snapshot, "crops_br")
     freight = _rows(snapshot, "freight")
     hydrology = _rows(snapshot, "hydrology")
+    crop_progress = _rows(snapshot, "crop_progress")
+    usda = _rows(snapshot, "usda")
+    argentina = _rows(snapshot, "argentina")
+    exports = _rows(snapshot, "exports")
+    weather = _rows(snapshot, "weather")
 
     critical_fresh = sum(_fresh(snapshot, name) for name in ("overview", "ptax", "crops_mt", "crops_br", "freight"))
     executive_status = "READY" if critical_fresh == 5 else "PARTIAL"
@@ -114,6 +215,9 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
             f"{row.get('metric_name','—')} · {row.get('local','—')}: {row.get('valor','—')} {row.get('unidade_canonica') or ''}"
             for row in price_rows[:4]
         )
+        export_id = "soja_grao" if market_token == "soja" else "milho_grao"
+        bullets.extend(_export_line(row) for row in exports if row.get("product_id") == export_id)
+        bullets = bullets[:9]
         sections[title] = ReportSection(
             title,
             section_status,
@@ -128,23 +232,60 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
         tuple(_crop_line(row) for row in crops_br[:8]),
         ("marts_agrolog360.crop_current_v1",),
     )
+    mt_progress = [
+        row for row in crop_progress
+        if str(row.get("regiao", "")).strip().upper() in {"TOTAL MT", "MT"}
+    ]
     sections["Mato Grosso"] = ReportSection(
         "Mato Grosso", _source_status(snapshot, "crops_mt"),
-        "Leitura estadual derivada dos vintages oficiais e pronta para cruzamento com IMEA/agroclima.",
-        tuple(_crop_line(row) for row in crops_mt[:8]),
-        ("marts_agrolog360.crop_current_v1",),
+        "Safra estadual com vintages oficiais e progresso operacional IMEA quando fresco.",
+        tuple([*(_crop_line(row) for row in crops_mt[:6]), *(_progress_line(row) for row in mt_progress[:4])]),
+        ("marts_agrolog360.crop_current_v1", "marts_agrolog360.crop_progress_current_v1"),
     )
 
-    for title, component in (
-        ("USDA/EUA", "usda"),
-        ("Argentina", "argentina"),
-        ("Meteorologia", "weather"),
-        ("Agroclima", "agroclimate"),
-        ("Tendência sub-sazonal/sazonal", "subseasonal"),
-        ("Exportação", "exports"),
-        ("Anos análogos", "analogs"),
-        ("Próximos eventos", "events"),
-    ):
+    sections["USDA/EUA"] = ReportSection(
+        "USDA/EUA", _source_status(snapshot, "usda"),
+        "WASDE estruturado e comparado com a release anterior; valores permanecem informados pelo documento oficial.",
+        tuple(_wasde_line(row) for row in usda[:6]),
+        ("marts_agrolog360.usda_wasde_changes_v1",),
+    )
+    sections["Argentina"] = ReportSection(
+        "Argentina", _source_status(snapshot, "argentina"),
+        "Estimativas agrícolas oficiais agregadas por cultura/safra e comparadas entre snapshots.",
+        tuple(_argentina_line(row) for row in argentina[:6]),
+        ("marts_agrolog360.argentina_crop_current_v1",),
+    )
+    sections["Meteorologia"] = ReportSection(
+        "Meteorologia", _source_status(snapshot, "weather"),
+        "Consenso multimodelo usa o run mais recente de cada modelo e explicita dispersão e revisão entre rodadas.",
+        tuple(_weather_line(row) for row in weather[:6]),
+        ("marts_agrolog360.weather_consensus_v1",),
+    )
+
+    agro_rows = _rows(snapshot, "agroclimate")
+    sections["Agroclima"] = ReportSection(
+        "Agroclima", _source_status(snapshot, "agroclimate"),
+        "Clima é traduzido em sinal agrícola potencial sem promover previsão a impacto realizado.",
+        tuple(str(row.get("summary") or "—") for row in agro_rows[:6]),
+        tuple(sorted({str(row.get("source_id")) for row in agro_rows if row.get("source_id")})),
+    )
+
+    subseasonal = _rows(snapshot, "subseasonal")
+    sections["Tendência sub-sazonal/sazonal"] = ReportSection(
+        "Tendência sub-sazonal/sazonal", _source_status(snapshot, "subseasonal"),
+        "Horizonte estendido permanece separado da previsão determinística de curto prazo.",
+        tuple(str(row.get("summary") or row.get("text") or "—") for row in subseasonal[:5]),
+        tuple(sorted({str(row.get("source_id")) for row in subseasonal if row.get("source_id")})),
+    )
+
+    sections["Exportação"] = ReportSection(
+        "Exportação", _source_status(snapshot, "exports"),
+        "Comex Stat agregado para Mato Grosso; volume observado aduaneiro, não contratação futura.",
+        tuple(_export_line(row) for row in exports[:8]),
+        ("marts_agrolog360.agricultural_exports_v1",),
+    )
+
+    for title, component in (("Anos análogos", "analogs"), ("Próximos eventos", "events")):
         rows = _rows(snapshot, component)
         sections[title] = ReportSection(
             title, _source_status(snapshot, component),
@@ -162,7 +303,7 @@ def build_report_sections(snapshot: Mapping[str, Any]) -> dict[str, ReportSectio
         sections[title] = ReportSection(
             title, _source_status(snapshot, component),
             "Previsão preserva run, initialization_time, forecast_hour, valid_time e incerteza multimodelo." if rows else "Previsão indisponível no corte atual.",
-            tuple(str(row.get("summary") or row) for row in rows[:5]),
+            tuple(_weather_line(row) for row in rows[:5]),
             tuple({str(row.get("source_id")) for row in rows if row.get("source_id")}),
         )
 

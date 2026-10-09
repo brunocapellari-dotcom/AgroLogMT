@@ -189,8 +189,10 @@ jobs:
   final-live-release:
     environment: agrolog-production
     name: Whole project LIVE + GCP final release
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.final_release == true) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[FINAL-LIVE]')) }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.final_release == true && github.ref == 'refs/heads/main') || (github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[FINAL-LIVE]')) }}
     needs: whole-project-ci
+    # Production credentials are available only from trusted main; PRs never enter this job.
+    # [FINAL-LIVE] on a main merge commit is an explicit release intent marker.
     # Production gate uses an ephemeral GitHub-hosted runner with OIDC/WIF and protected environment secrets.
     runs-on: ubuntu-latest
     timeout-minutes: 150
