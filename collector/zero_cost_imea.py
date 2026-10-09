@@ -93,10 +93,17 @@ def _load_group(
     unique = {str(row["record_id"]): row for row in rows}
     canonical = list(unique.values())
     runtime.analytics.ensure_table(schema, table, columns)
-    existing = int(runtime.analytics.scalar(
-        f"SELECT COUNT(*) FROM {schema}.{table} WHERE snapshot_id=?",  # nosec B608 - schema/table are code-owned constants
-        [snapshot_id],
-    ) or 0)
+    count_sql = {
+        ("mercado", "imea_indicadores_operacionais"):
+            "SELECT COUNT(*) FROM mercado.imea_indicadores_operacionais WHERE snapshot_id=?",
+        ("logistica", "imea_frete_referencia"):
+            "SELECT COUNT(*) FROM logistica.imea_frete_referencia WHERE snapshot_id=?",
+        ("agro", "imea_progresso_cultura"):
+            "SELECT COUNT(*) FROM agro.imea_progresso_cultura WHERE snapshot_id=?",
+    }.get((schema, table))
+    if count_sql is None:
+        raise ValueError(f"grupo IMEA não autorizado: {schema}.{table}")
+    existing = int(runtime.analytics.scalar(count_sql, [snapshot_id]) or 0)
     if existing and existing != len(canonical):
         raise RuntimeError(
             f"Tie-out IMEA local falhou: table={schema}.{table} "
