@@ -214,3 +214,70 @@ WHERE (@geo_id IS NULL OR geo_id=@geo_id)
 ORDER BY valid_time, variable
 LIMIT @limit
 """.strip()
+
+
+def build_crop_progress_current_sql(project: str, dataset: str) -> str:
+    project = safe_identifier(project, label="project")
+    dataset = safe_identifier(dataset, label="dataset")
+    return f"""
+SELECT
+  snapshot_id, record_id, source_sheet, data_referencia, produto, safra, regiao,
+  metric_name, valor, previous_value, delta_value, unidade_canonica,
+  evidence_class, evidence_subtype, data_coleta, source_hash, raw_artifact_ref
+FROM `{project}.{dataset}.crop_progress_current_v1`
+WHERE (@product IS NULL OR LOWER(produto)=LOWER(@product))
+  AND (@region IS NULL OR LOWER(regiao)=LOWER(@region))
+ORDER BY data_referencia DESC, produto, regiao, metric_name
+LIMIT @limit
+""".strip()
+
+
+def build_argentina_current_sql(project: str, dataset: str) -> str:
+    project = safe_identifier(project, label="project")
+    dataset = safe_identifier(dataset, label="dataset")
+    return f"""
+SELECT
+  snapshot_id, source_id, crop_id, season, reference_year,
+  planted_area_ha, harvested_area_ha, production_t, yield_kg_ha,
+  previous_planted_area_ha, previous_harvested_area_ha,
+  previous_production_t, previous_yield_kg_ha,
+  delta_production_t, delta_production_pct, delta_yield_kg_ha,
+  evidence_class, source_url, source_hash, data_coleta
+FROM `{project}.{dataset}.argentina_crop_current_v1`
+WHERE (@product IS NULL OR crop_id=@product)
+ORDER BY reference_year DESC, season DESC, crop_id
+LIMIT @limit
+""".strip()
+
+
+def build_usda_wasde_changes_sql(project: str, dataset: str) -> str:
+    project = safe_identifier(project, label="project")
+    dataset = safe_identifier(dataset, label="dataset")
+    return f"""
+SELECT
+  snapshot_id, semantic_key, semantic_occurrence, cell_index, source_id,
+  release_year, release_month, publication_date, path, attributes_json,
+  raw_text, numeric_value, previous_numeric_value, delta_numeric_value,
+  commodity_hint, evidence_class, source_url, source_hash, data_coleta
+FROM `{project}.{dataset}.usda_wasde_changes_v1`
+WHERE (@product IS NULL OR commodity_hint=@product)
+ORDER BY ABS(COALESCE(delta_numeric_value,0)) DESC, cell_index
+LIMIT @limit
+""".strip()
+
+
+def build_agricultural_exports_sql(project: str, dataset: str) -> str:
+    project = safe_identifier(project, label="project")
+    dataset = safe_identifier(dataset, label="dataset")
+    return f"""
+SELECT
+  geo_level, geo_id, competencia, product_id,
+  toneladas, previous_toneladas, delta_toneladas, delta_toneladas_pct,
+  vl_fob, usd_por_t, data_publicacao, data_coleta, evidence_class
+FROM `{project}.{dataset}.agricultural_exports_v1`
+WHERE (@geo_level IS NULL OR geo_level=@geo_level)
+  AND (@geo_id IS NULL OR geo_id=@geo_id)
+  AND (@product IS NULL OR product_id=@product)
+ORDER BY competencia DESC, toneladas DESC
+LIMIT @limit
+""".strip()

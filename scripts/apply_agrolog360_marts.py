@@ -35,6 +35,8 @@ SOURCE_DEPENDENCIES = {
     "argentina_crop_history": ("agro.argentina_estimaciones",),
     "argentina_crop_current": ("marts_agrolog360.argentina_crop_history_v1",),
     "usda_wasde_changes": ("global_market.usda_wasde_cells",),
+    "crop_progress_current": ("agro.imea_progresso_cultura",),
+    "agricultural_exports": ("comercio_exterior.comexstat_ncm_export",),
 }
 SAFE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 
@@ -67,6 +69,7 @@ def apply_ready_marts(*, project: str, location: str, execute: bool) -> dict[str
         "overview_current", "crop_vintages", "crop_current", "freight_history",
         "imea_market_indicators", "weather_run_summary", "weather_consensus",
         "argentina_crop_history", "argentina_crop_current", "usda_wasde_changes",
+        "crop_progress_current", "agricultural_exports",
     ):
         mart = bundle[mart_id]
         missing = [dep for dep in SOURCE_DEPENDENCIES[mart_id] if not _exists(client, project, dep)]

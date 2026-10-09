@@ -32,6 +32,10 @@ from .intelligence_queries import (
     build_weather_consensus_sql,
     build_crop_current_sql,
     build_freight_history_sql,
+    build_crop_progress_current_sql,
+    build_argentina_current_sql,
+    build_usda_wasde_changes_sql,
+    build_agricultural_exports_sql,
 )
 from .maritime_queries import (
     build_lineup_reconciliation_sql,
@@ -42,6 +46,7 @@ from .maritime_queries import (
     normalize_port_id,
 )
 from .dashboard_routes import DASHBOARD_ROUTES, redirect_target
+from models.commercial_analysis import build_derived_components
 from .storage_queries import (
     build_latest_summary_sql,
     build_latest_warehouses_sql,
@@ -655,6 +660,10 @@ _COMPONENT_MAX_AGE_MINUTES = {
     "weather_7d": 720,
     "weather_15d": 720,
     "hydrology": 2880,
+    "crop_progress": 10080,
+    "argentina": 43200,
+    "usda": 64800,
+    "exports": 64800,
 }
 
 
@@ -766,6 +775,41 @@ def intelligence_commercial_snapshot(uf: str = "MT") -> dict[str, Any]:
             ],
         ),
         _optional_component(
+            "crop_progress", "marts_agrolog360.crop_progress_current_v1",
+            build_crop_progress_current_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("product", "STRING", None),
+                bigquery.ScalarQueryParameter("region", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 200),
+            ],
+        ),
+        _optional_component(
+            "argentina", "marts_agrolog360.argentina_crop_current_v1",
+            build_argentina_current_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("product", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 100),
+            ],
+        ),
+        _optional_component(
+            "usda", "marts_agrolog360.usda_wasde_changes_v1",
+            build_usda_wasde_changes_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("product", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 200),
+            ],
+        ),
+        _optional_component(
+            "exports", "marts_agrolog360.agricultural_exports_v1",
+            build_agricultural_exports_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
+            [
+                bigquery.ScalarQueryParameter("geo_level", "STRING", "uf"),
+                bigquery.ScalarQueryParameter("geo_id", "STRING", uf),
+                bigquery.ScalarQueryParameter("product", "STRING", None),
+                bigquery.ScalarQueryParameter("limit", "INT64", 100),
+            ],
+        ),
+        _optional_component(
             "freight", "marts_agrolog360.freight_history_v1",
             build_freight_history_sql(PROJECT_ID, INTELLIGENCE_DATASET_ID),
             [
@@ -825,6 +869,7 @@ def intelligence_commercial_snapshot(uf: str = "MT") -> dict[str, Any]:
             ],
         ),
     ]
+    components.extend(build_derived_components(components))
     failed = [item["component"] for item in components if item["status"] == "FAILED"]
     stale = [item["component"] for item in components if item["status"] == "STALE"]
     freshness = {str(item["source_id"]): str(item["status"]) for item in components}
