@@ -55,7 +55,7 @@ def _ptax(store: LocalAnalyticsStore) -> list[dict[str, Any]]:
 def _exports(store: LocalAnalyticsStore, uf: str) -> list[dict[str, Any]]:
     if not store.table_exists("comercio_exterior", "comexstat_trade_monthly"):
         return []
-    rows = store.query(
+    return store.query(
         """
         WITH mapped AS (
           SELECT
@@ -109,13 +109,166 @@ def _exports(store: LocalAnalyticsStore, uf: str) -> list[dict[str, Any]]:
         """,
         [uf],
     )
-    return rows
+
+
+def _hydrology(store: LocalAnalyticsStore) -> list[dict[str, Any]]:
+    if not store.table_exists("hidrologia", "hydro_station_telemetry"):
+        return []
+    return store.query(
+        """
+        SELECT
+          station_code,
+          station_name,
+          river,
+          data_referencia,
+          cota_cm AS stage_cm,
+          vazao_m3s AS flow_m3s,
+          chuva_mm,
+          data_hora_medicao AS latest_measurement,
+          data_atualizacao AS latest_source_update,
+          data_coleta,
+          evidence_class
+        FROM (
+          SELECT *,
+            ROW_NUMBER() OVER (
+              PARTITION BY station_code
+              ORDER BY data_hora_medicao DESC, data_coleta DESC
+            ) AS rn
+          FROM hidrologia.hydro_station_telemetry
+        )
+        WHERE rn=1
+        ORDER BY river, station_code
+        """
+    )
+
+
+def _argentina(store: LocalAnalyticsStore) -> list[dict[str, Any]]:
+    if not store.table_exists("agro", "argentina_estimaciones"):
+        return []
+    return store.query(
+        """
+        WITH snapshot_country AS (
+          SELECT
+            snapshot_id,
+            source_id,
+            crop_id,
+            season,
+            reference_year,
+            SUM(planted_area_ha) AS planted_area_ha,
+            SUM(harvested_area_ha) AS harvested_area_ha,
+            SUM(production_t) AS production_t,
+            1000.0 * SUM(production_t) / NULLIF(SUM(harvested_area_ha),0) AS yield_kg_ha,
+            MIN(evidence_class) AS evidence_class,
+            MIN(source_url) AS source_url,
+            MIN(source_hash) AS source_hash,
+            MAX(data_coleta) AS data_coleta
+          FROM agro.argentina_estimaciones
+          WHERE crop_id IN ('soja','milho','trigo','algodao')
+          GROUP BY snapshot_id, source_id, crop_id, season, reference_year
+        ),
+        ordered AS (
+          SELECT *,
+            LAG(planted_area_ha) OVER w AS previous_planted_area_ha,
+            LAG(harvested_area_ha) OVER w AS previous_harvested_area_ha,
+            LAG(production_t) OVER w AS previous_production_t,
+            LAG(yield_kg_ha) OVER w AS previous_yield_kg_ha
+          FROM snapshot_country
+          WINDOW w AS (
+            PARTITION BY crop_id, season
+            ORDER BY data_coleta, snapshot_id
+          )
+        ),
+        enriched AS (
+          SELECT *,
+            production_t - previous_production_t AS delta_production_t,
+            CASE
+              WHEN ABS(previous_production_t) > 0
+              THEN 100.0 * (production_t - previous_production_t) / ABS(previous_production_t)
+              ELSE NULL
+            END AS delta_production_pct,
+            yield_kg_ha - previous_yield_kg_ha AS delta_yield_kg_ha
+          FROM ordered
+        )
+        SELECT * EXCLUDE (rn)
+        FROM (
+          SELECT *,
+            ROW_NUMBER() OVER (
+              PARTITION BY crop_id, season
+              ORDER BY data_coleta DESC, snapshot_id DESC
+            ) AS rn
+          FROM enriched
+        )
+        WHERE rn=1
+        ORDER BY crop_id, season DESC
+        LIMIT 100
+        """
+    )
+
+
+def _usda(store: LocalAnalyticsStore) -> list[dict[str, Any]]:
+    if not store.table_exists("global_market", "usda_wasde_cells"):
+        return []
+    return store.query(
+        r"""
+        WITH ordered AS (
+          SELECT *,
+            CASE
+              WHEN regexp_matches(lower(path || ' ' || attributes_json), '\bsoy(bean|beans)?\b') THEN 'soja'
+              WHEN regexp_matches(lower(path || ' ' || attributes_json), '\b(corn|maize)\b') THEN 'milho'
+              WHEN regexp_matches(lower(path || ' ' || attributes_json), '\bwheat\b') THEN 'trigo'
+              WHEN regexp_matches(lower(path || ' ' || attributes_json), '\bcotton\b') THEN 'algodao'
+              ELSE NULL
+            END AS commodity_hint,
+            LAG(numeric_value) OVER (
+              PARTITION BY semantic_key
+              ORDER BY release_year, release_month,
+                       COALESCE(publication_date, make_date(release_year, release_month, 1)),
+                       data_coleta
+            ) AS previous_numeric_value
+          FROM global_market.usda_wasde_cells
+        ),
+        latest_release AS (
+          SELECT MAX(make_date(release_year, release_month, 1)) AS release_month_date
+          FROM ordered
+        )
+        SELECT
+          snapshot_id,
+          semantic_key,
+          semantic_occurrence,
+          cell_index,
+          source_id,
+          release_year,
+          release_month,
+          publication_date,
+          path,
+          attributes_json,
+          raw_text,
+          numeric_value,
+          previous_numeric_value,
+          numeric_value - previous_numeric_value AS delta_numeric_value,
+          commodity_hint,
+          evidence_class,
+          source_url,
+          source_hash,
+          data_coleta
+        FROM ordered
+        WHERE make_date(release_year, release_month, 1)=(
+          SELECT release_month_date FROM latest_release
+        )
+          AND commodity_hint IS NOT NULL
+        ORDER BY commodity_hint, path, semantic_occurrence
+        LIMIT 500
+        """
+    )
 
 
 def build_zero_cost_snapshot(store: LocalAnalyticsStore, *, uf: str = "MT") -> dict[str, Any]:
     loaders = {
         "ptax": lambda: _ptax(store),
         "exports": lambda: _exports(store, uf),
+        "hydrology": lambda: _hydrology(store),
+        "argentina": lambda: _argentina(store),
+        "usda": lambda: _usda(store),
     }
     components: list[dict[str, Any]] = []
     for name, source_id in BASE_COMPONENTS:

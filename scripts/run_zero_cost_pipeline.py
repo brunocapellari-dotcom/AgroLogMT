@@ -11,7 +11,7 @@ from models.agrolog_intelligence_report import render_markdown
 from models.zero_cost_snapshot import build_zero_cost_snapshot
 from scripts.build_zero_cost_bundle import build_bundle
 
-SUPPORTED_METHODS = {"bcb_ptax_daily", "comexstat_api", "mdic_comexstat_api"}
+SUPPORTED_METHODS = {"bcb_ptax_daily", "comexstat_api", "mdic_comexstat_api", "ana_hidroweb_adopted"}
 
 
 def main() -> int:
@@ -22,6 +22,7 @@ def main() -> int:
     parser.add_argument("--uf", default="MT")
     parser.add_argument("--output-dir", default="maritime_ui/public/data")
     parser.add_argument("--no-collect", action="store_true")
+    parser.add_argument("--no-global-public", action="store_true", help="Do not collect Argentina/WASDE public sources")
     args = parser.parse_args()
 
     runtime = ZeroCostRuntime(args.root)
@@ -47,6 +48,22 @@ def main() -> int:
                 "status": result.get("status"),
                 "result": result,
             })
+
+        if not args.no_global_public:
+            global_sources = (
+                ("sagyp_argentina", runtime.run_argentina),
+                ("usda_wasde", runtime.run_wasde),
+            )
+            for source_id, runner in global_sources:
+                if selected and source_id not in selected:
+                    continue
+                code, result = runner()
+                runs.append({
+                    "source_id": source_id,
+                    "exit_code": code,
+                    "status": result.get("status"),
+                    "result": result,
+                })
 
     runtime_manifest = runtime.write_runtime_manifest()
     snapshot = build_zero_cost_snapshot(runtime.analytics, uf=args.uf.upper())
