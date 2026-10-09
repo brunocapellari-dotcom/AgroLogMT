@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
+from collector.local_analytics_store import LocalAnalyticsStore
 from collector.storage import LocalStore, sha256_bytes
 from scripts.build_zero_cost_bundle import build_bundle
 
