@@ -23,6 +23,11 @@ COLETORES PYTHON
         +--> LocalStore: RAW + manifestos + estado
         |
         v
+DUCKDB LOCAL
+        |
+        +--> PARQUET ZSTD
+        |
+        v
 PROCESSAMENTO / MARTS EM LOTE
         |
         v
@@ -41,7 +46,11 @@ O GCP continua disponível como backend opcional. BigQuery, Cloud Run, GCS, WIF 
 
 O `collector.storage.LocalStore` é a base do modo gratuito para RAW, manifestos e estado. Artefatos RAW mantêm SHA-256 e caminho temporal. Dados derivados destinados ao cliente são materializados em bundle estático, evitando consulta analítica paga a cada abertura do dashboard.
 
-Para volumes maiores, DuckDB/Parquet pode ser adicionado como motor local sem alterar a regra econômica. Ele não é requisito deste primeiro corte.
+O banco analítico canônico do perfil ZERO_COST agora é DuckDB, executado como biblioteca embarcada, sem daemon ou servidor. As tabelas analíticas são exportáveis para Parquet com compressão ZSTD. A primeira migração operacional inclui BCB PTAX e MDIC/SECEX ComexStat; os demais domínios permanecem explicitamente como SOURCE_GAP até sua migração, sem preenchimento por inferência silenciosa.
+
+## Execução local
+
+`python scripts/run_zero_cost_pipeline.py` coleta as fontes públicas suportadas, atualiza DuckDB/Parquet e materializa snapshot e relatório. `python scripts/build_zero_cost_outputs.py` reconstrói apenas os produtos estáticos a partir do banco local existente.
 
 ## Publicação
 
@@ -71,4 +80,4 @@ python scripts/validate_zero_cost_runtime.py
 
 Resultado esperado: `status=PASS`, `implementation_cost_ceiling_brl=0`, `recurring_cost_ceiling_brl=0`, `paid_runtime_required=false` e `cloud_credentials_required=false`.
 
-A validação é local e não realiza chamadas a GCP ou a qualquer serviço pago.
+A validação é local, testa LocalStore, DuckDB, Parquet e bundle estático e não realiza chamadas a GCP ou a qualquer serviço pago.
