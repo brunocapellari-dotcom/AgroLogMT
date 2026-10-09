@@ -24,6 +24,9 @@ BUILD_SA_NAME="${BUILD_SA_NAME:-agrolog-builder}"
 COLLECTOR_SA_NAME="${COLLECTOR_SA_NAME:-agrolog-collector}"
 GATEWAY_SA_NAME="${GATEWAY_SA_NAME:-agrolog-gateway}"
 GATEWAY_SERVICE_NAME="${GATEWAY_SERVICE_NAME:-agrolog-gateway}"
+FREIGHT_INGEST_SA_NAME="${FREIGHT_INGEST_SA_NAME:-agrolog-freight-ingest}"
+FREIGHT_SERVICE_NAME="${FREIGHT_SERVICE_NAME:-agrolog-freight-ingest}"
+FREIGHT_SECRET_NAME="${FREIGHT_SECRET_NAME:-agrolog-freight-shared-secret}"
 CONFIGURE_ANA="${CONFIGURE_ANA:-0}"
 ANA_IDENTIFICADOR_SECRET="${ANA_IDENTIFICADOR_SECRET:-agrolog-ana-identificador}"
 ANA_SENHA_SECRET="${ANA_SENHA_SECRET:-agrolog-ana-senha}"
@@ -32,7 +35,7 @@ if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "ERRO: configure o projeto: gcloud config set project <PROJECT_ID>" >&2
   exit 2
 fi
-for cmd in gcloud bq gh; do
+for cmd in gcloud bq gh python3; do
   command -v "$cmd" >/dev/null || { echo "ERRO: $cmd ausente" >&2; exit 2; }
 done
 gcloud auth list --filter=status:ACTIVE --format='value(account)' | grep -q . || {
@@ -113,11 +116,13 @@ ensure_sa "$DEPLOYER_SA_NAME" "AgroLog GitHub deployer"
 ensure_sa "$BUILD_SA_NAME" "AgroLog Cloud Build"
 ensure_sa "$COLLECTOR_SA_NAME" "AgroLog collector runtime"
 ensure_sa "$GATEWAY_SA_NAME" "AgroLog gateway runtime"
+ensure_sa "$FREIGHT_INGEST_SA_NAME" "AgroLog freight ingest runtime"
 
 DEPLOYER_SA_EMAIL="${DEPLOYER_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 BUILD_SA_EMAIL="${BUILD_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 COLLECTOR_SA_EMAIL="${COLLECTOR_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 GATEWAY_SA_EMAIL="${GATEWAY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+FREIGHT_INGEST_SA_EMAIL="${FREIGHT_INGEST_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
 BUILD_SERVICE_AGENT="service-${PROJECT_NUMBER}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
 
@@ -158,6 +163,39 @@ ensure_project_role "$GATEWAY_SA_EMAIL" roles/bigquery.jobUser
 ensure_dataset_role "$LOGISTICA_DATASET" "$GATEWAY_SA_EMAIL" roles/bigquery.dataViewer
 ensure_dataset_role "$MARITIME_DATASET" "$GATEWAY_SA_EMAIL" roles/bigquery.dataViewer
 
+# Freight ingestion is separated from the read-only Gateway identity.
+# Bootstrap owns DDL/IAM; recurring deploy only verifies the resources.
+sed -e "s/__PROJECT__/${PROJECT_ID}/g" -e "s/__DATASET__/${LOGISTICA_DATASET}/g" \
+  warehouse/bigquery/freight_events.sql | \
+  bq query --project_id="$PROJECT_ID" --location="$BQ_LOCATION" --use_legacy_sql=false --quiet
+sed -e "s/__PROJECT__/${PROJECT_ID}/g" -e "s/__DATASET__/${LOGISTICA_DATASET}/g" \
+  warehouse/bigquery/freight_events_upgrade.sql | \
+  bq query --project_id="$PROJECT_ID" --location="$BQ_LOCATION" --use_legacy_sql=false --quiet
+ensure_project_role "$FREIGHT_INGEST_SA_EMAIL" roles/bigquery.jobUser
+python3 - "$PROJECT_ID" "$LOGISTICA_DATASET" "$FREIGHT_INGEST_SA_EMAIL" <<'PY' | \
+  bq query --project_id="$PROJECT_ID" --location="$BQ_LOCATION" --use_legacy_sql=false --quiet
+import sys
+project, dataset, principal = sys.argv[1:]
+tick = chr(96)
+print(
+    f'GRANT {tick}roles/bigquery.dataEditor{tick} '
+    f'ON TABLE {tick}{project}.{dataset}.freight_events{tick} '
+    f'TO "serviceAccount:{principal}"'
+)
+PY
+
+if ! gcloud secrets describe "$FREIGHT_SECRET_NAME" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  gcloud secrets create "$FREIGHT_SECRET_NAME" --project "$PROJECT_ID" --replication-policy=automatic >/dev/null
+fi
+if ! gcloud secrets versions list "$FREIGHT_SECRET_NAME" --project "$PROJECT_ID" \
+  --filter='state=ENABLED' --format='value(name)' | grep -q .; then
+  python3 -c 'import secrets; print(secrets.token_urlsafe(48))' | \
+    gcloud secrets versions add "$FREIGHT_SECRET_NAME" --project "$PROJECT_ID" --data-file=- >/dev/null
+fi
+gcloud secrets add-iam-policy-binding "$FREIGHT_SECRET_NAME" --project "$PROJECT_ID" \
+  --member="serviceAccount:${FREIGHT_INGEST_SA_EMAIL}" \
+  --role=roles/secretmanager.secretAccessor --quiet >/dev/null
+
 ensure_project_role "$BUILD_SA_EMAIL" roles/logging.logWriter
 gcloud artifacts repositories add-iam-policy-binding "$AR_REPOSITORY" \
   --location "$REGION" --project "$PROJECT_ID" \
@@ -183,7 +221,7 @@ gcloud storage buckets add-iam-policy-binding "gs://${BUILD_SOURCE_BUCKET}" \
 gcloud storage buckets add-iam-policy-binding "gs://${BUILD_SOURCE_BUCKET}" \
   --member="serviceAccount:${DEPLOYER_SA_EMAIL}" --role=roles/storage.bucketViewer --quiet >/dev/null
 
-for sa in "$BUILD_SA_EMAIL" "$COLLECTOR_SA_EMAIL" "$GATEWAY_SA_EMAIL"; do
+for sa in "$BUILD_SA_EMAIL" "$COLLECTOR_SA_EMAIL" "$GATEWAY_SA_EMAIL" "$FREIGHT_INGEST_SA_EMAIL"; do
   gcloud iam service-accounts add-iam-policy-binding "$sa" \
     --project "$PROJECT_ID" \
     --member="serviceAccount:${DEPLOYER_SA_EMAIL}" \
@@ -196,6 +234,15 @@ if gcloud run services describe "$GATEWAY_SERVICE_NAME" --region "$REGION" --pro
   gcloud run services remove-iam-policy-binding "$GATEWAY_SERVICE_NAME" \
     --region "$REGION" --project "$PROJECT_ID" \
     --member=allUsers --role=roles/run.invoker --quiet >/dev/null 2>&1 || true
+fi
+if gcloud run services describe "$FREIGHT_SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  gcloud run services update "$FREIGHT_SERVICE_NAME" \
+    --region "$REGION" --project "$PROJECT_ID" --invoker-iam-check --quiet >/dev/null
+  for broad_member in allUsers allAuthenticatedUsers; do
+    gcloud run services remove-iam-policy-binding "$FREIGHT_SERVICE_NAME" \
+      --region "$REGION" --project "$PROJECT_ID" \
+      --member="$broad_member" --role=roles/run.invoker --quiet >/dev/null 2>&1 || true
+  done
 fi
 
 if ! gcloud iam workload-identity-pools describe "$POOL_ID" --location=global --project "$PROJECT_ID" >/dev/null 2>&1; then
@@ -270,6 +317,8 @@ printf 'Deployer:           %s\n' "$DEPLOYER_SA_EMAIL"
 printf 'Builder:            %s\n' "$BUILD_SA_EMAIL"
 printf 'Collector:          %s\n' "$COLLECTOR_SA_EMAIL"
 printf 'Gateway:            %s\n' "$GATEWAY_SA_EMAIL"
+printf 'Freight ingest:     %s\n' "$FREIGHT_INGEST_SA_EMAIL"
+printf 'Freight secret:     %s (Secret Manager; value never printed)\n' "$FREIGHT_SECRET_NAME"
 printf 'Build staging:      gs://%s\n' "$BUILD_SOURCE_BUCKET"
 printf 'WIF repository_id:  %s\n' "$REPO_NUMERIC_ID"
 printf 'WIF owner_id:       %s\n' "$REPO_OWNER_NUMERIC_ID"
