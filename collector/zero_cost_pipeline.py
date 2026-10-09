@@ -14,6 +14,7 @@ from .orchestrator import COLLECTOR_VERSION, CollectorEngine
 from .p0_adapters import BcbPtaxDailyAdapter
 from .storage import LocalStore, sha256_bytes
 from .zero_cost_public_sources import run_ana_source, run_argentina_source, run_wasde_source
+from .zero_cost_conab import run_conab_safra
 
 PTAX_COLUMNS = {
     "data_referencia": "DATE NOT NULL",
@@ -265,6 +266,9 @@ class ZeroCostRuntime:
             "source_id": spec.source_id,
             "method": spec.method,
         }
+
+    def run_conab_safra(self) -> tuple[int, dict[str, Any]]:
+        return run_conab_safra(self)
 
     def run_argentina(self) -> tuple[int, dict[str, Any]]:
         return run_argentina_source(self)
