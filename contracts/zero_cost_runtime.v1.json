@@ -1,0 +1,30 @@
+{
+  "version": "1.0.0",
+  "mode": "ZERO_COST",
+  "max_implementation_cost_brl": 0,
+  "max_recurring_cost_brl": 0,
+  "mandatory_paid_services": [],
+  "mandatory_cloud_services": [],
+  "canonical_runtime": {
+    "raw_store": "local_filesystem",
+    "analytical_delivery": "static_json_bundle",
+    "dashboard": "static_site",
+    "scheduler": "os_or_manual",
+    "ai_api": "none_required"
+  },
+  "optional_backends": [
+    "gcp_bigquery",
+    "gcp_cloud_run",
+    "gcp_gcs",
+    "cloudflare_free_tier",
+    "github_actions"
+  ],
+  "rules": [
+    "No paid service may be required to collect, process, store, build, serve or read the Sellable V1.",
+    "Any optional provider with a free quota must fail closed or stop before paid overage.",
+    "Cloud credentials must not be required for ZERO_COST validation or bundle generation.",
+    "Historical raw artifacts and manifests remain immutable and content-addressed where applicable.",
+    "Static client bundles must contain no secrets, tokens, passwords, private keys or service credentials.",
+    "GCP remains an optional backend and must not block ZERO_COST release."
+  ]
+}
