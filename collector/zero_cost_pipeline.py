@@ -13,6 +13,7 @@ from .models import RunManifest, SourceSpec
 from .orchestrator import COLLECTOR_VERSION, CollectorEngine
 from .p0_adapters import BcbPtaxDailyAdapter
 from .storage import LocalStore, sha256_bytes
+from .zero_cost_conab import run_conab_source
 from .zero_cost_public_sources import run_ana_source, run_argentina_source, run_wasde_source
 
 PTAX_COLUMNS = {
@@ -271,6 +272,9 @@ class ZeroCostRuntime:
 
     def run_wasde(self) -> tuple[int, dict[str, Any]]:
         return run_wasde_source(self)
+
+    def run_conab(self, spec: SourceSpec) -> tuple[int, dict[str, Any]]:
+        return run_conab_source(self, spec)
 
     def write_runtime_manifest(self) -> Path:
         return self.analytics.write_manifest(self.root / "runtime-manifest.json")
