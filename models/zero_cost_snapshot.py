@@ -111,6 +111,57 @@ def _exports(store: LocalAnalyticsStore, uf: str) -> list[dict[str, Any]]:
     )
 
 
+def _crops(store: LocalAnalyticsStore, *, geo_level: str, geo_id: str) -> list[dict[str, Any]]:
+    if not store.table_exists("agro", "conab_safra"):
+        return []
+    return store.query(
+        """
+        WITH latest AS (
+          SELECT snapshot_id
+          FROM agro.conab_safra
+          GROUP BY snapshot_id
+          ORDER BY MAX(data_coleta) DESC
+          LIMIT 1
+        )
+        SELECT
+          snapshot_id,
+          record_id,
+          source_id,
+          geo_level,
+          geo_id,
+          produto_origem,
+          product_id,
+          safra,
+          vintage_position,
+          area_mil_ha,
+          produtividade_kg_ha,
+          producao_mil_t,
+          area_var_pct,
+          produtividade_var_pct,
+          producao_var_pct,
+          producao_var_pct AS delta_producao_pct,
+          identity_error_mil_t,
+          identity_error_pct,
+          quality_score,
+          quality_flags_json,
+          data_referencia,
+          data_publicacao,
+          data_coleta,
+          competencia,
+          evidence_class,
+          source_url,
+          source_hash,
+          raw_artifact_ref
+        FROM agro.conab_safra
+        WHERE snapshot_id=(SELECT snapshot_id FROM latest)
+          AND geo_level=?
+          AND geo_id=?
+        ORDER BY product_id, vintage_position, safra
+        """,
+        [geo_level, geo_id],
+    )
+
+
 def _hydrology(store: LocalAnalyticsStore) -> list[dict[str, Any]]:
     if not store.table_exists("hidrologia", "hydro_station_telemetry"):
         return []
@@ -265,6 +316,8 @@ def _usda(store: LocalAnalyticsStore) -> list[dict[str, Any]]:
 def build_zero_cost_snapshot(store: LocalAnalyticsStore, *, uf: str = "MT") -> dict[str, Any]:
     loaders = {
         "ptax": lambda: _ptax(store),
+        "crops_mt": lambda: _crops(store, geo_level="uf", geo_id=uf),
+        "crops_br": lambda: _crops(store, geo_level="country", geo_id="BR"),
         "exports": lambda: _exports(store, uf),
         "hydrology": lambda: _hydrology(store),
         "argentina": lambda: _argentina(store),
