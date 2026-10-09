@@ -18,7 +18,7 @@ BASE_COMPONENTS = (
     ("argentina", "local.marts.argentina_crop_current"),
     ("usda", "local.marts.usda_wasde_changes"),
     ("exports", "local.marts.agricultural_exports"),
-    ("freight", "local.marts.freight_history"),
+    ("freight", "local.logistica.freight_announcements"),
     ("weather", "local.marts.weather_consensus"),
     ("weather_3d", "local.marts.weather_consensus"),
     ("weather_7d", "local.marts.weather_consensus"),
@@ -108,6 +108,33 @@ def _exports(store: LocalAnalyticsStore, uf: str) -> list[dict[str, Any]]:
         LIMIT 200
         """,
         [uf],
+    )
+
+
+def _freight(store: LocalAnalyticsStore) -> list[dict[str, Any]]:
+    if not store.table_exists("logistica", "freight_announcements"):
+        return []
+    return store.query(
+        """
+        WITH latest_day AS (
+          SELECT MAX(data_referencia) AS data_referencia
+          FROM logistica.freight_announcements
+        ),
+        publication_count AS (
+          SELECT COUNT(*) AS publications_received
+          FROM logistica.freight_publications
+          WHERE CAST(data_publicacao AS DATE)=(SELECT data_referencia FROM latest_day)
+        )
+        SELECT
+          a.*,
+          p.publications_received
+        FROM logistica.freight_announcements a
+        CROSS JOIN publication_count p
+        WHERE a.data_referencia=(SELECT data_referencia FROM latest_day)
+        ORDER BY a.municipality_name, a.pickup_name, a.destination_name,
+                 a.carrier_name, a.freight_announced_brl_per_t
+        LIMIT 500
+        """
     )
 
 
@@ -342,6 +369,7 @@ def build_zero_cost_snapshot(store: LocalAnalyticsStore, *, uf: str = "MT") -> d
         "exports": lambda: _exports(store, uf),
         "crops_mt": lambda: _crops(store, geo_level="uf", geo_id=uf),
         "crops_br": lambda: _crops(store, geo_level="country", geo_id="BR"),
+        "freight": lambda: _freight(store),
         "hydrology": lambda: _hydrology(store),
         "argentina": lambda: _argentina(store),
         "usda": lambda: _usda(store),
