@@ -26,7 +26,7 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python scripts/build_comex_soy_export30_hurdle.py --start-year 2015 --out comex_soy_export30_hurdle.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: comex-soy-export30-hurdle-${{ github.run_id }}
           path: comex_soy_export30_hurdle.json
