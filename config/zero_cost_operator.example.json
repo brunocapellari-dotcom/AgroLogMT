@@ -1,0 +1,18 @@
+{
+  "mode": "ZERO_COST",
+  "root": "../.agrolog-zero-cost",
+  "output_dir": "../maritime_ui/public/data",
+  "uf": "MT",
+  "no_collect": false,
+  "no_global_public": false,
+  "no_weather": false,
+  "no_conab": false,
+  "freight_input": "../inputs/freight.json",
+  "market_input": "../inputs/market.csv",
+  "market": {
+    "source_id": "market_authorized",
+    "source_name": "Mercado autorizado",
+    "usage_rights": "USER_AUTHORIZED",
+    "authorization_basis": "Substitua pela base real de autorização/licença antes do uso"
+  }
+}
