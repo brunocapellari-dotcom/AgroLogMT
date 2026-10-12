@@ -28,7 +28,7 @@ def _source_by_id(config: str, source_id: str):
     raise ValueError(f"source_id não encontrado em {config}: {source_id}")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run AgroLog ZERO_COST public-source pipeline")
     parser.add_argument("--root", default=".agrolog-zero-cost")
     parser.add_argument("--config", default="collector/config/sources.p0.json")
@@ -46,7 +46,7 @@ def main() -> int:
     parser.add_argument("--market-source-name")
     parser.add_argument("--market-usage-rights", choices=sorted(ALLOWED_USAGE_RIGHTS))
     parser.add_argument("--market-authorization-basis")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.market_input:
         required_market_args = {
