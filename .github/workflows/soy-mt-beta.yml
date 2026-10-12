@@ -1,10 +1,9 @@
 name: soy-mt-beta
 
 on:
+  # ZERO_COST: legacy beta remains manual. Recurring Actions are not part of
+  # the canonical local runtime and must not consume hosted-runner quota.
   workflow_dispatch:
-  schedule:
-    - cron: "15 11 * * *"
-    - cron: "15 19 * * *"
 
 permissions:
   contents: read
