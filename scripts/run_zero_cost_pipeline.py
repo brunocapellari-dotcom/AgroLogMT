@@ -6,6 +6,13 @@ from pathlib import Path
 
 from collector.cli import load_sources
 from collector.zero_cost_pipeline import ZeroCostRuntime
+from collector.zero_cost_freight import load_freight_input, persist_freight_records
+from collector.zero_cost_market import (
+    ALLOWED_USAGE_RIGHTS,
+    MarketAuthorization,
+    load_market_input,
+    persist_market_references,
+)
 from models.commercial_report_builder import build_report_sections
 from models.agrolog_intelligence_report import render_markdown
 from models.zero_cost_snapshot import build_zero_cost_snapshot
@@ -33,7 +40,27 @@ def main() -> int:
     parser.add_argument("--no-weather", action="store_true", help="Do not collect NOAA GFS weather horizons")
     parser.add_argument("--pilot-config", default="collector/config/sources.pilot.json")
     parser.add_argument("--no-conab", action="store_true", help="Do not collect the official CONAB crop workbook")
+    parser.add_argument("--freight-input", help="Authorized freight JSON/JSONL input")
+    parser.add_argument("--market-input", help="Authorized market CSV/JSON/JSONL input")
+    parser.add_argument("--market-source-id")
+    parser.add_argument("--market-source-name")
+    parser.add_argument("--market-usage-rights", choices=sorted(ALLOWED_USAGE_RIGHTS))
+    parser.add_argument("--market-authorization-basis")
     args = parser.parse_args()
+
+    if args.market_input:
+        required_market_args = {
+            "--market-source-id": args.market_source_id,
+            "--market-source-name": args.market_source_name,
+            "--market-usage-rights": args.market_usage_rights,
+            "--market-authorization-basis": args.market_authorization_basis,
+        }
+        missing = [name for name, value in required_market_args.items() if not value]
+        if missing:
+            parser.error(
+                "--market-input requires explicit source/rights metadata: "
+                + ", ".join(missing)
+            )
 
     runtime = ZeroCostRuntime(args.root)
     runs = []
@@ -102,6 +129,52 @@ def main() -> int:
                 "result": result,
             })
 
+    if args.freight_input:
+        try:
+            freight_rows = load_freight_input(args.freight_input)
+            freight_result = persist_freight_records(runtime, freight_rows)
+            runs.append({
+                "source_id": "authorized_freight_input",
+                "exit_code": 0,
+                "status": "ok",
+                "result": freight_result,
+            })
+        except Exception as exc:
+            runs.append({
+                "source_id": "authorized_freight_input",
+                "exit_code": 2,
+                "status": "blocked_by_quality_gate",
+                "result": {"error": f"{type(exc).__name__}: {exc}"},
+            })
+
+    if args.market_input:
+        try:
+            authorization = MarketAuthorization(
+                source_id=str(args.market_source_id),
+                source_name=str(args.market_source_name),
+                usage_rights=str(args.market_usage_rights),
+                authorization_basis=str(args.market_authorization_basis),
+            )
+            market_rows = load_market_input(args.market_input)
+            market_result = persist_market_references(
+                runtime,
+                market_rows,
+                authorization=authorization,
+            )
+            runs.append({
+                "source_id": authorization.source_id,
+                "exit_code": 0,
+                "status": "ok",
+                "result": market_result,
+            })
+        except Exception as exc:
+            runs.append({
+                "source_id": str(args.market_source_id or "authorized_market_input"),
+                "exit_code": 2,
+                "status": "blocked_by_quality_gate",
+                "result": {"error": f"{type(exc).__name__}: {exc}"},
+            })
+
     runtime_manifest = runtime.write_runtime_manifest()
     snapshot = build_zero_cost_snapshot(runtime.analytics, uf=args.uf.upper())
     output_dir = Path(args.output_dir)
@@ -132,7 +205,7 @@ def main() -> int:
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(run_manifest, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
     print(json.dumps(run_manifest, ensure_ascii=False, default=str))
-    return 0
+    return 0 if gate.status == "SELLABLE" else 2
 
 
 if __name__ == "__main__":

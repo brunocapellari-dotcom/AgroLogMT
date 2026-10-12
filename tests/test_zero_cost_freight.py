@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from collector.zero_cost_freight import persist_freight_records
@@ -16,6 +17,7 @@ def _row(
     pickup: str,
     rate: float,
 ) -> dict:
+    now = datetime.now(timezone.utc).replace(microsecond=0)
     return {
         "publication_id": publication_id,
         "source_provider": "authorized_local_export",
@@ -29,8 +31,8 @@ def _row(
         "destination_name": "Rondonópolis",
         "product_id": "milho",
         "freight_announced_brl_per_t": rate,
-        "data_publicacao": "2026-10-09T10:00:00-04:00",
-        "data_coleta": "2026-10-09T10:05:00-04:00",
+        "data_publicacao": now.isoformat(),
+        "data_coleta": now.isoformat(),
         "provenance": {"source": "authorized_test_fixture"},
     }
 
