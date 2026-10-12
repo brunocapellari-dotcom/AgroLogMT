@@ -81,3 +81,33 @@ python scripts/validate_zero_cost_runtime.py
 Resultado esperado: `status=PASS`, `implementation_cost_ceiling_brl=0`, `recurring_cost_ceiling_brl=0`, `paid_runtime_required=false` e `cloud_credentials_required=false`.
 
 A validação é local, testa LocalStore, DuckDB, Parquet e bundle estático e não realiza chamadas a GCP ou a qualquer serviço pago.
+
+## Operator mode
+
+For routine operation, copy:
+
+`config/zero_cost_operator.example.json`
+
+to:
+
+`config/zero_cost_operator.json`
+
+Then fill only the operational paths and the real market authorization metadata. No Python edit is required.
+
+Run:
+
+`python scripts/run_zero_cost_operator.py --config config/zero_cost_operator.json`
+
+The operator launcher resolves relative paths from the config file directory and calls the canonical ZERO_COST pipeline. The process exits with code 0 only when the commercial report is SELLABLE. If the report is BLOCKED, evidence and output files are still written, but the process exits non-zero so cron/systemd/Windows Task Scheduler can detect the failure.
+
+Required human/operator inputs, when applicable:
+
+- `freight_input`: authorized JSON/JSONL containing individual announced freight records;
+- `market_input`: authorized CSV/JSON/JSONL market references;
+- `market.source_id`;
+- `market.source_name`;
+- `market.usage_rights`;
+- `market.authorization_basis`.
+
+The launcher does not convert technical access into commercial reuse rights. Market data is rejected unless explicit rights metadata is present.
+
