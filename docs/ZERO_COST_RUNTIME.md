@@ -111,3 +111,30 @@ Required human/operator inputs, when applicable:
 
 The launcher does not convert technical access into commercial reuse rights. Market data is rejected unless explicit rights metadata is present.
 
+## Minimal installation
+
+The ZERO_COST runtime has its own dependency set and does not require the cloud collector stack.
+
+Bootstrap once:
+
+`python scripts/bootstrap_zero_cost.py`
+
+This creates `.venv-zero-cost`, installs only the packages listed in `requirements-zero-cost.txt`, verifies the required imports, and runs the ZERO_COST runtime contract validator.
+
+The canonical minimal runtime dependencies are:
+
+- DuckDB — local analytics and Parquet export;
+- ecCodes — local NOAA GFS/GRIB2 decoding;
+- Requests — public BCB/ANA/ComexStat HTTPS acquisition;
+- defusedxml — safe XLSX/WASDE XML parsing.
+
+Google Cloud SDK/client packages are explicitly forbidden from the ZERO_COST requirements.
+
+After bootstrap, run the operator entrypoint with the virtual-environment Python:
+
+Windows:
+`.venv-zero-cost\\Scripts\\python.exe scripts\\run_zero_cost_operator.py --config config\\zero_cost_operator.json`
+
+Linux/macOS:
+`.venv-zero-cost/bin/python scripts/run_zero_cost_operator.py --config config/zero_cost_operator.json`
+
