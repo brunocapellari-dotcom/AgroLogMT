@@ -18,6 +18,14 @@ import duckdb
 from collector.local_analytics_store import _ident
 
 
+def _sha256_file(path: Path) -> str:
+    sha = hashlib.sha256()
+    with path.open("rb") as source:
+        for block in iter(lambda: source.read(1024 * 1024), b""):
+            sha.update(block)
+    return sha.hexdigest()
+
+
 def audit_history(db_path: str | Path) -> dict[str, Any]:
     database = Path(db_path).resolve(strict=True)
     if not database.is_file():
@@ -105,7 +113,7 @@ def audit_history(db_path: str | Path) -> dict[str, Any]:
     return {
         "status": "BLOCKED" if critical_count or not tables else "PASS",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "database_sha256": hashlib.sha256(database.read_bytes()).hexdigest(),
+        "database_sha256": _sha256_file(database),
         "table_count": len(tables),
         "critical_check_groups": critical_count,
         "tables": tables,
