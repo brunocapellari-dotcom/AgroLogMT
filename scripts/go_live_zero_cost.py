@@ -46,7 +46,7 @@ def archive_evidence(
     runtime_root = _resolve(base_dir, operator.get("root"), "../.agrolog-zero-cost")
     output_dir = _resolve(base_dir, operator.get("output_dir"), "../maritime_ui/public/data")
 
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     release_dir = Path(evidence_root).resolve() / stamp
     release_dir.mkdir(parents=True, exist_ok=False)
 
