@@ -122,6 +122,63 @@ def test_bigquery_schema_contains_entities_and_non_destructive_upgrade() -> None
     upgrade = (
         root / "warehouse" / "bigquery" / "freight_events_upgrade.sql"
     ).read_text(encoding="utf-8")
+    changes_view = (
+        root / "warehouse" / "bigquery" / "freight_rate_changes.sql"
+    ).read_text(encoding="utf-8")
 
     assert "entities_json STRING" in ddl
+    assert "rate_previous NUMERIC" in ddl
+    assert "rate_delta NUMERIC" in ddl
+    assert "rate_delta_percent NUMERIC" in ddl
+    assert "rate_movement STRING" in ddl
+    assert "rate_changed_at TIMESTAMP" in ddl
     assert "ADD COLUMN IF NOT EXISTS entities_json STRING" in upgrade
+    assert "ADD COLUMN IF NOT EXISTS rate_previous NUMERIC" in upgrade
+    assert "ADD COLUMN IF NOT EXISTS rate_delta NUMERIC" in upgrade
+    assert "ADD COLUMN IF NOT EXISTS rate_movement STRING" in upgrade
+    assert "CREATE OR REPLACE VIEW" in changes_view
+    assert "rate_movement IN ('AUMENTO', 'REDUCAO')" in changes_view
+    assert "JSON_VALUE(entities_json" in changes_view
+    assert "$.loading_point[0].raw_value" in changes_view
+
+
+
+def test_rate_change_contract_is_accepted_and_exposed_as_query_parameters() -> None:
+    payload = _contract_payload()
+    payload["version"] = 2
+    payload["classification"] = "UPDATE"
+    payload["rate"] = "175.00"
+    payload["rate_change"] = {
+        "previous_rate": "170.00",
+        "current_rate": "175.00",
+        "delta": "5.00",
+        "delta_percent": "2.94",
+        "movement": "AUMENTO",
+        "previous_timestamp": "2026-10-13T11:00:00+00:00",
+        "changed_at": "2026-10-13T13:00:00+00:00",
+    }
+    event = FreightEvent.model_validate(payload)
+    params = {param.name: param for param in _params(event)}
+
+    assert event.rate_change is not None
+    assert event.rate_change.movement.value == "AUMENTO"
+    assert str(params["rate_previous"].value) == "170.00"
+    assert str(params["rate_delta"].value) == "5.00"
+    assert str(params["rate_delta_percent"].value) == "2.94"
+    assert params["rate_movement"].value == "AUMENTO"
+    assert params["rate_changed_at"].value.isoformat() == "2026-10-13T13:00:00+00:00"
+
+
+def test_invalid_rate_movement_is_rejected() -> None:
+    payload = _contract_payload()
+    payload["rate_change"] = {
+        "previous_rate": "170.00",
+        "current_rate": "175.00",
+        "delta": "5.00",
+        "delta_percent": "2.94",
+        "movement": "SUBIU_TALVEZ",
+        "previous_timestamp": "2026-10-13T11:00:00+00:00",
+        "changed_at": "2026-10-13T13:00:00+00:00",
+    }
+    with pytest.raises(ValidationError):
+        FreightEvent.model_validate(payload)

@@ -12,7 +12,7 @@ from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from google.cloud import bigquery
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class FreightClassification(StrEnum):
@@ -30,6 +30,39 @@ class TruthClassification(StrEnum):
     INFERRED = "INFERIDO"
     ESTIMATED = "ESTIMADO"
     EXTERNALLY_CONFIRMED = "CONFIRMADO_EXTERNAMENTE"
+
+
+class RateMovement(StrEnum):
+    INCREASE = "AUMENTO"
+    DECREASE = "REDUCAO"
+
+
+class RateChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    previous_rate: Decimal = Field(ge=0)
+    current_rate: Decimal = Field(ge=0)
+    delta: Decimal
+    delta_percent: Decimal | None = None
+    movement: RateMovement
+    previous_timestamp: datetime
+    changed_at: datetime
+
+    @model_validator(mode="after")
+    def validate_consistency(self) -> RateChange:
+        expected_delta = self.current_rate - self.previous_rate
+        if expected_delta == 0:
+            raise ValueError("rate change must change the advertised rate")
+        if self.delta != expected_delta:
+            raise ValueError("rate change delta is inconsistent")
+        expected_movement = (
+            RateMovement.INCREASE if expected_delta > 0 else RateMovement.DECREASE
+        )
+        if self.movement != expected_movement:
+            raise ValueError("rate change movement is inconsistent")
+        if self.changed_at < self.previous_timestamp:
+            raise ValueError("rate change timestamp precedes previous observation")
+        return self
 
 
 class EntityValue(BaseModel):
@@ -57,6 +90,7 @@ class FreightEvent(BaseModel):
     entities: dict[str, list[EntityValue]] = Field(default_factory=dict)
     rate: Decimal | None = Field(default=None, ge=0)
     rate_unit: str | None = Field(default=None, max_length=64)
+    rate_change: RateChange | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     confidence: float = Field(ge=0.0, le=1.0)
     truth_classification: TruthClassification
@@ -70,6 +104,12 @@ class FreightEvent(BaseModel):
         if any(not value or len(value) > 256 for value in values):
             raise ValueError("source_event_ids contain invalid value")
         return values
+
+    @model_validator(mode="after")
+    def validate_rate_change_matches_current_rate(self) -> FreightEvent:
+        if self.rate_change is not None and self.rate != self.rate_change.current_rate:
+            raise ValueError("rate_change current_rate must match event rate")
+        return self
 
 
 def _verify_signature(
@@ -117,6 +157,12 @@ def _merge_sql(project_id: str, dataset_id: str) -> str:
         @destination_canonical_id AS destination_canonical_id,
         @rate AS rate,
         @rate_unit AS rate_unit,
+        @rate_previous AS rate_previous,
+        @rate_delta AS rate_delta,
+        @rate_delta_percent AS rate_delta_percent,
+        @rate_movement AS rate_movement,
+        @rate_previous_timestamp AS rate_previous_timestamp,
+        @rate_changed_at AS rate_changed_at,
         @confidence AS confidence,
         @truth_classification AS truth_classification,
         @source_event_ids AS source_event_ids,
@@ -130,13 +176,15 @@ def _merge_sql(project_id: str, dataset_id: str) -> str:
         event_id,event_version,tenant_id,classification,event_timestamp,product,
         origin_raw,origin_normalized,origin_canonical_id,
         destination_raw,destination_normalized,destination_canonical_id,
-        rate,rate_unit,confidence,truth_classification,source_event_ids,
+        rate,rate_unit,rate_previous,rate_delta,rate_delta_percent,rate_movement,
+        rate_previous_timestamp,rate_changed_at,confidence,truth_classification,source_event_ids,
         raw_reference,entities_json,metadata_json,provenance_json,ingested_at
     ) VALUES (
         S.event_id,S.event_version,S.tenant_id,S.classification,S.event_timestamp,S.product,
         S.origin_raw,S.origin_normalized,S.origin_canonical_id,
         S.destination_raw,S.destination_normalized,S.destination_canonical_id,
-        S.rate,S.rate_unit,S.confidence,S.truth_classification,S.source_event_ids,
+        S.rate,S.rate_unit,S.rate_previous,S.rate_delta,S.rate_delta_percent,S.rate_movement,
+        S.rate_previous_timestamp,S.rate_changed_at,S.confidence,S.truth_classification,S.source_event_ids,
         S.raw_reference,S.entities_json,S.metadata_json,S.provenance_json,CURRENT_TIMESTAMP()
     )
     """
@@ -184,6 +232,36 @@ def _params(
         ),
         bigquery.ScalarQueryParameter("rate", "NUMERIC", event.rate),
         bigquery.ScalarQueryParameter("rate_unit", "STRING", event.rate_unit),
+        bigquery.ScalarQueryParameter(
+            "rate_previous",
+            "NUMERIC",
+            event.rate_change.previous_rate if event.rate_change else None,
+        ),
+        bigquery.ScalarQueryParameter(
+            "rate_delta",
+            "NUMERIC",
+            event.rate_change.delta if event.rate_change else None,
+        ),
+        bigquery.ScalarQueryParameter(
+            "rate_delta_percent",
+            "NUMERIC",
+            event.rate_change.delta_percent if event.rate_change else None,
+        ),
+        bigquery.ScalarQueryParameter(
+            "rate_movement",
+            "STRING",
+            event.rate_change.movement.value if event.rate_change else None,
+        ),
+        bigquery.ScalarQueryParameter(
+            "rate_previous_timestamp",
+            "TIMESTAMP",
+            event.rate_change.previous_timestamp if event.rate_change else None,
+        ),
+        bigquery.ScalarQueryParameter(
+            "rate_changed_at",
+            "TIMESTAMP",
+            event.rate_change.changed_at if event.rate_change else None,
+        ),
         bigquery.ScalarQueryParameter("confidence", "FLOAT64", event.confidence),
         bigquery.ScalarQueryParameter(
             "truth_classification",
