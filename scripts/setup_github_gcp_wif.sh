@@ -171,6 +171,9 @@ sed -e "s/__PROJECT__/${PROJECT_ID}/g" -e "s/__DATASET__/${LOGISTICA_DATASET}/g"
 sed -e "s/__PROJECT__/${PROJECT_ID}/g" -e "s/__DATASET__/${LOGISTICA_DATASET}/g" \
   warehouse/bigquery/freight_events_upgrade.sql | \
   bq query --project_id="$PROJECT_ID" --location="$BQ_LOCATION" --use_legacy_sql=false --quiet
+sed -e "s/__PROJECT__/${PROJECT_ID}/g" -e "s/__DATASET__/${LOGISTICA_DATASET}/g" \
+  warehouse/bigquery/freight_rate_changes.sql | \
+  bq query --project_id="$PROJECT_ID" --location="$BQ_LOCATION" --use_legacy_sql=false --quiet
 ensure_project_role "$FREIGHT_INGEST_SA_EMAIL" roles/bigquery.jobUser
 python3 - "$PROJECT_ID" "$LOGISTICA_DATASET" "$FREIGHT_INGEST_SA_EMAIL" <<'PY' | \
   bq query --project_id="$PROJECT_ID" --location="$BQ_LOCATION" --use_legacy_sql=false --quiet
