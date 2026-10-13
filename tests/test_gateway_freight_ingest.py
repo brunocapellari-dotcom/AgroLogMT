@@ -122,6 +122,9 @@ def test_bigquery_schema_contains_entities_and_non_destructive_upgrade() -> None
     upgrade = (
         root / "warehouse" / "bigquery" / "freight_events_upgrade.sql"
     ).read_text(encoding="utf-8")
+    changes_view = (
+        root / "warehouse" / "bigquery" / "freight_rate_changes.sql"
+    ).read_text(encoding="utf-8")
 
     assert "entities_json STRING" in ddl
     assert "rate_previous NUMERIC" in ddl
@@ -133,6 +136,9 @@ def test_bigquery_schema_contains_entities_and_non_destructive_upgrade() -> None
     assert "ADD COLUMN IF NOT EXISTS rate_previous NUMERIC" in upgrade
     assert "ADD COLUMN IF NOT EXISTS rate_delta NUMERIC" in upgrade
     assert "ADD COLUMN IF NOT EXISTS rate_movement STRING" in upgrade
+    assert "CREATE OR REPLACE VIEW" in changes_view
+    assert "rate_movement IN ('AUMENTO', 'REDUCAO')" in changes_view
+    assert "JSON_VALUE(entities_json" in changes_view
 
 
 
