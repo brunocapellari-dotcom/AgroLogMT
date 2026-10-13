@@ -15,6 +15,8 @@ def test_operator_config_builds_single_zero_cost_command_without_code_edits(tmp_
             "mode": "ZERO_COST",
             "root": "runtime",
             "output_dir": "output",
+            "pipeline_config": "configs/p0.json",
+            "pilot_config": "configs/pilot.json",
             "uf": "MT",
             "freight_input": "inputs/freight.json",
             "market_input": "inputs/market.csv",
@@ -33,6 +35,10 @@ def test_operator_config_builds_single_zero_cost_command_without_code_edits(tmp_
 
     assert "--root" in argv
     assert "--output-dir" in argv
+    assert "--config" in argv
+    assert "--pilot-config" in argv
+    assert str((tmp_path / "configs/p0.json").resolve()) in argv
+    assert str((tmp_path / "configs/pilot.json").resolve()) in argv
     assert "--freight-input" in argv
     assert "--market-input" in argv
     assert "--market-source-id" in argv

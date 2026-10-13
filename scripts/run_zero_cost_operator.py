@@ -48,7 +48,19 @@ def build_pipeline_args(config: dict[str, Any], *, config_path: str | Path) -> l
     argv: list[str] = []
     root = resolve_optional(config.get("root")) or str((base_dir / "../.agrolog-zero-cost").resolve())
     output_dir = resolve_optional(config.get("output_dir")) or str((base_dir / "../maritime_ui/public/data").resolve())
-    argv.extend(["--root", root, "--output-dir", output_dir, "--uf", str(config.get("uf") or "MT")])
+    pipeline_config = resolve_optional(config.get("pipeline_config")) or str(
+        (base_dir / "../collector/config/sources.p0.json").resolve()
+    )
+    pilot_config = resolve_optional(config.get("pilot_config")) or str(
+        (base_dir / "../collector/config/sources.pilot.json").resolve()
+    )
+    argv.extend([
+        "--root", root,
+        "--output-dir", output_dir,
+        "--config", pipeline_config,
+        "--pilot-config", pilot_config,
+        "--uf", str(config.get("uf") or "MT"),
+    ])
 
     if bool(config.get("no_collect", False)):
         argv.append("--no-collect")

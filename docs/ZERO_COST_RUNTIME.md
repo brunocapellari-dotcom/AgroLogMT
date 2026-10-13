@@ -138,3 +138,63 @@ Windows:
 Linux/macOS:
 `.venv-zero-cost/bin/python scripts/run_zero_cost_operator.py --config config/zero_cost_operator.json`
 
+## Real local go-live
+
+The repository distinguishes a deterministic SELLABLE test from a real operator-machine go-live.
+
+Preflight:
+
+` .venv-zero-cost/bin/python scripts/preflight_zero_cost_local.py --config config/zero_cost_operator.json `
+
+Windows:
+
+` .venv-zero-cost\\Scripts\\python.exe scripts\\preflight_zero_cost_local.py --config config\\zero_cost_operator.json `
+
+The preflight blocks go-live when any critical local prerequisite is missing, including:
+
+- real authorized freight input;
+- real authorized market input;
+- non-placeholder market authorization metadata;
+- ANA HidroWeb credentials required by the enabled official API collector;
+- writable runtime/output directories;
+- ZERO_COST runtime imports;
+- critical source groups accidentally disabled.
+
+The preflight never prints ANA credential values.
+
+Real go-live execution:
+
+` .venv-zero-cost/bin/python scripts/go_live_zero_cost.py --config config/zero_cost_operator.json --evidence-dir outputs/go-live `
+
+Windows:
+
+` .venv-zero-cost\\Scripts\\python.exe scripts\\go_live_zero_cost.py --config config\\zero_cost_operator.json --evidence-dir outputs\\go-live `
+
+A run is marked `GO_LIVE_PASS` only when:
+
+1. preflight passes;
+2. the canonical operator pipeline exits with code 0;
+3. sellability is `SELLABLE`;
+4. the sellability blocker list is empty;
+5. all required evidence files exist.
+
+The launcher copies and hashes the production evidence into a timestamped directory under `outputs/go-live` and writes `GO_LIVE_EVIDENCE.json`. It also writes `outputs/go-live/latest.json` as the current release pointer.
+
+Required evidence:
+
+- `last-run.json`;
+- `commercial-snapshot.json`;
+- `sellability.json`;
+- `integrated-report.md`;
+- `zero-cost-manifest.json`.
+
+### Windows one-click entrypoint
+
+At repository root, run or double-click:
+
+`run-zero-cost-go-live.cmd`
+
+If the ZERO_COST virtual environment does not exist, it invokes the bootstrap. If `config/zero_cost_operator.json` does not exist, it creates it from the example and exits fail-closed so the operator can fill the real paths and rights metadata before the next run.
+
+The official ANA HidroWeb API currently requires authorized credentials for automated access. The ZERO_COST release therefore treats `ANA_IDENTIFICADOR` and `ANA_SENHA` as operator-machine secrets, never as repository configuration or browser-bundle data. Follow the current official ANA HidroWeb API access instructions to obtain them.
+
