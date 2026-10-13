@@ -165,7 +165,7 @@ def test_rate_change_contract_is_accepted_and_exposed_as_query_parameters() -> N
     assert str(params["rate_delta"].value) == "5.00"
     assert str(params["rate_delta_percent"].value) == "2.94"
     assert params["rate_movement"].value == "AUMENTO"
-    assert params["rate_changed_at"].value == "2026-10-13T13:00:00+00:00"
+    assert params["rate_changed_at"].value.isoformat() == "2026-10-13T13:00:00+00:00"
 
 
 def test_invalid_rate_movement_is_rejected() -> None:
