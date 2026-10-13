@@ -110,10 +110,11 @@ def audit_history(db_path: str | Path) -> dict[str, Any]:
                 "checks": checks,
                 "note": "Coverage is stored history, not confirmation of source completeness.",
             })
+        database_hash = _sha256_file(database)
     return {
         "status": "BLOCKED" if critical_count or not tables else "PASS",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "database_sha256": _sha256_file(database),
+        "database_sha256": database_hash,
         "table_count": len(tables),
         "critical_check_groups": critical_count,
         "tables": tables,
