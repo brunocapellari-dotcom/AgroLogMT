@@ -177,7 +177,7 @@ def run_go_live(config_path: str | Path, evidence_root: str | Path) -> int:
         }, ensure_ascii=False, indent=2))
         return 3
 
-    pipeline_code = run_operator_config(config_path)
+    pipeline_code = run_operator_config(config_file)
     manifest = archive_evidence(
         config_path=config_file,
         evidence_root=evidence_root,
