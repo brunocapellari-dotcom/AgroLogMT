@@ -34,6 +34,13 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _evidence_root(config_file: Path, evidence_root: str | Path) -> Path:
+    path = Path(evidence_root)
+    if path.is_absolute():
+        return path
+    return (config_file.parent / ".." / path).resolve()
+
+
 def archive_evidence(
     *,
     config_path: str | Path,
@@ -47,7 +54,8 @@ def archive_evidence(
     output_dir = _resolve(base_dir, operator.get("output_dir"), "../maritime_ui/public/data")
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    release_dir = Path(evidence_root).resolve() / stamp
+    evidence_base = _evidence_root(config_file, evidence_root)
+    release_dir = evidence_base / stamp
     release_dir.mkdir(parents=True, exist_ok=False)
 
     source_map = {
@@ -77,11 +85,36 @@ def archive_evidence(
 
     sellability_status = None
     blockers: list[str] = []
+    consistency_blockers: list[str] = []
+
     sellability_path = release_dir / "sellability.json"
     if sellability_path.is_file():
         payload = json.loads(sellability_path.read_text(encoding="utf-8"))
         sellability_status = payload.get("status")
         blockers = list(payload.get("blockers") or [])
+
+    last_run_path = release_dir / "last-run.json"
+    if last_run_path.is_file():
+        last_run = json.loads(last_run_path.read_text(encoding="utf-8"))
+        last_sellability = (last_run.get("sellability") or {}).get("status")
+        if last_sellability != "SELLABLE":
+            consistency_blockers.append(
+                f"last_run_sellability_not_sellable:{last_sellability}"
+            )
+        if last_run.get("paid_runtime_required") is not False:
+            consistency_blockers.append("last_run_paid_runtime_required_not_false")
+        if last_run.get("cloud_credentials_required") is not False:
+            consistency_blockers.append("last_run_cloud_credentials_required_not_false")
+
+    bundle_manifest_path = release_dir / "zero-cost-manifest.json"
+    if bundle_manifest_path.is_file():
+        bundle_manifest = json.loads(
+            bundle_manifest_path.read_text(encoding="utf-8")
+        )
+        if bundle_manifest.get("paid_runtime_required") is not False:
+            consistency_blockers.append("bundle_paid_runtime_required_not_false")
+        if bundle_manifest.get("cloud_credentials_required") is not False:
+            consistency_blockers.append("bundle_cloud_credentials_required_not_false")
 
     status = (
         "GO_LIVE_PASS"
@@ -89,6 +122,7 @@ def archive_evidence(
         and sellability_status == "SELLABLE"
         and not missing
         and not blockers
+        and not consistency_blockers
         else "GO_LIVE_BLOCKED"
     )
     manifest = {
@@ -98,6 +132,7 @@ def archive_evidence(
         "pipeline_exit_code": pipeline_exit_code,
         "sellability_status": sellability_status,
         "blockers": blockers,
+        "consistency_blockers": consistency_blockers,
         "missing_evidence": missing,
         "evidence": copied,
         "paid_runtime_required": False,
@@ -109,7 +144,7 @@ def archive_evidence(
         encoding="utf-8",
     )
 
-    latest_path = Path(evidence_root).resolve() / "latest.json"
+    latest_path = evidence_base / "latest.json"
     latest_path.parent.mkdir(parents=True, exist_ok=True)
     latest_path.write_text(
         json.dumps({
@@ -124,8 +159,9 @@ def archive_evidence(
 
 
 def run_go_live(config_path: str | Path, evidence_root: str | Path) -> int:
-    preflight_result = preflight(config_path)
-    evidence_base = Path(evidence_root).resolve()
+    config_file = Path(config_path).resolve()
+    preflight_result = preflight(config_file)
+    evidence_base = _evidence_root(config_file, evidence_root)
     evidence_base.mkdir(parents=True, exist_ok=True)
     preflight_path = evidence_base / "preflight-latest.json"
     preflight_path.write_text(
@@ -143,7 +179,7 @@ def run_go_live(config_path: str | Path, evidence_root: str | Path) -> int:
 
     pipeline_code = run_operator_config(config_path)
     manifest = archive_evidence(
-        config_path=config_path,
+        config_path=config_file,
         evidence_root=evidence_root,
         pipeline_exit_code=pipeline_code,
     )
