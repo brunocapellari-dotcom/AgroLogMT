@@ -139,6 +139,7 @@ def test_bigquery_schema_contains_entities_and_non_destructive_upgrade() -> None
     assert "CREATE OR REPLACE VIEW" in changes_view
     assert "rate_movement IN ('AUMENTO', 'REDUCAO')" in changes_view
     assert "JSON_VALUE(entities_json" in changes_view
+    assert "$.loading_point[0].raw_value" in changes_view
 
 
 
