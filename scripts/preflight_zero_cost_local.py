@@ -9,7 +9,13 @@ from pathlib import Path
 from typing import Any
 
 from collector.cli import load_sources
-from collector.zero_cost_market import ALLOWED_USAGE_RIGHTS
+from collector.zero_cost_freight import load_freight_input, normalize_freight_record
+from collector.zero_cost_market import (
+    ALLOWED_USAGE_RIGHTS,
+    MarketAuthorization,
+    load_market_input,
+    normalize_market_reference,
+)
 from scripts.run_zero_cost_operator import load_operator_config
 
 
@@ -120,11 +126,24 @@ def preflight(config_path: str | Path) -> dict[str, Any]:
     checks["freight_input"] = str(freight) if freight else None
     checks["market_input"] = str(market) if market else None
 
+    freight_rows: list[dict[str, Any]] = []
     if freight is None:
         blockers.append("freight_input_missing_from_config")
     elif not freight.is_file() or freight.stat().st_size <= 0:
         blockers.append(f"freight_input_missing_or_empty:{freight}")
+    else:
+        try:
+            freight_rows = load_freight_input(freight)
+            if not freight_rows:
+                blockers.append(f"freight_input_empty:{freight}")
+            else:
+                for row in freight_rows:
+                    normalize_freight_record(row)
+        except Exception as exc:
+            blockers.append(f"freight_input_invalid:{type(exc).__name__}:{exc}")
+    checks["freight_records_validated"] = len(freight_rows)
 
+    market_rows: list[dict[str, Any]] = []
     if market is None:
         blockers.append("market_input_missing_from_config")
     elif not market.is_file() or market.stat().st_size <= 0:
@@ -144,6 +163,46 @@ def preflight(config_path: str | Path) -> dict[str, Any]:
         basis = str(market_meta.get("authorization_basis") or "").strip().lower()
         if basis and any(token in basis for token in PLACEHOLDER_TOKENS):
             blockers.append("market_authorization_basis_is_placeholder")
+
+        if market is not None and market.is_file() and market.stat().st_size > 0 and not missing:
+            try:
+                authorization = MarketAuthorization(
+                    source_id=str(market_meta.get("source_id") or ""),
+                    source_name=str(market_meta.get("source_name") or ""),
+                    usage_rights=str(market_meta.get("usage_rights") or ""),
+                    authorization_basis=str(market_meta.get("authorization_basis") or ""),
+                )
+                market_rows = load_market_input(market)
+                if not market_rows:
+                    blockers.append(f"market_input_empty:{market}")
+                else:
+                    for row in market_rows:
+                        normalize_market_reference(row, authorization=authorization)
+            except Exception as exc:
+                blockers.append(f"market_input_invalid:{type(exc).__name__}:{exc}")
+    checks["market_records_validated"] = len(market_rows)
+
+    pipeline_config = _resolve(
+        base_dir,
+        operator.get("pipeline_config") or "../collector/config/sources.p0.json",
+    )
+    pilot_config = _resolve(
+        base_dir,
+        operator.get("pilot_config") or "../collector/config/sources.pilot.json",
+    )
+    for label, config_file in (
+        ("pipeline_config", pipeline_config),
+        ("pilot_config", pilot_config),
+    ):
+        if config_file is None or not config_file.is_file():
+            blockers.append(f"{label}_missing:{config_file}")
+            continue
+        try:
+            load_sources(config_file)
+        except Exception as exc:
+            blockers.append(f"{label}_invalid:{type(exc).__name__}:{exc}")
+    checks["pipeline_config"] = str(pipeline_config) if pipeline_config else None
+    checks["pilot_config"] = str(pilot_config) if pilot_config else None
 
     missing_env = [
         name for name in _enabled_ana_env_requirements(path, operator)
