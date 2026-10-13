@@ -7,6 +7,8 @@ SELECT
   product,
   JSON_VALUE(entities_json, '$.company[0].raw_value') AS carrier,
   JSON_VALUE(entities_json, '$.company[0].normalized_value') AS carrier_normalized,
+  JSON_VALUE(entities_json, '$.loading_point[0].raw_value') AS loading_point,
+  JSON_VALUE(entities_json, '$.loading_point[0].normalized_value') AS loading_point_normalized,
   origin_raw,
   origin_normalized,
   destination_raw,
