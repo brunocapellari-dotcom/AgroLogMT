@@ -161,8 +161,8 @@ def _merge_sql(project_id: str, dataset_id: str) -> str:
         @rate_delta AS rate_delta,
         @rate_delta_percent AS rate_delta_percent,
         @rate_movement AS rate_movement,
-        TIMESTAMP(@rate_previous_timestamp) AS rate_previous_timestamp,
-        TIMESTAMP(@rate_changed_at) AS rate_changed_at,
+        @rate_previous_timestamp AS rate_previous_timestamp,
+        @rate_changed_at AS rate_changed_at,
         @confidence AS confidence,
         @truth_classification AS truth_classification,
         @source_event_ids AS source_event_ids,
@@ -254,15 +254,13 @@ def _params(
         ),
         bigquery.ScalarQueryParameter(
             "rate_previous_timestamp",
-            "STRING",
-            event.rate_change.previous_timestamp.isoformat()
-            if event.rate_change
-            else None,
+            "TIMESTAMP",
+            event.rate_change.previous_timestamp if event.rate_change else None,
         ),
         bigquery.ScalarQueryParameter(
             "rate_changed_at",
-            "STRING",
-            event.rate_change.changed_at.isoformat() if event.rate_change else None,
+            "TIMESTAMP",
+            event.rate_change.changed_at if event.rate_change else None,
         ),
         bigquery.ScalarQueryParameter("confidence", "FLOAT64", event.confidence),
         bigquery.ScalarQueryParameter(
