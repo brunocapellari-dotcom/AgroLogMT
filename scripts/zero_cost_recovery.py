@@ -75,6 +75,8 @@ def create_backup(
     if not quiesced or not encrypted_destination_confirmed:
         raise ValueError("backup requires confirmed stopped writers and encrypted destination")
     secret = _key()
+    if Path(root).is_symlink() or Path(output_dir).is_symlink():
+        raise ValueError("backup source directory symlink is forbidden")
     root_path = Path(root).resolve(strict=True)
     output_path = Path(output_dir).resolve(strict=True)
     dest = Path(destination).resolve()
@@ -136,8 +138,10 @@ def create_backup(
 
 def verify_backup(snapshot: str | Path) -> dict[str, Any]:
     secret = _key()
+    if Path(snapshot).is_symlink():
+        raise ValueError("backup symlink is forbidden")
     folder = Path(snapshot).resolve(strict=True)
-    if folder.is_symlink() or not folder.is_dir():
+    if not folder.is_dir():
         raise ValueError("backup must be a regular directory")
     manifest_path, signature_path = folder / "manifest.json", folder / "manifest.hmac"
     if manifest_path.is_symlink() or signature_path.is_symlink():
@@ -187,17 +191,23 @@ def restore_backup(snapshot: str | Path, root: str | Path, output_dir: str | Pat
         raise ValueError("restore destinations must be disjoint")
     if any(_is_inside(p, folder) or _is_inside(folder, p) for p in destinations):
         raise ValueError("restore paths cannot overlap backup")
-    restored = []
+    restored: list[Path] = []
+    staging: Path | None = None
     try:
         for label, dest in zip(("runtime", "output"), destinations):
             source = folder / "data" / label
             if not source.is_dir():
                 raise ValueError("missing backup partition")
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(source, dest, symlinks=False)
+            staging = dest.with_name(f".{dest.name}.restore-{uuid.uuid4().hex}")
+            shutil.copytree(source, staging, symlinks=False)
+            staging.rename(dest)
             restored.append(dest)
+            staging = None
         return {"status": "RESTORED_TO_NEW_PATHS", "files": result["file_count"]}
     except Exception:
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
         for dest in restored:
             shutil.rmtree(dest, ignore_errors=True)
         raise
