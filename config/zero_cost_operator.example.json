@@ -2,6 +2,8 @@
   "mode": "ZERO_COST",
   "root": "../.agrolog-zero-cost",
   "output_dir": "../maritime_ui/public/data",
+  "pipeline_config": "../collector/config/sources.p0.json",
+  "pilot_config": "../collector/config/sources.pilot.json",
   "uf": "MT",
   "no_collect": false,
   "no_global_public": false,
