@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -9,12 +10,36 @@ from scripts.go_live_zero_cost import archive_evidence
 from scripts.preflight_zero_cost_local import preflight
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
 def _operator_config(tmp_path: Path) -> Path:
     freight = tmp_path / "inputs" / "freight.json"
     market = tmp_path / "inputs" / "market.csv"
     freight.parent.mkdir(parents=True, exist_ok=True)
-    freight.write_text('[{"carrier_name":"A"}]', encoding="utf-8")
-    market.write_text("produto,valor\nsoja,120\n", encoding="utf-8")
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    freight.write_text(
+        json.dumps([{
+            "publication_id": "pub-live-1",
+            "source_provider": "authorized_local_export",
+            "carrier_name": "Transportadora A",
+            "municipality_name": "Sorriso",
+            "pickup_entity_id": "pickup:caravagio",
+            "pickup_name": "Caravagio",
+            "destination_name": "Rondonópolis",
+            "product_id": "milho",
+            "freight_announced_brl_per_t": 170.0,
+            "data_publicacao": now,
+            "data_coleta": now,
+            "provenance": {"fixture": True}
+        }]),
+        encoding="utf-8",
+    )
+    market.write_text(
+        "product_id,produto,metric_name,local,valor,unidade_origem,data_referencia,data_publicacao\n"
+        f"soja,Soja,preco_fisico,Mato Grosso,125.0,BRL/sc,{now[:10]},{now}\n",
+        encoding="utf-8",
+    )
 
     config = tmp_path / "config" / "zero_cost_operator.json"
     config.parent.mkdir(parents=True, exist_ok=True)
@@ -23,6 +48,8 @@ def _operator_config(tmp_path: Path) -> Path:
             "mode": "ZERO_COST",
             "root": "../runtime",
             "output_dir": "../output",
+            "pipeline_config": str(ROOT / "collector" / "config" / "sources.p0.json"),
+            "pilot_config": str(ROOT / "collector" / "config" / "sources.pilot.json"),
             "uf": "MT",
             "no_collect": False,
             "no_global_public": False,
@@ -99,7 +126,11 @@ def test_archive_evidence_marks_go_live_pass_only_with_complete_sellable_evidenc
     output.mkdir()
 
     (runtime / "last-run.json").write_text(
-        json.dumps({"sellability": {"status": "SELLABLE"}}),
+        json.dumps({
+            "sellability": {"status": "SELLABLE"},
+            "paid_runtime_required": False,
+            "cloud_credentials_required": False,
+        }),
         encoding="utf-8",
     )
     (output / "commercial-snapshot.json").write_text("{}", encoding="utf-8")
@@ -109,7 +140,10 @@ def test_archive_evidence_marks_go_live_pass_only_with_complete_sellable_evidenc
     )
     (output / "integrated-report.md").write_text("# Report\n", encoding="utf-8")
     (output / "zero-cost-manifest.json").write_text(
-        json.dumps({"paid_runtime_required": False}),
+        json.dumps({
+            "paid_runtime_required": False,
+            "cloud_credentials_required": False,
+        }),
         encoding="utf-8",
     )
 
@@ -122,6 +156,7 @@ def test_archive_evidence_marks_go_live_pass_only_with_complete_sellable_evidenc
     assert result["status"] == "GO_LIVE_PASS"
     assert result["sellability_status"] == "SELLABLE"
     assert result["missing_evidence"] == []
+    assert result["consistency_blockers"] == []
     assert len(result["evidence"]) == 5
     assert all(item["sha256"] for item in result["evidence"])
     latest = json.loads((tmp_path / "evidence" / "latest.json").read_text(encoding="utf-8"))
