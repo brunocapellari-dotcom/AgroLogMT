@@ -16,7 +16,7 @@
     "maplibre-gl": "6.6.0"
   },
   "devDependencies": {
-    "vite": "8.2.2"
+    "vite": "8.3.3"
   },
   "overrides": {
     "image-size": "npm:image-size-next@2.1.0"
