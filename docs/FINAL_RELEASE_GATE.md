@@ -39,6 +39,8 @@ O contrato está em `contracts/full_project_release_gate.v1.schema.json`.
 
 Não existe `PARTIAL PASS` para release final.
 
+Arquivos externos de evidência (`AGROLOG_EVIDENCE_*`) não são aceitos apenas por existirem: `containers_build` exige a linha `CONTAINERS PASS`; `secret_scan` exige `GITLEAKS TREE PASS` ou `GITLEAKS HISTORY PASS` no modo `ci` e somente `GITLEAKS HISTORY PASS` no modo `final`; `sbom` exige documento SPDX JSON com pacotes; `gcp_core_homologation` exige `N6 CORE HOMOLOGATION: PASS`.
+
 ## Dois momentos do mesmo gate
 
 O critério é sempre do **projeto inteiro**. A separação abaixo existe apenas para evitar desperdiçar GitHub Actions e credenciais de produção em cada commit.

@@ -318,7 +318,14 @@ def check_frontend(repo: Path) -> dict[str, Any]:
     )
 
 
-def external_stage(name: str, env_name: str, *, exact_line: str | None = None) -> dict[str, Any]:
+def external_stage(
+    name: str,
+    env_name: str,
+    *,
+    exact_line: str | None = None,
+    any_of_lines: tuple[str, ...] = (),
+    spdx_json: bool = False,
+) -> dict[str, Any]:
     value = os.environ.get(env_name, "").strip()
     if not value:
         return stage(name, "BLOCKED", [], blocker=f"missing {env_name}")
@@ -330,8 +337,25 @@ def external_stage(name: str, env_name: str, *, exact_line: str | None = None) -
     text = path.read_text(encoding="utf-8", errors="replace")
     if not text.strip():
         return stage(name, "FAIL", [], error=f"evidence file contains no usable content: {value}")
-    if exact_line and exact_line not in {line.strip() for line in text.splitlines()}:
+    lines = {line.strip() for line in text.splitlines()}
+    if exact_line and exact_line not in lines:
         return stage(name, "FAIL", [], error=f"required evidence line missing: {exact_line}")
+    if any_of_lines and not lines.intersection(any_of_lines):
+        return stage(
+            name,
+            "FAIL",
+            [],
+            error=f"required evidence line missing: one of {list(any_of_lines)}",
+        )
+    if spdx_json:
+        try:
+            document = json.loads(text)
+        except json.JSONDecodeError:
+            return stage(name, "FAIL", [], error="SBOM evidence is not valid JSON")
+        if not isinstance(document, dict) or not str(document.get("spdxVersion", "")).startswith("SPDX-"):
+            return stage(name, "FAIL", [], error="SBOM evidence is not an SPDX JSON document")
+        if not document.get("packages"):
+            return stage(name, "FAIL", [], error="SBOM evidence lists no packages")
     return stage(name, "PASS", [str(path)], bytes=path.stat().st_size)
 
 
@@ -348,10 +372,19 @@ def build_report(repo: Path, *, mode: str) -> dict[str, Any]:
         workflow_stage,
         check_registry(repo),
         check_frontend(repo),
-        external_stage("containers_build", "AGROLOG_EVIDENCE_CONTAINERS"),
-        external_stage("secret_scan", "AGROLOG_EVIDENCE_GITLEAKS"),
+        external_stage("containers_build", "AGROLOG_EVIDENCE_CONTAINERS", exact_line="CONTAINERS PASS"),
+        external_stage(
+            "secret_scan",
+            "AGROLOG_EVIDENCE_GITLEAKS",
+            # The deterministic CI job scans the tree; the final release must scan full history.
+            any_of_lines=(
+                ("GITLEAKS HISTORY PASS",)
+                if mode == "final"
+                else ("GITLEAKS TREE PASS", "GITLEAKS HISTORY PASS")
+            ),
+        ),
         external_stage("vulnerability_scan", "AGROLOG_EVIDENCE_TRIVY"),
-        external_stage("sbom", "AGROLOG_EVIDENCE_SBOM"),
+        external_stage("sbom", "AGROLOG_EVIDENCE_SBOM", spdx_json=True),
         external_stage("runtime_security", "AGROLOG_EVIDENCE_RUNTIME_SECURITY"),
         external_stage("data_quality_and_freshness", "AGROLOG_EVIDENCE_DATA_QUALITY"),
         external_stage("backup_restore", "AGROLOG_EVIDENCE_RESTORE"),

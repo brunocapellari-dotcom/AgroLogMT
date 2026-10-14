@@ -19,6 +19,32 @@ class FullProjectValidatorTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("empty", result["details"]["error"])
 
+    def _external(self, content: str, **kwargs):
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp) / "evidence.txt"
+            evidence.write_text(content, encoding="utf-8")
+            with mock.patch.dict(os.environ, {"AGROLOG_TEST_EVIDENCE": str(evidence)}, clear=False):
+                return external_stage("test_stage", "AGROLOG_TEST_EVIDENCE", **kwargs)
+
+    def test_secret_scan_evidence_must_declare_pass(self) -> None:
+        accepted = ("GITLEAKS TREE PASS", "GITLEAKS HISTORY PASS")
+        self.assertEqual(self._external("GITLEAKS TREE PASS\nversion=8.30.1\n", any_of_lines=accepted)["status"], "PASS")
+        failed = self._external("GITLEAKS FINDINGS=3\n", any_of_lines=accepted)
+        self.assertEqual(failed["status"], "FAIL")
+        self.assertIn("required evidence line missing", failed["details"]["error"])
+        final_only = self._external("GITLEAKS TREE PASS\n", any_of_lines=("GITLEAKS HISTORY PASS",))
+        self.assertEqual(final_only["status"], "FAIL")
+
+    def test_containers_evidence_requires_exact_pass_line(self) -> None:
+        self.assertEqual(self._external("CONTAINERS PASS\nagrolog-collector:gate\n", exact_line="CONTAINERS PASS")["status"], "PASS")
+        self.assertEqual(self._external("CONTAINERS FAILED\n", exact_line="CONTAINERS PASS")["status"], "FAIL")
+
+    def test_sbom_evidence_must_be_spdx_json_with_packages(self) -> None:
+        valid = '{"spdxVersion": "SPDX-2.3", "packages": [{"name": "fastapi"}]}'
+        self.assertEqual(self._external(valid, spdx_json=True)["status"], "PASS")
+        for content in ("not json", '{"bomFormat": "CycloneDX"}', '{"spdxVersion": "SPDX-2.3", "packages": []}'):
+            self.assertEqual(self._external(content, spdx_json=True)["status"], "FAIL", content)
+
     def test_junit_summary_reports_skips_as_named_problems(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             report = Path(tmp) / "junit.xml"
